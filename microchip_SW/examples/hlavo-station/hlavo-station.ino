@@ -361,12 +361,6 @@ void setup() {
                               dt, pr2_dir);
   }
 
-  {
-    Serial.print("APPEND\n");
-    FileInfo datafile(data_pr2_filenames[1]);
-    datafile.append("FOO\n");
-  }
-
   print_setup_summary(summary);
   delay(5000);
 
@@ -381,16 +375,10 @@ void setup() {
     datafile.append("FOO\n");
   }
 
-  // delay(1000);
   Serial.println("Opening SDI-12 for PR2...");
   sdi12_comm.begin();
 
   delay(1000);  // allow things to settle
-  {
-    Serial.print("APPEND\n");
-    FileInfo datafile(data_pr2_filenames[1]);
-    datafile.append("FOO\n");
-  }
 
   uint8_t nbytes = 0;
   for(int i=0; i<n_pr2_sensors; i++){
@@ -400,16 +388,7 @@ void setup() {
   }
 
   // while(1){delay(100);}
-  setPin(PR2_POWER_PIN, LOW);  // turn on power for PR2
   delay(1000);
-  // SD.begin(SD_CS_PIN);
-  delay(1000);
-
-  {
-    Serial.print("APPEND\n");
-    FileInfo datafile(data_pr2_filenames[1]);
-    datafile.append("FOO\n");
-  }
 
   // synchronize timers after setup
   timer_L3.reset(true);
