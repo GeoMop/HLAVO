@@ -256,7 +256,10 @@ void collect_and_write_PR2()
 void set_power_for_pr2(bool on)
 {
   if(on)
+  {
     setPin(PR2_POWER_PIN, LOW);  // turn on power for PR2
+    timer_PR2_power.reset();
+  }
   else
     setPin(PR2_POWER_PIN, HIGH); // turn off power for PR2
 
@@ -376,7 +379,6 @@ void setup() {
   // PR2
   pinMode(PR2_POWER_PIN, OUTPUT);
   set_power_for_pr2(true);
-  timer_PR2_power.reset();
 
   {
     Serial.print("APPEND\n");
@@ -456,9 +458,7 @@ void loop() {
     meteo_data_write();
 
     pr2_all_finished = false;
-    // Serial.println("PR2 power on.");
     set_power_for_pr2(true);
-    timer_PR2_power.reset();
 
     #ifdef TEST
       // TEST read data from CSV
