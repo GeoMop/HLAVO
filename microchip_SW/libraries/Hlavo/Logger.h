@@ -32,7 +32,7 @@ class Logger
     static char _logDirectory[hlavo::max_dirpath_length];
     static FileInfo _logfile;
     // static File _logfile;
-    static const int log_msg_maxsize = 350;
+    static const int log_msg_maxsize = 500;
     static char _log_buf[log_msg_maxsize];
 
     static void sendToWriteTask();

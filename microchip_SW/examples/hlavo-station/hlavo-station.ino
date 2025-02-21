@@ -3,15 +3,15 @@
 #include <Every.h>
 #include <Logger.h>
 
-#define PIN_ON 47 // napajeni !!!
+#define PIN_ON 47 // power stabilizer
 
 const char* setup_interrupt = "SETUP INTERRUPTED";
 
 /************************************************ RUN ************************************************/
 // Switch between testing/setup and long term run.
 // #define TEST
-// PR2 - a1 - s Oddyssey U04 pod stromy
-// PR2 - a0 - u meteo stanice
+// PR2 - a1 - with Oddyssey U04 under the trees
+// PR2 - a0 - by the meteo station
 
 #ifdef TEST
     /** TIMERS */
@@ -181,8 +181,6 @@ void meteo_data_collect()
   {
     char msg[400];
     Serial.printf("    %s\n", data.print(msg, sizeof(msg)));
-    // data.dataToCsvLine(msg);
-    // Serial.println(msg);
   }
 
   // write data into buffer
@@ -239,7 +237,7 @@ void collect_and_write_PR2()
       hlavo::SerialPrintf(sizeof(msg)+20, "PR2[%c]: %s\n",pr2_addresses[iss], pr2_readers[iss].data.print(msg, sizeof(msg)));
     }
 
-    // Logger::print("collect_and_write_PR2 - CSVHandler::appendData");
+    Logger::print("collect_and_write_PR2 - CSVHandler::appendData");
     CSVHandler::appendData(data_pr2_filenames[iss], &(pr2_readers[iss].data));
 
     pr2_readers[iss].Reset();
@@ -270,7 +268,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial)
   {
-      ; // cekani na Serial port
+      ; // wait for Serial port
   }
   String summary = "";
 
@@ -323,8 +321,7 @@ void setup() {
       Serial.println(setup_interrupt);
       while(1){delay(1000);}
   }
-  // Logger::setup_log(rtc_clock, "logs");
-  // Serial.println("Log set up.");
+  Logger::setup_log(rtc_clock, "logs");
   Logger::print("Log set up.");
 
 
@@ -345,8 +342,8 @@ void setup() {
     Logger::print("SHT4x not found.", Logger::WARN);
   }
 
-  sht4.setPrecision(SHT4X_HIGH_PRECISION); // nejvyssi rozliseni
-  sht4.setHeater(SHT4X_NO_HEATER); // bez vnitrniho ohrevu
+  sht4.setPrecision(SHT4X_HIGH_PRECISION); // highest resolution
+  sht4.setHeater(SHT4X_NO_HEATER); // without inner heating
 
   // BH1750 - Light
   if(lightMeter.begin())
@@ -373,18 +370,11 @@ void setup() {
                               dt, pr2_dir);
   }
 
-  print_setup_summary(summary);
-  delay(5000);
-
   // PR2
   pinMode(PR2_POWER_PIN, OUTPUT);
   set_power_for_pr2(true);
 
-  {
-    Serial.print("APPEND\n");
-    FileInfo datafile(data_pr2_filenames[1]);
-    datafile.append("FOO\n");
-  }
+  delay(1000);
 
   Serial.println("Opening SDI-12 for PR2...");
   sdi12_comm.begin();
@@ -394,7 +384,11 @@ void setup() {
   uint8_t nbytes = 0;
   for(int i=0; i<n_pr2_sensors; i++){
     String cmd = String(pr2_addresses[i]) + "I!";
-    sdi12_comm.requestAndReadData(cmd.c_str(), &nbytes);  // Command to get sensor info
+    char* msg = sdi12_comm.requestAndReadData(cmd.c_str(), &nbytes);  // Command to get sensor info
+    if(nbytes > 0)
+      summary += " - PR2 [" + cmd + "]: " + String(msg) + "\n";
+    else
+      summary += " - PR2 [" + cmd + "]: " + "FAILED\n";
     delay(500);
   }
 
@@ -405,6 +399,9 @@ void setup() {
   timer_L3.reset(true);
   timer_L1.reset(true);
   timer_L4.reset(false);
+
+  print_setup_summary(summary);
+  delay(5000);
 }
 
 void print_setup_summary(String summary)
@@ -414,9 +411,11 @@ void print_setup_summary(String summary)
   summary += F("INO file: " __FILE__ " " __DATE__ " " __TIME__ "\n\n");
   summary += "=======================================================================";
 
-  Serial.print(summary); Serial.println("");
-  // Logger::print(summary);
+  // Serial.print(summary); Serial.println("");
+  Serial.println(summary.length());
+  Logger::print(summary);
   Logger::print("HLAVO station is running");
+  Serial.flush();
 }
 
 /*********************************************** LOOP ***********************************************/ 
@@ -428,10 +427,10 @@ void loop() {
   // read values to buffer at fine time scale [fine Meteo Data]
   if(timer_L1())
   {
-    Serial.printf("        -------------------------- L1 TICK -------------------------- till L3: %d s\n", (timer_L3.interval + timer_L3.last - millis())/1000);
+    Serial.printf("        -------------------------- L1 TICK -------------------------- till L3: %d s\n",
+      (timer_L3.interval + timer_L3.last - millis())/1000);
     fine_data_collect();
-    FileInfo datafile(data_pr2_filenames[1]);
-    datafile.append("HOO\n");
+
   }
 
   // read values to buffer at fine time scale [averaged Meteo Data]
