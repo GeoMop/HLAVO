@@ -248,9 +248,18 @@ void collect_and_write_PR2()
     {
       iss = 0;
       pr2_all_finished = true;
-      setPin(PR2_POWER_PIN, LOW);  // turn off power for PR2
+      set_power_for_pr2(false);
     }
   }
+}
+
+void set_power_for_pr2(bool on)
+{
+  if(on)
+    setPin(PR2_POWER_PIN, LOW);  // turn on power for PR2
+  else
+    setPin(PR2_POWER_PIN, HIGH); // turn off power for PR2
+
 }
 
 /*********************************************** SETUP ***********************************************/
@@ -366,7 +375,7 @@ void setup() {
 
   // PR2
   pinMode(PR2_POWER_PIN, OUTPUT);
-  setPin(PR2_POWER_PIN, HIGH);  // turn on power for PR2
+  set_power_for_pr2(true);
   timer_PR2_power.reset();
 
   {
@@ -448,7 +457,7 @@ void loop() {
 
     pr2_all_finished = false;
     // Serial.println("PR2 power on.");
-    setPin(PR2_POWER_PIN, HIGH);  // turn on power for PR2
+    set_power_for_pr2(true);
     timer_PR2_power.reset();
 
     #ifdef TEST
