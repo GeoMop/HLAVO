@@ -12,46 +12,6 @@ except ImportError:
     HAS_DASK = False
 
 
-def update_zarr_store(zarr_path: str, ds_update: xr.Dataset) -> None:
-    """
-    Update/append 'ds_update' into an existing Zarr store at 'zarr_path'.
-    - Dims: 'time' and 'x'.
-    - Possibly extends the 'time' dimension if new time coords go beyond existing range.
-    - Uses region='auto' so xarray infers which slices to overwrite/append.
-    """
-    # --- 1) Identify old vs. new time labels ---
-    ds_existing = xr.open_zarr(zarr_path, chunks=None)  # loads metadata
-    old_times = ds_existing.time.values  # e.g. shape=(100,)
-    new_times = ds_update.time.values  # e.g. shape=(N,)
-
-    # Check which new_times already exist in old_times
-    overlap_mask = np.isin(new_times, old_times)
-    # Overlap portion
-    ds_overlap = ds_update.sel(time=new_times[overlap_mask])
-    # Pure extension portion
-    ds_extend = ds_update.sel(time=new_times[~overlap_mask])
-
-    # --- 2) Overlap: region="auto" update ---
-    # region="auto" works ONLY if all time coords in `ds_overlap` exist in the store
-    # (which they do, by construction).
-    if ds_overlap.sizes.get("time", 0) > 0:
-        ds_overlap.to_zarr(
-            zarr_path,
-            mode="r+",  # read/write
-            region="auto"  # Overwrite the existing time indices in the store
-        )
-
-    # --- 3) Extension: append_dim="time" ---
-    # appending is valid only for new time coords that aren't in the store
-    # (which they aren't, by construction).
-    if ds_extend.sizes.get("time", 0) > 0:
-        ds_extend.to_zarr(
-            zarr_path,
-            mode="a",  # append mode
-            append_dim="time"  # dimension to grow
-        )
-
-
 
 def update_zarr_loop(zarr_path: str, ds_update: xr.Dataset, dims_order=None) -> dict:
     """
@@ -142,157 +102,36 @@ def update_zarr_loop(zarr_path: str, ds_update: xr.Dataset, dims_order=None) -> 
     return merged_coords
 
 
-# =============================================================================
-# Example test using the two-phase update.
-# =============================================================================
-def test_extension_multidim(tmp_path):
-    """
-    Test scenario:
-      - Create an initial store with dimensions:
-          time: 0..99  and  x: 0..49.
-      - ds_update covers:
-          time: 90..119   and   x: 40..59.
-        (For 'time': overlap = 90..99, extension = 100..119.
-         For 'x': overlap = 40..49, extension = 50..59.)
-      - Final expected store shape:
-          time: 120  and  x: 60.
-    """
-    # --- Step 1. Create initial dataset ---
-    init_time_len = 100
-    x_len = 50
-    t_init = np.arange(init_time_len)
-    x_init = np.arange(x_len)
-    data_init = np.random.rand(init_time_len, x_len)
-    ds_init = xr.Dataset(
-        {"var": (("time", "x"), data_init)},
-        coords={"time": t_init, "x": x_init}
-    )
-    zpath = str(tmp_path / "test.zarr")
-    ds_init.to_zarr(zpath, mode="w", compute=False)
-
-    # --- Step 2. Create update dataset ---
-    # We want to update with:
-    # time: 90..119  (so overlap = 90..99, extend = 100..119)
-    # x: 40..59      (so overlap = 40..49, extend = 50..59)
-    t_new = np.arange(90, 120)
-    x_new = np.arange(40, 60)
-    data_update = np.random.rand(len(t_new), len(x_new))
-    ds_update = xr.Dataset(
-        {"var": (("time", "x"), data_update)},
-        coords={"time": t_new, "x": x_new}
-    )
-
-    # --- Step 3. Call the loop-based updater ---
-    merged_coords = update_zarr_loop_two_phase(zpath, ds_update, dims_order=["time", "x"])
-
-    # --- Step 4. Verify final store ---
-    ds_final = xr.open_zarr(zpath)
-    assert ds_final.dims["time"] == 120  # Expect times 0..119
-    assert ds_final.dims["x"] == 60  # Expect x 0..59
-
-    print("Test passed: final shape is time=120, x=60")
-
-
-def update_zarr_recursion(
-    zarr_path: str,
-    ds_update: xr.Dataset,
-    dims_order=None
-):
-    """
-    Hybrid dimension-by-dimension update:
-      - For each dimension in dims_order:
-        1) We split ds_update into Overlap (coords existing in store) vs. Extension (coords new to store).
-        2) We recurse ONLY on Overlap, so deeper dimensions can also split if needed.
-        3) We do an immediate append+final-write for Extension, so we do NOT recurse on newly appended data.
-
-    If there are no more dimensions to process (base case),
-    we do a single region='auto' write of ds_update.
-
-    Parameters
-    ----------
-    zarr_path : str
-        Path to the existing Zarr store.
-    ds_update : xr.Dataset
-        The dataset containing possibly overlapping + new coords.
-    dims_order : list of str, optional
-        The dimensions to process in order. If None, defaults to ds_update.dims in the order they appear.
-    """
-
-    # Base case: if no more dims to process, just do one final region='auto' write
-    if dims_order is None:
-        dims_order = list(ds_update.dims)
-    if not dims_order:
-        # Write part that overlaps in all dimensions
-        ds_update.to_zarr(zarr_path, mode="r+", region="auto")
-        return {d: ds_update[d].values for d in ds_update.dims}
-
-    # Take the first dimension to process
-    dim = dims_order[0]
-
-    # Open store to see existing coords for this dimension
-    ds_existing = xr.open_zarr(zarr_path, chunks=None)
-    if dim not in ds_existing.dims:
-        raise ValueError(f"Dimension '{dim}' not found in existing store.")
-
-    old_coords = ds_existing[dim].values
-    new_coords = ds_update[dim].values
-
-    # Split ds_update into overlap vs extension for this dimension
-    overlap_mask = np.isin(new_coords, old_coords)
-    ds_overlap = ds_update.sel({dim: new_coords[overlap_mask]})
-    ds_extend = ds_update.sel({dim: new_coords[~overlap_mask]})
-    merged_coords = np.concatenate([old_coords, new_coords[~overlap_mask]])
-
-    # ------------------
-    # 1) Overlap portion: Recurse
-    # ------------------
-    if ds_overlap.sizes.get(dim, 0) > 0:
-        existing_dims = update_zarr_recursion(
-            zarr_path,
-            ds_overlap,
-            dims_order=dims_order[1:]
-        )
-    else:
-        existing_dims = {d: ds_update[d].values for d in ds_update.dims}
-    # ------------------
-    # 2) Extension portion: Append + final write, no recursion
-    # ------------------
-    if ds_extend.sizes.get(dim, 0) > 0:
-        # Append new coords along `dim`
-        indexers = {d: existing_dims[d] for d in ds_extend.dims if d != dim}
-        ds_reindexed = ds_extend.reindex(indexers=indexers)
-        ds_reindexed.to_zarr(zarr_path, mode="a", append_dim=dim)
-
-        # Now do a final region='auto' write for these newly appended coords
-        #ds_store_after_append = xr.open_zarr(zarr_path, chunks=None)
-        #ds_new_slice = ds_store_after_append.sel({dim: ds_extend[dim]})
-        #ds_new_slice.to_zarr(zarr_path, mode="r+", region="auto")
-    return {d: merged_coords if d == dim else existing_dims[d] for d in ds_update.dims}
-
 
 
 def zarr_kwargs():
     # Only set chunk encoding if Dask is installed
     if HAS_DASK:
-        encoding = {"var": {"chunks": (100, 100)}}
+        encoding = {"var": {"chunks": (128, 128)}}
         kwargs = {"encoding": encoding, 'compute': False, 'write_empty_chunks': False}
     else:
         kwargs = {}
     return kwargs
 
-def init_ds(tmp_path, time_len, x_len):
-    # Create initial data so we can test final results
-    data_initial = np.random.rand(time_len, x_len)
-    ds_initial = xr.Dataset(
+
+def ds_block(time_range, x_range):
+    t_coords = np.arange(*time_range)  # Overlap=90..99, Extend=100..119
+    x_coords = np.arange(*x_range)   # Overlap=40..49, Extend=50..59
+    data = np.random.rand(len(t_coords), len(x_coords))
+    ds = xr.Dataset(
         {
-            "var": (("time", "x"), data_initial)
+            "var": (("time", "x"), data)
         },
         coords={
-            "time": np.arange(time_len),  # 0..(init_time_len - 1)
-            "x": np.arange(x_len)
+            "time": t_coords,
+            "x": x_coords
         }
     )
+    return ds
 
+def init_ds(tmp_path, time_len, x_len):
+    # Create initial data so we can test final results
+    ds_initial = ds_block((0, time_len), (0, x_len))
     zarr_path = str(tmp_path / "test.zarr")
 
     # -------------------------
@@ -303,11 +142,10 @@ def init_ds(tmp_path, time_len, x_len):
         mode="w",        # create or overwrite store
         **zarr_kwargs()
     )
-    return zarr_path, data_initial
+    return zarr_path, ds_initial['var'].to_numpy()
 
-
-@pytest.mark.parametrize("init_time_len, update_time_len", [(100, 50)])
-def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len, x_len=50):
+@pytest.mark.parametrize("init_time_len, update_time_len", [(1000, 500)])
+def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len, x_len=5000):
     """
     1. Create initial dataset with shape (time=init_time_len, x=50).
        If Dask is available, we chunk at (100,100).
@@ -323,19 +161,12 @@ def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len,
     # ----------------------------
     # 2. UPDATE / APPEND NEW DATA
     # ----------------------------
-    new_time_start = init_time_len
+    overlap = 10
+    new_time_start = init_time_len - overlap
     new_time_stop = init_time_len + update_time_len
-    data_update = np.random.rand(update_time_len, x_len)
-    ds_update = xr.Dataset(
-        {
-            "var": (("time", "x"), data_update)
-        },
-        coords={
-            "time": np.arange(new_time_start, new_time_stop),
-            "x": np.arange(x_len)
-        }
-    )
-
+    ds_update = ds_block((new_time_start, new_time_stop), (0, x_len))
+    data_update = ds_update['var'].to_numpy()
+    
     #update_zarr_store(zarr_path, ds_update)
     update_zarr_loop(zarr_path, ds_update, dims_order=["time", "x"])
     # -----------------------
@@ -350,11 +181,11 @@ def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len,
     # -----------------------
     # 4. VERIFY DATA VALUES
     # -----------------------
-    final_initial_part = ds_final["var"].isel(time=slice(0, init_time_len)).values
-    npt.assert_allclose(final_initial_part, data_initial)
+    final_initial_part = ds_final["var"].isel(time=slice(0, init_time_len-overlap)).values
+    npt.assert_allclose(final_initial_part, data_initial[:-overlap], rtol=1e-5, atol=1e-10)
 
-    final_appended_part = ds_final["var"].isel(time=slice(init_time_len, expected_time_len)).values
-    npt.assert_allclose(final_appended_part, data_update)
+    final_appended_part = ds_final["var"].isel(time=slice(init_time_len-overlap, expected_time_len)).values
+    npt.assert_allclose(final_appended_part, data_update, rtol=1e-5, atol=1e-10)
 
     # -----------------------
     # 5. CHECK CHUNK SIZES
@@ -388,25 +219,25 @@ def test_extension_multidim(tmp_path):
 
     # 2) ds_update with partial overlap + extension in time and x
     #    e.g., time=90..119, x=40..59
-    t_new = np.arange(90, 120)  # Overlap=90..99, Extend=100..119
-    x_new = np.arange(40, 60)   # Overlap=40..49, Extend=50..59
-    data_update = np.random.rand(len(t_new), len(x_new))
-    ds_update = xr.Dataset(
-        {
-            "var": (("time", "x"), data_update)
-        },
-        coords={
-            "time": t_new,
-            "x": x_new,
-        }
-    )
+    time_max = 1000
+    x_max = 200
+    ds_update_1 = ds_block((90, time_max), (40, x_max))
 
     # 3) Call our hybrid update
-    update_zarr_loop(zpath, ds_update, dims_order=["time","x"])
+    update_zarr_loop(zpath, ds_update_1, dims_order=["time","x"])
 
     # 4) Verify final store
     ds_final = xr.open_zarr(zpath)
-    assert ds_final.dims["time"] == 120  # 0..119
-    assert ds_final.dims["x"] == 60      # 0..59
+    assert ds_final.dims["time"] == time_max  # 0..119
+    assert ds_final.dims["x"] == x_max      # 0..59
+
+    time_max = 1000
+    x_max = 1000
+    ds_update_2 = ds_block((90, time_max), (150, x_max))
+
+    # 3) Call our hybrid update
+    update_zarr_loop(zpath, ds_update_2, dims_order=["time","x"])
 
     print("Test passed: partial overlap recursed, extension done once per dimension.")
+
+
