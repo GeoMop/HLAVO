@@ -1,11 +1,16 @@
 # Unscanted Kalman Filter applied to Richards equation
 
 Goal is to predict deep infiltration.
-Test problem: 1D 5m depth, Dirichlet on bottom, variable flux on the top.
+Test problem: 1D 5m depth, Dirichlet on bottom, variable flux on the top (e.g. random noise > 0.5)
 Measurement: 5 moisture sensors at 0.1, 0.2, 0.4, 0.6, 1.0 m depth.
 Test variables: 
 - moisture at 0.5, 0.8, 2.0, 4.0 m depth.
 - flux at 1m, 2m, 5m 
+
+Goal is to calibrate all vG parameters + linear sensor coeficients
+1. with known flux on top
+2. with unknown flux on top
+
 
 State variables:
 - pressure head
@@ -29,17 +34,25 @@ Parameters for the synthetic measurements:
 - n=1.89
 - Ks=0.0737 cm/min
 
+změna na 100cm cca 400 minut
+časový krok 1/12 min.
+
 TODO:
 Goals:
+- 
+
+- arbitraty timestepping in both Kalman and Richards models
+  case: realistic conductivity and other parameters, still short period
+
 - able to combine pressure, saturation, velocity train/test measurements
   case: 1D, 5m, 4 moisture sensors, 2 moisture 3 pressure 1 velocity tests
 
 - move measurement cache to abstract problem, add all model inputs as
-  pressure profile, weak bc conditions, vG parameters (constant for near future) 
+  pressure profile, weak bc conditions, vG parameters (constant in space for near future) 
+
 - we want to build a database to form a surrogate model
 
-- arbitraty timestepping in both Kalman and Richards models
-  case: realistic conductivity and other parameters, still short period
+
 - count number of model evaluations, monitor total model time, 
   get time of whole calculation
 
