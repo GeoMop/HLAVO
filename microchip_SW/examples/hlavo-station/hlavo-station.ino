@@ -101,6 +101,8 @@ char data_pr2_filenames[n_pr2_sensors][max_filepath_length] = {"pr2_a0.csv", "pr
 
 uint8_t iss = 0;  // current sensor reading
 bool pr2_all_finished = false;
+const uint8_t max_n_pr2_tryouts = 3*n_pr2_sensors;  // n_sensors
+uint8_t n_pr2_tryouts = 0;
 
 Timer timer_PR2_power(2000, false);
 
@@ -217,12 +219,31 @@ void collect_and_write_PR2()
   res = pr2_readers[iss].TryRequest();
   if(!res)  // failed request
   {
-    Serial.printf("TryRequest FAILED from PR2 address: %c\n", pr2_addresses[iss]);
+    Logger::printf(Logger::INFO, "TryRequest FAILED from PR2 address: %c\n", pr2_addresses[iss]);
     pr2_readers[iss].Reset();
-    iss++;
+
+    // keep record of failed tryouts
+    if(n_pr2_tryouts < max_n_pr2_tryouts)
+    {
+      n_pr2_tryouts++;
+      delay(1000);
+      return;
+    }
+    else
+    {
+      n_pr2_tryouts = 0;
+      // if max tryouts reached, continue with next sensor
+      iss++;
+    }
 
     if(iss >= n_pr2_sensors)
+    {
       iss = 0;
+      
+      // wait for next measurement 
+      pr2_all_finished = true;
+      set_power_for_pr2(false);
+    }
     return;
   }
 
