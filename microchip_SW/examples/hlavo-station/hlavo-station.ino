@@ -342,7 +342,7 @@ void setup() {
       Serial.println(setup_interrupt);
       while(1){delay(1000);}
   }
-  Logger::setup_log(rtc_clock, "logs");
+  // Logger::setup_log(rtc_clock, "logs");
   Logger::print("Log set up.");
 
 
