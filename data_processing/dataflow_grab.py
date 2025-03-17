@@ -77,10 +77,11 @@ def fill_in_form(driver, date_interval, logger_group):
     wait = WebDriverWait(driver, timeout=10)
     location_dropdown = Select(wait.until(EC.presence_of_element_located((By.ID, "report_groups_dropdown"))))
     # there is a delay until all Select options are ready
+    time.sleep(5)
     wait.until(EC.presence_of_element_located((By.XPATH, f"//option[text()='{logger_group}']")))
     # location_dropdown = Select(driver.find_element(By.ID, "report_groups_dropdown"))
     location_dropdown.select_by_visible_text(logger_group)
-    time.sleep(0.1)
+    time.sleep(0.5)
 
     # <input type="text" class="form-control hasDatepicker" id="report_from_date" placeholder="From" required="">
     # <input type="text" class="form-control hasDatepicker" id="report_to_date" placeholder="To" required="">
@@ -243,7 +244,7 @@ if __name__ == '__main__':
     download_dir = datetime.datetime.now().strftime("%Y%m%dT%H%M%S") + "_dataflow_grab"
     os.makedirs(download_dir)
 
-    date_interval = {'start_date': '2025-01-10', 'end_date': '2025-01-20'}
+    date_interval = {'start_date': '2025-01-10', 'end_date': '2025-03-14'}
     logger_group = "Uhelná"
 
     # Run the extraction
