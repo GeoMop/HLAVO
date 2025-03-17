@@ -67,11 +67,11 @@ void Logger::setup_log(Clock &clock, const char* dir_name)
 
   createLogFileName();
 
-  messageQueue = xQueueCreate(10, log_msg_maxsize * sizeof(char));
+  messageQueue = xQueueCreate(20, log_msg_maxsize * sizeof(char));
   if (messageQueue != NULL) {
       Serial.println("Logger messageQueue created.");
-      // xTaskCreate(writeTask, "MessageWriter", 20480, NULL, 1, NULL);
-      xTaskCreatePinnedToCore(writeTask, "MessageWriter", 4096, NULL, 0, NULL, 1);
+      xTaskCreate(writeTask, "MessageWriter", 20480, NULL, 1, NULL);
+      // xTaskCreatePinnedToCore(writeTask, "MessageWriter", 4096, NULL, 0, NULL, 1);
   }
   delay(100);
 

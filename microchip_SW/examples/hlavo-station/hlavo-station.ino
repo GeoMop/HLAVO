@@ -29,6 +29,7 @@ const char* setup_interrupt = "SETUP INTERRUPTED";
     // L2 - hardware timer with L2_WEATHER_PERIOD in seconds
     #define L2_WEATHER_PERIOD 60
     Every timer_L3(900*1000);     // coarse timer - PR2 - 15 min
+    // Every timer_L3(30*1000);     // coarse timer - PR2 - 15 min
     Every timer_L4(24*3600*1000); // watchdog timer - 24 h
     #define VERBOSE 1
 #endif
@@ -219,7 +220,6 @@ void collect_and_write_PR2()
   res = pr2_readers[iss].TryRequest();
   if(!res)  // failed request
   {
-    Logger::printf(Logger::INFO, "TryRequest FAILED from PR2 address: %c\n", pr2_addresses[iss]);
     pr2_readers[iss].Reset();
 
     // keep record of failed tryouts
@@ -231,6 +231,7 @@ void collect_and_write_PR2()
     }
     else
     {
+      Logger::printf(Logger::INFO, "TryRequest FAILED %d times from PR2 address: %c\n", n_pr2_tryouts, pr2_addresses[iss]);
       n_pr2_tryouts = 0;
       // if max tryouts reached, continue with next sensor
       iss++;
@@ -342,7 +343,7 @@ void setup() {
       Serial.println(setup_interrupt);
       while(1){delay(1000);}
   }
-  // Logger::setup_log(rtc_clock, "logs");
+  Logger::setup_log(rtc_clock, "logs");
   Logger::print("Log set up.");
 
 
