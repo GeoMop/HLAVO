@@ -677,24 +677,27 @@ void loop() {
   }
   controlValveOut();
 
-
-  // read values from PR2 and Teros31 sensors when reading not finished yet
-  // and write to a file when last values received
-  if(!pr2_all_finished)
-    collect_and_write_PR2();
-  else if(!teros31_all_finished){
-    collect_and_write_Teros31();
-  }
-
-  if(timer_L2())
+  // do not read data during rain (voltage source damages data signal)
+  if(pump_in_finished)
   {
-    Serial.println("-------------------------- L2 TICK --------------------------");
+    // read values from PR2 and Teros31 sensors when reading not finished yet
+    // and write to a file when last values received
+    if(!pr2_all_finished)
+      collect_and_write_PR2();
+    else if(!teros31_all_finished){
+      collect_and_write_Teros31();
+    }
 
-    collect_and_write_atmospheric();
+    if(timer_L2())
+    {
+      Serial.println("-------------------------- L2 TICK --------------------------");
 
-    if(teros31_all_finished && pr2_all_finished){
-      pr2_all_finished = false;
-      teros31_all_finished = false;
+      collect_and_write_atmospheric();
+
+      if(teros31_all_finished && pr2_all_finished){
+        pr2_all_finished = false;
+        teros31_all_finished = false;
+      }
     }
   }
 
