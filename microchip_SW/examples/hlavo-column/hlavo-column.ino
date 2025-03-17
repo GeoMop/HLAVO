@@ -37,9 +37,9 @@ Every timer_L4(timer_L4_period*1000);     // watchdog timer
 
 
 Every timer_rain_start(60*60*1000);         // every T start rain
-Timer timer_rain_length(55*1000, false);    // length of rain
+Timer timer_rain_length(46*1000, false);    // length of rain
 int rain_n_cycles = 0;                      // current number of rains
-const int rain_max_n_cycles = 20;           // max number of rains
+const int rain_max_n_cycles = 48;           // max number of rains
 
 
 /*********************************************** SD CARD ***********************************************/
@@ -599,6 +599,19 @@ void setup() {
   timer_L1.reset(true);
   timer_L4.reset(false);
   timer_rain_start.reset(true);
+
+  // {
+  //   // start rain
+  //   digitalWrite(PUMP_IN_PIN, LOW);
+  //   Serial.printf("rain ON\n");
+  //   delay(60*1000);
+  //   // stop rain
+  //   digitalWrite(PUMP_IN_PIN, HIGH);
+  //   Serial.printf("rain OFF\n");
+  //   Serial.printf("rain counter %d of %d\n", rain_n_cycles, rain_max_n_cycles);
+  // }
+
+  // while(1);
 }
 
 void print_setup_summary(String summary)
@@ -664,7 +677,7 @@ void saturation_rain()
 /*********************************************** LOOP ***********************************************/ 
 void loop() {
 
-  // saturation_rain();
+  saturation_rain();
 
   if(timer_L0()){
     dt_now = rtc_clock.now();
