@@ -685,7 +685,9 @@ void loop() {
 
   if(timer_L1())
   {
-    Serial.printf("        -------------------------- L1 TICK -------------------------- till L2: %d s\n", (timer_L2.interval + timer_L2.last - millis())/1000);
+    unsigned int L2_left = (timer_L2.interval + timer_L2.last - millis())/1000;
+    Serial.printf("L1: %d s\n", L2_left);
+    Serial.flush();
     read_water_height();
   }
   controlValveOut();
