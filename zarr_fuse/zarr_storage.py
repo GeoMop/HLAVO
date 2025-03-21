@@ -21,7 +21,7 @@ import numpy as np
 import zarr
 
 
-class Node(NodeMixin):
+class Node:
     """
     A lazy node representing a dataset stored in a single Zarr storage.
     We flatten the tree structure representing every node by a key equal to the node's path.
@@ -44,7 +44,7 @@ class Node(NodeMixin):
     PATH_SEP = "/"
 
     @classmethod
-    def create_storage(cls, description:struc.ZarrNodeStruc, zarr_store) -> 'Node':
+    def create_storage(cls, structure:struc.ZarrNodeStruc, zarr_store) -> 'Node':
         """
         Consturct an empty zarr tree storage in the 'zarr_store' with
         tree structure and node DataSets given by the 'description',
@@ -55,18 +55,19 @@ class Node(NodeMixin):
         root Node
         """
         root = cls("", zarr_store)
-        root.initialize_node(description)
+        zarr.group(store=zarr_store, overwrite=True)
+        root.initialize_node(structure)
         return root
 
-    def initialize_node(self, description):
+    def initialize_node(self, structure:struc.ZarrNodeStruc):
         """ Write node to ZARR sotrage and create childs."""
-        empty_ds = Node.empty_ds(description)
-        self.write_ds(empty_ds, mode="w")
-        for key in description:
+        empty_ds = Node.empty_ds(structure)
+        self.write_ds(empty_ds)
+        for key in structure:
             if key in struc.reserved_keys:
                 continue
             child = self._add_node(key)
-            child.initialize_node(description[key])
+            child.initialize_node(structure[key])
 
     @staticmethod
     def _create_coords(coords: List[struc.Coord]) -> xr.Coordinates:
@@ -140,7 +141,7 @@ class Node(NodeMixin):
                 )
             for var in description['VARS']
         }
-        attrs = description['ATTRS']
+        attrs = description.get('ATTRS', {})
         ds = xr.Dataset(
             data_vars=data_vars,
             coords=coords_obj,
@@ -165,30 +166,27 @@ class Node(NodeMixin):
         root._load_children()
         return root
 
-    def _add_node(self, name, child_dic):
-        assert name not in self.childs
+    def _add_node(self, name):
+        assert name not in self.children
         node = Node(name, self.store, self)
-        self.childs[name] = node
+        self.children[name] = node
         return node
+
+    def _storage_group_paths(self):
+        path = self.group_path.strip(self.PATH_SEP)
+        root_group = zarr.open_group(self.store, path=path, mode='r')
+        sub_groups = list(root_group.groups())
+        return sub_groups
 
     def _load_children(self):
         """
         Recursively find and attach child nodes from the store for this node.
         A child is detected if there exists a key of the form "{self.group_path}/{child}/.zgroup".
         """
-        child_names = set()
-        root_group = zarr.open_group(self.store, mode='r')
-        groups = list(root_group.groups())
-        for key, group in groups:
-            if key.startswith(prefix):
-                remainder = key[len(prefix):]
-                candidate = remainder.split("/")[0]
-                candidate_key = f"{prefix}{candidate}/.zgroup" if prefix else f"{candidate}/.zgroup"
-                if candidate_key in self.store:
-                    child_names.add(candidate)
-        for child_name in child_names:
-            child_node = Node(child_name, store=self.store, parent=self)
-            child_node._load_children()
+        for key, group in self._storage_group_paths():
+            child = self._add_node(key)
+            child._load_children()
+
 
     def __init__(self, name, store, parent=None):
         """
@@ -200,15 +198,15 @@ class Node(NodeMixin):
         self.name = name
         self.store = store
         self.parent = parent
-        self.childs = []
+        self.children = {}
 
 
     @property
-    def _path_tuple(self):
+    def _path_list(self):
         if self.parent is None:
-            return ("", )
+            return []
         else:
-            return tuple(*self.parent._path_tuple, self.name)
+            return [*self.parent._path_list, self.name]
 
     @property
     def group_path(self):
@@ -217,18 +215,18 @@ class Node(NodeMixin):
         For the root node (parent is None), returns "" (empty string).
         For child nodes, returns a string like "child" or "parent/child".
         """
-        return Node.PATH_SEP.join(self._path_tuple)
+        return Node.PATH_SEP.join(self._path_list)
 
-    @property
-    def children_names(self):
-        for key in self.store.keys():
-            gp = self.group_path
-            if key.startswith(self.group_path):
-                key = key[len(gp):]
-                end_child_name = key.find(Node.PATH_SEP)
-                end_child_name = len(key) if end_child_name == -1 else end_child_name
-                key = key[:end_child_name]
-                yield key
+    def items(self):
+        return self.children.items()
+        # for key, item in self.childs:
+        #     gp = self.group_path
+        #     if key.startswith(self.group_path):
+        #         key = key[len(gp):]
+        #         end_child_name = key.find(Node.PATH_SEP)
+        #         end_child_name = len(key) if end_child_name == -1 else end_child_name
+        #         key = key[:end_child_name]
+        #         yield key, item
 
 
     @property
@@ -237,7 +235,9 @@ class Node(NodeMixin):
         Lazily open the dataset stored in this node's group.
         Returns a (possibly dask‑backed) xarray.Dataset.
         """
-        return xr.open_zarr(self.store, group=self.group_path)
+        rel_path = self.group_path #+ self.PATH_SEP + "dataset"
+        rel_path = rel_path.strip(self.PATH_SEP)
+        return xr.open_zarr(self.store, group=rel_path)
 
     def update(self, polars_df):
         """
@@ -320,7 +320,11 @@ class Node(NodeMixin):
         return ds_out
 
     def write_ds(self, ds, **kwargs):
-        ds.to_zarr(self.store, group=self.group_path, **kwargs)
+        rel_path = self.group_path # + self.PATH_SEP + "dataset"
+        rel_path = rel_path.strip(self.PATH_SEP)
+        #path_store = zarr.open_group(self.store, mode=mode, path=rel_path)
+        #ds.to_zarr(path_store,  **kwargs)
+        ds.to_zarr(self.store, group = rel_path, mode="a", consolidated=False, **kwargs)
 
     def update_zarr_loop(self, ds_update: xr.Dataset) -> xr.Dataset:
         """
@@ -362,7 +366,6 @@ class Node(NodeMixin):
         # --- Phase 1: Dive (split by dimension) ---
         # We create a dict to hold the extension subset for each dimension.
         ds_extend_dict = {}
-        # And we will update ds_current to be the overlapping portion along all dims processed so far.
         ds_overlap = ds_update.copy()
         dims_order = tuple(ds_update.dims.keys())
         for dim in dims_order:
@@ -380,7 +383,7 @@ class Node(NodeMixin):
         # in every dimension in dims_order. Write these (overlapping) data using region="auto".
         update_overlap_size = np.prod(list(ds_overlap.sizes.values()))
         if update_overlap_size > 0:
-            self.write_ds(ds_overlap, mode="r+", region="auto")
+            self.write_ds(ds_overlap, region="auto")
 
         # --- Phase 2: Upward (process extension subsets in reverse order) ---
         # We also update a merged_coords dict from the store.
@@ -399,7 +402,7 @@ class Node(NodeMixin):
             ds_ext_reindexed = ds_ext.reindex(indexers, fill_value=np.nan)
 
             # Append the extension subset along the current dimension.
-            self.write_ds(ds_ext_reindexed, mode="a", append_dim=dim)
+            self.write_ds(ds_ext_reindexed, append_dim=dim)
 
             # Update merged coordinate for dim: concatenate the old coords with the new ones.
             new_coords_for_dim = ds_ext[dim].values
@@ -542,312 +545,312 @@ class Node(NodeMixin):
 
 
 
+#
+#
+# def _guess_col_dtype(pl_dtype):
+#     """
+#     Dispatch by polars value types to treat coords properly.
+#     Returns corresponding numpy array type, initial value to fill as a reseved coordinate value, incremental funcion to get
+#     further reserved values.
+#     Args:
+#         pl_dtype:
+#
+#     Returns:
+#         (numpy_type, zero_value, increment_fn)
+#
+#     """
+#     # Very simplistic mapping
+#     if isinstance(pl_dtype, pl.Struct):
+#         subtypes = [(field.name, *_guess_col_dtype(field.dtype)) for field in pl_dtype.fields]
+#         names, types, zeros, inc_fns = zip(*subtypes)
+#         np_dtype = np.dtype(list(zip(names, types)))
+#
+#         def _struct_inc_fn(struct_x):
+#             assert len(struct_x) == len(names)
+#             inc_values = (inc(val) for inc, val in zip(inc_fns, struct_x.values()))
+#             return dict(zip(names, inc_values))
+#
+#         return (np_dtype,
+#                 dict(zip(names, zeros)),
+#                 _struct_inc_fn)
+#     #if isinstance(pl_dtype, pl.List):
+#     #    sub_dtype, zero, inc_fn = _guess_col_dtype(pl_dtype.element_type)
+#     #    return np.dtype(sub_dtype), zero, lambda x: [inc_fn(val) for val in x]
+#     if pl_dtype in [pl.Float32, pl.Float64]:
+#         return np.float64, 0.0, lambda x: x + 1.0
+#     elif pl_dtype in [pl.Boolean, pl.Int32, pl.Int64]:
+#         return np.int64, -1, lambda x: x - 1
+#     elif pl_dtype == pl.Utf8:
+#         return np.str_, "_123456", lambda x: f"_{str(hash(hash(x[1:]) + 1))[:6]}"  # or a fixed-length string if you prefer
+#     elif (pl_dtype == np.datetime64) or (pl_dtype == pl.Datetime):
+#         return np.datetime64, np.datetime64("2021-01-01"), lambda x: x + np.timedelta64(1, "D")
+#     #elif pl_dtype == pl.Date or pl_dtype == pl.Datetime:
+#     #    return "datetime64[ns]"
+#     raise ValueError(f"Unsupported Polars dtype: {pl_dtype}")
+#
 
 
-def _guess_col_dtype(pl_dtype):
-    """
-    Dispatch by polars value types to treat coords properly.
-    Returns corresponding numpy array type, initial value to fill as a reseved coordinate value, incremental funcion to get
-    further reserved values.
-    Args:
-        pl_dtype:
-
-    Returns:
-        (numpy_type, zero_value, increment_fn)
-
-    """
-    # Very simplistic mapping
-    if isinstance(pl_dtype, pl.Struct):
-        subtypes = [(field.name, *_guess_col_dtype(field.dtype)) for field in pl_dtype.fields]
-        names, types, zeros, inc_fns = zip(*subtypes)
-        np_dtype = np.dtype(list(zip(names, types)))
-
-        def _struct_inc_fn(struct_x):
-            assert len(struct_x) == len(names)
-            inc_values = (inc(val) for inc, val in zip(inc_fns, struct_x.values()))
-            return dict(zip(names, inc_values))
-
-        return (np_dtype,
-                dict(zip(names, zeros)),
-                _struct_inc_fn)
-    #if isinstance(pl_dtype, pl.List):
-    #    sub_dtype, zero, inc_fn = _guess_col_dtype(pl_dtype.element_type)
-    #    return np.dtype(sub_dtype), zero, lambda x: [inc_fn(val) for val in x]
-    if pl_dtype in [pl.Float32, pl.Float64]:
-        return np.float64, 0.0, lambda x: x + 1.0
-    elif pl_dtype in [pl.Boolean, pl.Int32, pl.Int64]:
-        return np.int64, -1, lambda x: x - 1
-    elif pl_dtype == pl.Utf8:
-        return np.str_, "_123456", lambda x: f"_{str(hash(hash(x[1:]) + 1))[:6]}"  # or a fixed-length string if you prefer
-    elif (pl_dtype == np.datetime64) or (pl_dtype == pl.Datetime):
-        return np.datetime64, np.datetime64("2021-01-01"), lambda x: x + np.timedelta64(1, "D")
-    #elif pl_dtype == pl.Date or pl_dtype == pl.Datetime:
-    #    return "datetime64[ns]"
-    raise ValueError(f"Unsupported Polars dtype: {pl_dtype}")
-
-
-
-def create(zarr_path: Path, df: pl.DataFrame, coords: List[struc.Coord], **kwargs):
-    """
-    Create an *empty* Zarr storage for multiple indices given by index_col.
-    - first index is dynamic, e.g. time, new times are appended by update function
-    - other indices are fixed, e.g. location, new locations are not allowed, all locations must be provided
-      by the passed DF. However
-       !! Need some mean to trace unused indices, relying on placehloders not possible for general types.
-
-    - 'df' is used ONLY for column names/types (besides 'time_stamp' and 'location').
-    - index_cols, [time_col, ...]
-    - 'max_locations' is the fixed size for the location dimension.
-    - idx_ranges reserved limits for each index column, the first index is just initali limit, could be appended.
-    - Store an empty location_map in dataset attributes.
-    - **kwargs can include chunking or compression settings passed to to_zarr().
-      ... chunking coud either go to ds.chunks(...) or thrugh kwargs['enconding']['time'] = {'chunksizes': (1000, 10)}
-
-    df, index_cols, iterators
-    """
-    # Identify the data columns (excluding time_stamp, location)
-
-    # Build an Xarray Dataset with dims: (time=0, location=max_locations)
-    # We'll create a coordinate for "time" (initially empty),
-    # and a coordinate for "location" (just an integer range 0..max_locations-1).
-
-    ds_coords = [c.make_ds_coord(df[c.struct_cols]) for c in coords] # dim coords
-
-    coord_sizes = [ (col, len(df[col])) for col in index_cols.keys()]
-    append_dim = coord_sizes[0][0]
-    ds = xr.Dataset(
-        coords = dict(coords),
-        attrs = { "coords_valid_size" : dict(coord_sizes),
-                  "append_dim" : append_dim }
-    )
-
-    shape = tuple(ds.dims.values())
-    dim_names = tuple(ds.dims.keys())
-
-
-    # For each data column in df, define an empty variable (0, max_locations)
-    # with a guessed dtype from the Polars column
-    data_cols = [c for c in df.columns if c not in index_cols]
-
-    for col in data_cols:
-        col_dtype, zero, inc_fn = _guess_col_dtype(df[col].dtype)
-        # shape=(0, max_locations)
-        data = np.empty(shape, dtype=col_dtype)
-        ds[col] = (dim_names, data)
-
-    # Write to Zarr
-    ds.to_zarr(str(zarr_path), mode="w", **kwargs)
-    return ds
-
-
-
-
-
-def update(zarr_path: Path, df: pl.DataFrame):
-    """
-    Update the Zarr store created by `create` with new rows of data.
-
-    The function does the following:
-      - Opens the existing dataset.
-      - Determines the dynamic (appendable) dimension from ds.attrs["append_dim"].
-      - For each row in the new DataFrame, finds the proper position along the dynamic dimension:
-          • If the time value exists already, its data variables are overwritten.
-          • If not, the new time is appended (extending the dynamic coordinate and data arrays).
-      - For the fixed index columns (which may be non-struct or struct with multiple coordinate variables),
-        the function matches the row’s value with the valid portion of the coordinate array (using ds.attrs["coords_valid_size"]).
-      - Finally, the updated dataset is written back to the Zarr store.
-
-    Parameters:
-      zarr_path : Path to the Zarr store.
-      df        : Polars DataFrame with the same columns as originally provided to `create`.
-    """
-    # Open the existing Zarr dataset.
-    ds = xr.open_zarr(str(zarr_path))
-    ds = update_xarray_nd(ds, df)
-    # Write the updated dataset back to the Zarr store.
-    ds.to_zarr(str(zarr_path), mode="w")
-    return ds
-
-
-def pivot_nd(df: pl.DataFrame, dims: list[str], value_cols: List[str], unique_coords: Dict[str, np.ndarray], fill_value=np.nan):
-    """
-    Pivot a Polars DataFrame with columns for each dimension in `dims`
-    and one value column `value_col` into an N-dim NumPy array.
-
-    If unique_coords is provided, it is used as the sorted unique values for each dimension.
-
-    Returns a tuple (result, unique_coords) where:
-      - result is an array of shape (n0, n1, ... n_{N-1}) with values from `value_col`
-        (if duplicate keys occur, later values win),
-      - unique_coords is a dict mapping each dimension to its sorted unique values.
-    """
-    idx_list = []
-    for d in dims:
-        # Convert the provided unique coordinates to an array.
-        provided = np.asarray(unique_coords[d])
-        # Sort the provided values (to allow binary search).
-        perm = np.argsort(provided)
-        sorted_coords = provided[perm]
-        # Use searchsorted on the sorted coordinates.
-        idx_sorted = np.searchsorted(sorted_coords, df[d].to_numpy())
-        # Map back to the original ordering.
-        final_idx = perm[idx_sorted]
-        idx_list.append(final_idx)
-    idx_arr = np.vstack(idx_list)
-
-    shape = tuple(len(unique_coords[d]) for d in dims)
-    flat_idx = np.ravel_multi_index(idx_arr, dims=shape)
-
-    def values(column_vals):
-        result = np.full(shape, fill_value,
-                         dtype=column_vals.dtype if np.issubdtype(column_vals.dtype, np.floating) else object)
-        result.flat[flat_idx] = column_vals
-        return result
-
-    output_dict = {
-        var: values(df[var].to_numpy())
-        for var in value_cols
-    }
-    return output_dict
+# def create(zarr_path: Path, df: pl.DataFrame, coords: List[struc.Coord], **kwargs):
+#     """
+#     Create an *empty* Zarr storage for multiple indices given by index_col.
+#     - first index is dynamic, e.g. time, new times are appended by update function
+#     - other indices are fixed, e.g. location, new locations are not allowed, all locations must be provided
+#       by the passed DF. However
+#        !! Need some mean to trace unused indices, relying on placehloders not possible for general types.
+#
+#     - 'df' is used ONLY for column names/types (besides 'time_stamp' and 'location').
+#     - index_cols, [time_col, ...]
+#     - 'max_locations' is the fixed size for the location dimension.
+#     - idx_ranges reserved limits for each index column, the first index is just initali limit, could be appended.
+#     - Store an empty location_map in dataset attributes.
+#     - **kwargs can include chunking or compression settings passed to to_zarr().
+#       ... chunking coud either go to ds.chunks(...) or thrugh kwargs['enconding']['time'] = {'chunksizes': (1000, 10)}
+#
+#     df, index_cols, iterators
+#     """
+#     # Identify the data columns (excluding time_stamp, location)
+#
+#     # Build an Xarray Dataset with dims: (time=0, location=max_locations)
+#     # We'll create a coordinate for "time" (initially empty),
+#     # and a coordinate for "location" (just an integer range 0..max_locations-1).
+#
+#     ds_coords = [c.make_ds_coord(df[c.struct_cols]) for c in coords] # dim coords
+#
+#     coord_sizes = [ (col, len(df[col])) for col in index_cols.keys()]
+#     append_dim = coord_sizes[0][0]
+#     ds = xr.Dataset(
+#         coords = dict(coords),
+#         attrs = { "coords_valid_size" : dict(coord_sizes),
+#                   "append_dim" : append_dim }
+#     )
+#
+#     shape = tuple(ds.dims.values())
+#     dim_names = tuple(ds.dims.keys())
+#
+#
+#     # For each data column in df, define an empty variable (0, max_locations)
+#     # with a guessed dtype from the Polars column
+#     data_cols = [c for c in df.columns if c not in index_cols]
+#
+#     for col in data_cols:
+#         col_dtype, zero, inc_fn = _guess_col_dtype(df[col].dtype)
+#         # shape=(0, max_locations)
+#         data = np.empty(shape, dtype=col_dtype)
+#         ds[col] = (dim_names, data)
+#
+#     # Write to Zarr
+#     ds.to_zarr(str(zarr_path), mode="w", **kwargs)
+#     return ds
+#
+#
 
 
 
-def intersect_coords(coords, df_coords):
-    mask = np.isin(coords, df_coords)
-    return coords[mask]
-
-
-def process_update_coords(ds: xr.Dataset, df: pl.DataFrame) -> (xr.Dataset, dict):
-    """
-    Process coordinate updates before updating variables.
-
-    - Asserts that the update DF has a column for every coordinate in ds.
-    - For each fixed dimension (all ds.coords except the dynamic dimension,
-      whose name is in ds.attrs["append_dim"]), examines the valid region
-      (ds.coords[d].values[:ds.attrs["coords_valid_size"][d]]) and, if df
-      introduces new values, appends them—provided that the total allocated space
-      is not exceeded.
-    - For the dynamic dimension, extends ds if needed.
-
-    Returns the updated ds and unique_df_coords: a dict mapping each coordinate
-    to the sorted unique values from df.
-    """
-    dims = list(ds.coords.keys())
-    for d in dims:
-        if d not in df.columns:
-            raise ValueError(f"Update DataFrame missing coordinate column '{d}'")
-    dynamic_dim = ds.attrs["append_dim"]
-    fixed_dims = [d for d in dims if d != dynamic_dim]
-
-    unique_df_coords = {
-        d: np.unique(df[d].to_numpy())
-        for d in dims
-    }
-
-    # Process fixed dimensions.
-    for d in fixed_dims:
-        allocated = ds.coords[d].values  # full allocated coordinate array
-        valid_size = ds.attrs["coords_valid_size"][d]  # current valid size
-        ds_valid = allocated[:valid_size]  # currently valid values
-        upd_vals = unique_df_coords[d]  # update DF's unique values for d
-        missing_mask = ~np.isin(upd_vals, ds_valid)
-        missing_vals = upd_vals[missing_mask]
-        if missing_vals.size > 0:
-            new_valid_size = valid_size + missing_vals.size
-            if new_valid_size > len(allocated):
-                raise ValueError(
-                    f"Not enough allocated space for dimension '{d}': need {new_valid_size}, allocated {len(allocated)}"
-                )
-            # Append the missing values.
-            new_allocated = allocated.copy()
-            new_allocated[valid_size:new_valid_size] = missing_vals
-            ds = ds.assign_coords({d: new_allocated})
-            ds.attrs["coords_valid_size"][d] = new_valid_size
-    # Process dynamic dimension.
-    upd_dyn = unique_df_coords[dynamic_dim]
-    ds_dyn = ds.coords[dynamic_dim].values
-    missing_dyn = upd_dyn[~np.isin(upd_dyn, ds_dyn)]
-    if missing_dyn.size > 0:
-        extended_dyn = np.concatenate([ds_dyn, missing_dyn])
-        ds = ds.reindex({dynamic_dim: extended_dyn}, fill_value=np.nan)
-    df_coords = {d: intersect_coords(ds.coords[d].values, unique_df_coords[d]) for d in dims}
-    return ds, df_coords
-
-
-def update_xarray_nd(ds: xr.Dataset, df: pl.DataFrame) -> xr.Dataset:
-    """
-    Update an xarray Dataset using an update provided as a Polars DataFrame.
-
-    The DataFrame must have coordinate columns matching ds.coords.
-    For each variable in df that is not a coordinate and exists in ds.data_vars,
-    an update is applied as follows:
-      1. The update coordinates are pre-processed (via process_update_coords) to update
-         fixed dimensions and extend the dynamic dimension if needed.
-      2. For each variable update, pivot the update DF using the unique_df_coords
-         (from process_update_coords) to create an N-dim update array.
-      3. Read the current stored values from ds at the positions given by unique_df_coords,
-         combine them with the update (keeping current values where the update is NaN),
-         and then assign back in one vectorized operation.
-    """
-    dims = list(ds.coords.keys())
-    for d in dims:
-        if d not in df.columns:
-            raise ValueError(f"Update DataFrame missing coordinate column '{d}'")
-
-    # Pre-process the coordinate updates.
-    ds, unique_df_coords = process_update_coords(ds, df)
-
-    # Determine update variable names: those DF columns not in dims and existing in ds.data_vars.
-    update_vars = [col for col in df.columns if (col not in dims) and (col in ds.data_vars)]
-
-    for var in update_vars:
-        update_arr = pivot_nd(df, dims, value_col=var, unique_coords=unique_df_coords)
-        # Read current values from ds for the cells defined by unique_df_coords.
-        current_vals = ds[var].sel(unique_df_coords).values
-        # Where update_arr is not NaN, use that value; otherwise keep current_vals.
-        combined = np.where(np.isnan(update_arr), current_vals, update_arr)
-        ds[var].loc[unique_df_coords] = combined
-    return ds
-
-
-def read(zarr_path: Path, time_stamp_slice, locations):
-    """
-    Read a subset of the data for a given time slice and a list of locations.
-
-    - time_stamp_slice: a tuple (start, end)
-    - locations: list of location codes.
-
-    Returns a Polars DataFrame with columns: time_stamp, location, and each data variable.
-    For each (time_stamp, location) pair in the slice, the stored value is returned.
-    """
-    ds = xr.open_zarr(str(zarr_path), chunks=None)
-    time_col = "time_stamp"
-    loc_col = "location"
-
-    time_coords = ds.coords[time_col].values
-    start, end = time_stamp_slice
-    mask = (time_coords >= start) & (time_coords <= end)
-    sel_time_idx = np.where(mask)[0]
-    sel_times = time_coords[sel_time_idx]
-
-    # Get the location map and select the slots corresponding to requested locations.
-    loc_map = json.loads(ds.attrs.get("location_map", "{}"))
-    selected_locs = {loc: loc_map[str(loc)] for loc in locations if str(loc) in loc_map}
-
-    data_cols = [col for col in ds.data_vars if col not in [time_col, loc_col]]
-    out_time = []
-    out_loc = []
-    out_data = {col: [] for col in data_cols}
-
-    for t_idx in sel_time_idx:
-        for loc, slot in selected_locs.items():
-            out_time.append(time_coords[t_idx])
-            out_loc.append(loc)
-            for col in data_cols:
-                val = ds[col].values[t_idx, slot]
-                out_data[col].append(val)
-    ds.close()
-
-    data_dict = {time_col: out_time, loc_col: out_loc}
-    data_dict.update(out_data)
-    return pl.DataFrame(data_dict)
+# def update(zarr_path: Path, df: pl.DataFrame):
+#     """
+#     Update the Zarr store created by `create` with new rows of data.
+#
+#     The function does the following:
+#       - Opens the existing dataset.
+#       - Determines the dynamic (appendable) dimension from ds.attrs["append_dim"].
+#       - For each row in the new DataFrame, finds the proper position along the dynamic dimension:
+#           • If the time value exists already, its data variables are overwritten.
+#           • If not, the new time is appended (extending the dynamic coordinate and data arrays).
+#       - For the fixed index columns (which may be non-struct or struct with multiple coordinate variables),
+#         the function matches the row’s value with the valid portion of the coordinate array (using ds.attrs["coords_valid_size"]).
+#       - Finally, the updated dataset is written back to the Zarr store.
+#
+#     Parameters:
+#       zarr_path : Path to the Zarr store.
+#       df        : Polars DataFrame with the same columns as originally provided to `create`.
+#     """
+#     # Open the existing Zarr dataset.
+#     ds = xr.open_zarr(str(zarr_path))
+#     ds = update_xarray_nd(ds, df)
+#     # Write the updated dataset back to the Zarr store.
+#     ds.to_zarr(str(zarr_path), mode="w")
+#     return ds
+#
+#
+# def pivot_nd(df: pl.DataFrame, dims: list[str], value_cols: List[str], unique_coords: Dict[str, np.ndarray], fill_value=np.nan):
+#     """
+#     Pivot a Polars DataFrame with columns for each dimension in `dims`
+#     and one value column `value_col` into an N-dim NumPy array.
+#
+#     If unique_coords is provided, it is used as the sorted unique values for each dimension.
+#
+#     Returns a tuple (result, unique_coords) where:
+#       - result is an array of shape (n0, n1, ... n_{N-1}) with values from `value_col`
+#         (if duplicate keys occur, later values win),
+#       - unique_coords is a dict mapping each dimension to its sorted unique values.
+#     """
+#     idx_list = []
+#     for d in dims:
+#         # Convert the provided unique coordinates to an array.
+#         provided = np.asarray(unique_coords[d])
+#         # Sort the provided values (to allow binary search).
+#         perm = np.argsort(provided)
+#         sorted_coords = provided[perm]
+#         # Use searchsorted on the sorted coordinates.
+#         idx_sorted = np.searchsorted(sorted_coords, df[d].to_numpy())
+#         # Map back to the original ordering.
+#         final_idx = perm[idx_sorted]
+#         idx_list.append(final_idx)
+#     idx_arr = np.vstack(idx_list)
+#
+#     shape = tuple(len(unique_coords[d]) for d in dims)
+#     flat_idx = np.ravel_multi_index(idx_arr, dims=shape)
+#
+#     def values(column_vals):
+#         result = np.full(shape, fill_value,
+#                          dtype=column_vals.dtype if np.issubdtype(column_vals.dtype, np.floating) else object)
+#         result.flat[flat_idx] = column_vals
+#         return result
+#
+#     output_dict = {
+#         var: values(df[var].to_numpy())
+#         for var in value_cols
+#     }
+#     return output_dict
+#
+#
+#
+# def intersect_coords(coords, df_coords):
+#     mask = np.isin(coords, df_coords)
+#     return coords[mask]
+#
+#
+# def process_update_coords(ds: xr.Dataset, df: pl.DataFrame) -> (xr.Dataset, dict):
+#     """
+#     Process coordinate updates before updating variables.
+#
+#     - Asserts that the update DF has a column for every coordinate in ds.
+#     - For each fixed dimension (all ds.coords except the dynamic dimension,
+#       whose name is in ds.attrs["append_dim"]), examines the valid region
+#       (ds.coords[d].values[:ds.attrs["coords_valid_size"][d]]) and, if df
+#       introduces new values, appends them—provided that the total allocated space
+#       is not exceeded.
+#     - For the dynamic dimension, extends ds if needed.
+#
+#     Returns the updated ds and unique_df_coords: a dict mapping each coordinate
+#     to the sorted unique values from df.
+#     """
+#     dims = list(ds.coords.keys())
+#     for d in dims:
+#         if d not in df.columns:
+#             raise ValueError(f"Update DataFrame missing coordinate column '{d}'")
+#     dynamic_dim = ds.attrs["append_dim"]
+#     fixed_dims = [d for d in dims if d != dynamic_dim]
+#
+#     unique_df_coords = {
+#         d: np.unique(df[d].to_numpy())
+#         for d in dims
+#     }
+#
+#     # Process fixed dimensions.
+#     for d in fixed_dims:
+#         allocated = ds.coords[d].values  # full allocated coordinate array
+#         valid_size = ds.attrs["coords_valid_size"][d]  # current valid size
+#         ds_valid = allocated[:valid_size]  # currently valid values
+#         upd_vals = unique_df_coords[d]  # update DF's unique values for d
+#         missing_mask = ~np.isin(upd_vals, ds_valid)
+#         missing_vals = upd_vals[missing_mask]
+#         if missing_vals.size > 0:
+#             new_valid_size = valid_size + missing_vals.size
+#             if new_valid_size > len(allocated):
+#                 raise ValueError(
+#                     f"Not enough allocated space for dimension '{d}': need {new_valid_size}, allocated {len(allocated)}"
+#                 )
+#             # Append the missing values.
+#             new_allocated = allocated.copy()
+#             new_allocated[valid_size:new_valid_size] = missing_vals
+#             ds = ds.assign_coords({d: new_allocated})
+#             ds.attrs["coords_valid_size"][d] = new_valid_size
+#     # Process dynamic dimension.
+#     upd_dyn = unique_df_coords[dynamic_dim]
+#     ds_dyn = ds.coords[dynamic_dim].values
+#     missing_dyn = upd_dyn[~np.isin(upd_dyn, ds_dyn)]
+#     if missing_dyn.size > 0:
+#         extended_dyn = np.concatenate([ds_dyn, missing_dyn])
+#         ds = ds.reindex({dynamic_dim: extended_dyn}, fill_value=np.nan)
+#     df_coords = {d: intersect_coords(ds.coords[d].values, unique_df_coords[d]) for d in dims}
+#     return ds, df_coords
+#
+#
+# def update_xarray_nd(ds: xr.Dataset, df: pl.DataFrame) -> xr.Dataset:
+#     """
+#     Update an xarray Dataset using an update provided as a Polars DataFrame.
+#
+#     The DataFrame must have coordinate columns matching ds.coords.
+#     For each variable in df that is not a coordinate and exists in ds.data_vars,
+#     an update is applied as follows:
+#       1. The update coordinates are pre-processed (via process_update_coords) to update
+#          fixed dimensions and extend the dynamic dimension if needed.
+#       2. For each variable update, pivot the update DF using the unique_df_coords
+#          (from process_update_coords) to create an N-dim update array.
+#       3. Read the current stored values from ds at the positions given by unique_df_coords,
+#          combine them with the update (keeping current values where the update is NaN),
+#          and then assign back in one vectorized operation.
+#     """
+#     dims = list(ds.coords.keys())
+#     for d in dims:
+#         if d not in df.columns:
+#             raise ValueError(f"Update DataFrame missing coordinate column '{d}'")
+#
+#     # Pre-process the coordinate updates.
+#     ds, unique_df_coords = process_update_coords(ds, df)
+#
+#     # Determine update variable names: those DF columns not in dims and existing in ds.data_vars.
+#     update_vars = [col for col in df.columns if (col not in dims) and (col in ds.data_vars)]
+#
+#     for var in update_vars:
+#         update_arr = pivot_nd(df, dims, value_col=var, unique_coords=unique_df_coords)
+#         # Read current values from ds for the cells defined by unique_df_coords.
+#         current_vals = ds[var].sel(unique_df_coords).values
+#         # Where update_arr is not NaN, use that value; otherwise keep current_vals.
+#         combined = np.where(np.isnan(update_arr), current_vals, update_arr)
+#         ds[var].loc[unique_df_coords] = combined
+#     return ds
+#
+#
+# def read(zarr_path: Path, time_stamp_slice, locations):
+#     """
+#     Read a subset of the data for a given time slice and a list of locations.
+#
+#     - time_stamp_slice: a tuple (start, end)
+#     - locations: list of location codes.
+#
+#     Returns a Polars DataFrame with columns: time_stamp, location, and each data variable.
+#     For each (time_stamp, location) pair in the slice, the stored value is returned.
+#     """
+#     ds = xr.open_zarr(str(zarr_path), chunks=None)
+#     time_col = "time_stamp"
+#     loc_col = "location"
+#
+#     time_coords = ds.coords[time_col].values
+#     start, end = time_stamp_slice
+#     mask = (time_coords >= start) & (time_coords <= end)
+#     sel_time_idx = np.where(mask)[0]
+#     sel_times = time_coords[sel_time_idx]
+#
+#     # Get the location map and select the slots corresponding to requested locations.
+#     loc_map = json.loads(ds.attrs.get("location_map", "{}"))
+#     selected_locs = {loc: loc_map[str(loc)] for loc in locations if str(loc) in loc_map}
+#
+#     data_cols = [col for col in ds.data_vars if col not in [time_col, loc_col]]
+#     out_time = []
+#     out_loc = []
+#     out_data = {col: [] for col in data_cols}
+#
+#     for t_idx in sel_time_idx:
+#         for loc, slot in selected_locs.items():
+#             out_time.append(time_coords[t_idx])
+#             out_loc.append(loc)
+#             for col in data_cols:
+#                 val = ds[col].values[t_idx, slot]
+#                 out_data[col].append(val)
+#     ds.close()
+#
+#     data_dict = {time_col: out_time, loc_col: out_loc}
+#     data_dict.update(out_data)
+#     return pl.DataFrame(data_dict)

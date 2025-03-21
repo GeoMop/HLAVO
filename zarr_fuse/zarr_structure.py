@@ -39,9 +39,16 @@ class Array:
         """Set df_cols to [name] if not explicitly provided."""
         self.df_cols = df_cols_converter(self.df_cols, default=self.name)
 
+
+def coords_converter(coords):
+    if isinstance(coords, str):
+        return [coords]
+    else:
+        return coords
+
 @attrs.define
 class Quantity(Array):
-    coords: Optional[List[str]] = None
+    coords: Union[str, List[str]] = attrs.field(converter=coords_converter, default=list)
 
 
 @attrs.define

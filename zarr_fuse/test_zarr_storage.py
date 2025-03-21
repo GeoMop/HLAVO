@@ -12,8 +12,11 @@ script_dir = Path(__file__).parent
 inputs_dir = script_dir / "inputs"
 workdir = script_dir / "workdir"
 
-from zarr_storage import Node, create, pivot_nd, update_xarray_nd, update, read
+from zarr_storage import Node
 from zarr_structure import read_structure
+
+
+
 
 @pytest.mark.skip
 def test_update_xarray_nd():
@@ -107,7 +110,7 @@ This requires dask.
 def aux_read_struc(fname):
     struc_path = inputs_dir / fname
     structure = read_structure(struc_path)
-    assert set(['COORDS', 'VARS', 'ATTRS']).issubset(set(structure.keys()))
+    assert set(['COORDS', 'VARS']).issubset(set(structure.keys()))
 
     store_path = (workdir / fname).with_suffix(".zarr")
     local_store = zarr.storage.LocalStore(store_path)
@@ -121,6 +124,65 @@ def aux_read_struc(fname):
 
     tree = Node.create_storage(structure, local_store)
     return structure, local_store, tree
+
+def test_node_tree():
+    # Read the YAML file from the working directory.
+    # The file "structure_tree.yaml" must exist in the current working directory.
+    # Example YAML file content (as a string for illustration):
+    structure_yaml_path = inputs_dir / "structure_tree.yaml"
+
+    structure, store, tree = aux_read_struc(structure_yaml_path)
+
+    # Create a mapping from node names to minimal Polars DataFrames.
+    # Each node is updated with unique values.
+    df_map = {
+        "": pl.DataFrame({"time": [1000], "temperature": [280.0]}),
+        "child_1": pl.DataFrame({"time": [1001], "temperature": [281.0]}),
+        "child_2": pl.DataFrame({"time": [1002], "temperature": [282.0]}),
+        "child_1/child_3": pl.DataFrame({"time": [1003], "temperature": [283.0]}),
+    }
+
+    # Recursively update each node with its corresponding data.
+    def update_tree(node: Node):
+        assert len(node.dataset.coords) == 1
+        assert len(node.dataset.data_vars) == 1
+
+        if node.group_path in df_map:
+            node.update(df_map[node.group_path])
+        for key, child in node.items():
+            update_tree(child)
+
+    update_tree(tree)
+
+    # Recursively collect nodes into a dictionary for easy lookup.
+    def collect_nodes(node, nodes_dict):
+        nodes_dict[node.group_path] = node
+        for key, child in node.items():
+            collect_nodes(child, nodes_dict)
+        return nodes_dict
+
+    root_node = Node.read_store(store)
+    nodes = collect_nodes(root_node, {})
+
+    # Expected values for each node: (time coordinate, temperature variable)
+    expected = {
+        key: (df['time'].to_numpy(), df['temperature'].to_numpy())
+        for key, df in df_map.items()
+    }
+
+    # Verify that each node’s dataset contains the expected coordinate and variable data.
+    for node_name, (exp_time, exp_temp) in expected.items():
+        ds = nodes[node_name].dataset
+        np.testing.assert_array_equal(ds.coords["time"].values, exp_time)
+        np.testing.assert_array_equal(ds["temperature"].values, exp_temp)
+
+    # Verify the tree structure:
+    # The root node should have children "child_1" and "child_2"
+    assert set(root_node.children.keys()) == {"child_1", "child_2"}
+    # Node "child_1" should have one child: "child_3"
+    assert set(root_node.children["child_1"].children.keys()) == {"child_3"}
+
+
 
 def test_read_structure_weather(tmp_path):
     # Example YAML file content (as a string for illustration):
