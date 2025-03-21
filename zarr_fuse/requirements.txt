@@ -1,0 +1,27 @@
+PyYAML
+attrs
+numpy
+pytest
+polars
+pint
+pint-xarray 
+anytree
+
+pandas
+pyarrow
+
+#filterpy
+seaborn
+#pftools[all]
+joblib
+matplotlib
+plotly
+requests
+requests_cache
+#cdsapi      # era5 weather data
+#cfgrib      # requirement for xarray GRIB file support
+dask          # for compatibility with xarray 0.18.2
+xarray      # 0.19.0 does not support zarr 2.x well
+zarr       # 3.x does not support write_empty_chunks
+ipykernel
+

@@ -1,0 +1,15 @@
+11.3. Basic working prototype
+- can disply the map
+- displys colrbar rectangles
+- allow click selection and detailed anotation on hover
+Future improvements:
+- larger rectangles / different representation of values
+- coordinates grid, lon lat on XY axis instead of projection coordinates
+- show current time and selected lon lat
+- show color bars
+- highlighting boarder out of the rectangles, dafault transparent
+- other viewv with selectin of displyed varaiables and data source
+
+
+        
+

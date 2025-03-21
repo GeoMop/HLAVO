@@ -108,7 +108,7 @@ def zarr_kwargs():
     # Only set chunk encoding if Dask is installed
     if HAS_DASK:
         encoding = {"var": {"chunks": (128, 128)}}
-        kwargs = {"encoding": encoding, 'compute': False, 'write_empty_chunks': False}
+        kwargs = {"encoding": encoding, 'compute': False}
     else:
         kwargs = {}
     return kwargs
@@ -166,7 +166,7 @@ def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len,
     new_time_stop = init_time_len + update_time_len
     ds_update = ds_block((new_time_start, new_time_stop), (0, x_len))
     data_update = ds_update['var'].to_numpy()
-    
+
     #update_zarr_store(zarr_path, ds_update)
     update_zarr_loop(zarr_path, ds_update, dims_order=["time", "x"])
     # -----------------------
@@ -194,13 +194,14 @@ def test_xarray_zarr_append_and_update(tmp_path, init_time_len, update_time_len,
     if HAS_DASK:
         zgroup = zarr.open_group(zarr_path, mode="r")
         zvar = zgroup["var"]
-        chunks = zvar.chunks
-
+        chunk_size_t, chunk_size_x = zarr_kwargs()["encoding"]["var"]["chunks"]
+        assert (chunk_size_t, chunk_size_x) == zvar.chunks
         # We asked for (100, 100). If the dimension is smaller than 100,
         # the chunk size matches the dimension's size.
         # For time and x, we check min(100, actual_dim_len).
-        assert chunks[0] == min(100, expected_time_len)
-        assert chunks[1] == min(100, x_len)
+        n_chunks = zvar.nchunks
+        assert n_chunks[0] == expected_time_len / chunk_size_t
+        assert n_chunks[1] == x_len / chunk_size_x
         print("Chunk-size check passed (Dask available).")
 
     print("Test passed for init_time_len={}, update_time_len={}".format(

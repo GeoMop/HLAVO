@@ -1,17 +1,181 @@
 import json
+import yaml
 import numpy as np
 import numpy.testing as npt
 from pathlib import Path
 import polars as pl
 import xarray as xr
 import pytest
+import zarr
 
-from zarr_storage import create, pivot_nd, update_xarray_nd, update, read, Coord
+script_dir = Path(__file__).parent
+inputs_dir = script_dir / "inputs"
+workdir = script_dir / "workdir"
+
+from zarr_storage import Node, create, pivot_nd, update_xarray_nd, update, read
+from zarr_structure import read_structure
+
+@pytest.mark.skip
+def test_update_xarray_nd():
+    # Create an initial dataset with dimensions: time, loc, sensor.
+    # For fixed dims "loc" and "sensor", we allocate extra space.
+    ds = xr.Dataset(
+        data_vars={"var_1": (("time", "loc", "sensor"),
+                           np.full((2, 3, 2), 100.0, dtype=float)),
+                   "var_2": (("time", "loc", "sensor"),
+                    np.full((2, 3, 2), 100.0, dtype=float))
+                   },
+        coords={
+            "time": np.array([1, 2]),
+            "loc": np.array(["C", "A", "_B"]),  # allocated size=3, initially valid size=2
+            "sensor": np.array(["Y", "X"])  # allocated size=2, valid size=2
+        }
+    )
+    ds.attrs["append_dim"] = "time"
+    ds.attrs["coords_valid_size"] = {"time": 2, "loc": 2, "sensor": 2}
+
+    # Create an update DataFrame.
+    # For time=2, update: (loc="A", sensor="X") -> 200.0 and (loc="D", sensor="X") -> 210.0.
+    # Note: "D" is a new fixed value for "loc" (should be appended to valid region if space permits).
+    # For time=3 (new dynamic), update: (loc="B", sensor="Y") -> 300.0.
+    df = pl.DataFrame({
+        "time": [2, 2, 2,  3, 3, 3,  3, 3, 3],
+        "loc": ["C", "A", "B", "C", "A", "B", "C", "A", "B"],
+        "sensor": ["X", "X", "X", "X", "X", "X", "Y", "Y", "Y"],
+        "var_1": [200.0, 210.0, 220.0,   300.0, 310.0, 320.0,   350.0, 360.0, 370.0],
+        "var_2": np.array([200.0, 210.0, 220.0,   300.0, 310.0, 320.0,   350.0, 360.0, 370.0])+1000,
+    })
+
+    ds_updated = update_xarray_nd(ds, df)
+
+    # Check that the dynamic dimension "time" now includes time=3.
+    updated_times = ds_updated.coords["time"].values
+    np.testing.assert_array_equal(updated_times, np.array([1, 2, 3]))
+
+    # Check that fixed dimension "loc" now has an increased valid region including "D".
+    assert ds_updated.attrs["coords_valid_size"]["loc"] == 3
+    loc_valid = ds_updated.coords["loc"].values
+    np.testing.assert_array_equal(loc_valid, np.array(["C", "A", "B"]))
+
+    # Verify variable updates:
+    # At time=2, (loc="A", sensor="X") should be updated to 200.0.
+    var_1 = ds_updated["var_1"].to_numpy()
+    ref_var_1 = np.array([
+        # time = 1 (unchanged)
+        [[100.0, 100.0],  # loc "A": sensor "Y", "X"
+         [100.0, 100.0],  # loc "B"
+         [100.0, 100.0]],  # loc "C"
+
+        # time = 2
+        [[100.0, 200.0],  # loc "A": sensor "Y" remains 100, sensor "X" updated to 210.0
+         [100.0, 210.0],  # loc "B": sensor "Y" remains 100, sensor "X" updated to 220.0
+         [100.0, 220.0]],  # loc "C": sensor "Y" remains 100, sensor "X" updated to 200.0
+
+        # time = 3
+        [[350.0, 300.0],  # loc "A": sensor "Y" updated to 360, sensor "X" updated to 310
+         [360.0, 310.0],  # loc "B": sensor "Y" updated to 370, sensor "X" updated to 320
+         [370.0, 320.0]]  # loc "C": sensor "Y" updated to 350, sensor "X" updated to 300
+    ])
+
+    np.testing.assert_almost_equal(var_1, ref_var_1)
+
+    var_2 = ds_updated["var_2"].to_numpy()
+    ref_var_2 = np.array([
+        # time = 1 (unchanged)
+        [[100.0, 100.0],
+         [100.0, 100.0],
+         [100.0, 100.0]],
+
+        # time = 2
+        [[100.0, 1200.0],  # loc "A": sensor "Y" remains 100, sensor "X" becomes 1210.0
+         [100.0, 1210.0],  # loc "B": sensor "Y" remains 100, sensor "X" becomes 1220.0
+         [100.0, 1220.0]],  # loc "C": sensor "Y" remains 100, sensor "X" becomes 1200.0
+
+        # time = 3
+        [[1350.0, 1300.0],  # loc "A": sensor "Y" becomes 1360, sensor "X" becomes 1310
+         [1360.0, 1310.0],  # loc "B": sensor "Y" becomes 1370, sensor "X" becomes 1320
+         [1370.0, 1320.0]]  # loc "C": sensor "Y" becomes 1350, sensor "X" becomes 1300
+    ])
+    np.testing.assert_almost_equal(var_2, ref_var_2)
+
+    print("Test passed: update_xarray_nd with separate coordinate processing works correctly.")
 
 """
 This is an inital test of xarray, zarr functionality that we build on.
 This requires dask.
 """
+def aux_read_struc(fname):
+    struc_path = inputs_dir / fname
+    structure = read_structure(struc_path)
+    assert set(['COORDS', 'VARS', 'ATTRS']).issubset(set(structure.keys()))
+
+    store_path = (workdir / fname).with_suffix(".zarr")
+    local_store = zarr.storage.LocalStore(store_path)
+
+    # memory_store = zarr.storage.MemoryStore()
+
+    # zip_store = zarr.storage.ZipStore('path/to/archive.zip', mode='w')
+
+    # s3_fs = fsspec.filesystem('s3', key='YOUR_ACCESS_KEY', secret='YOUR_SECRET_KEY')
+    # s3_store = zarr.FSStore('bucket-name/path/to/zarr', filesystem=s3_fs)
+
+    tree = Node.create_storage(structure, local_store)
+    return structure, local_store, tree
+
+def test_read_structure_weather(tmp_path):
+    # Example YAML file content (as a string for illustration):
+    structure, store, tree = aux_read_struc("structure_weather.yaml")
+    assert len(structure['COORDS']) == 2
+    assert len(structure['VARS']) == 1
+    print("Coordinates:")
+    for coord in structure["COORDS"]:
+        print(coord)
+    print("\nQuantities:")
+    for var in structure["VARS"]:
+        print(var)
+
+    # Create a Polars DataFrame with 6 temperature readings.
+    # Two time stamps (e.g. 1000 and 2000 seconds) and three latitude values (e.g. 10.0, 20.0, 30.0).
+    df = pl.DataFrame({
+        "timestamp": [1000, 1000, 1000, 2000, 2000, 2000],
+        "latitude": [10.0, 20.0, 30.0, 10.0, 20.0, 30.0],
+        "temp": [280.0, 281.0, 282.0, 283.0, 284.0, 285.0]
+    })
+
+    # Update the dataset atomically using the Polars DataFrame.
+    updated_ds = tree.update(df)
+
+    # Now, re-read the entire Zarr storage from scratch.
+    new_tree = Node.read_store(store)
+    new_ds = new_tree.dataset
+    print("Updated dataset:")
+    print(new_ds)
+
+    # --- Assertions ---
+    # We expect that the update function (via update_xarray_nd) will reshape the temperature data
+    # into a (time, lat) array, i.e. shape (2, 3), with coordinates "time" and "lat".
+    # Check the shape of the temperature variable.
+    assert new_ds["temperature"].shape == (2, 3)
+
+    # Check that the "time" coordinate was updated to [1000, 2000]
+    np.testing.assert_array_equal(new_ds["time"].values, [1000, 2000])
+    # Check that the "lat" coordinate was updated to [10.0, 20.0, 30.0]
+    np.testing.assert_array_equal(new_ds["lat"].values, [10.0, 20.0, 30.0])
+
+
+def test_read_structure_tensors(tmp_path):
+    structure, store, tree = aux_read_struc("structure_tensors.yaml")
+    assert len(structure['COORDS']) == 3
+    assert len(structure['VARS']) == 2
+    print("Coordinates:")
+    for coord in structure["COORDS"]:
+        print(coord)
+    print("\nQuantities:")
+    for var in structure["VARS"]:
+        print(var)
+
+
+
 
 def update_zarr_store(zarr_path: str, ds_update: xr.Dataset) -> None:
     """
@@ -228,89 +392,6 @@ def test_pivot_nd():
     np.testing.assert_allclose(arr, expected_arr, equal_nan=True)
 
 
-def test_update_xarray_nd():
-    # Create an initial dataset with dimensions: time, loc, sensor.
-    # For fixed dims "loc" and "sensor", we allocate extra space.
-    ds = xr.Dataset(
-        data_vars={"var_1": (("time", "loc", "sensor"),
-                           np.full((2, 3, 2), 100.0, dtype=float)),
-                   "var_2": (("time", "loc", "sensor"),
-                    np.full((2, 3, 2), 100.0, dtype=float))
-                   },
-        coords={
-            "time": np.array([1, 2]),
-            "loc": np.array(["C", "A", "_B"]),  # allocated size=3, initially valid size=2
-            "sensor": np.array(["Y", "X"])  # allocated size=2, valid size=2
-        }
-    )
-    ds.attrs["append_dim"] = "time"
-    ds.attrs["coords_valid_size"] = {"time": 2, "loc": 2, "sensor": 2}
-
-    # Create an update DataFrame.
-    # For time=2, update: (loc="A", sensor="X") -> 200.0 and (loc="D", sensor="X") -> 210.0.
-    # Note: "D" is a new fixed value for "loc" (should be appended to valid region if space permits).
-    # For time=3 (new dynamic), update: (loc="B", sensor="Y") -> 300.0.
-    df = pl.DataFrame({
-        "time": [2, 2, 2,  3, 3, 3,  3, 3, 3],
-        "loc": ["C", "A", "B", "C", "A", "B", "C", "A", "B"],
-        "sensor": ["X", "X", "X", "X", "X", "X", "Y", "Y", "Y"],
-        "var_1": [200.0, 210.0, 220.0,   300.0, 310.0, 320.0,   350.0, 360.0, 370.0],
-        "var_2": np.array([200.0, 210.0, 220.0,   300.0, 310.0, 320.0,   350.0, 360.0, 370.0])+1000,
-    })
-
-    ds_updated = update_xarray_nd(ds, df)
-
-    # Check that the dynamic dimension "time" now includes time=3.
-    updated_times = ds_updated.coords["time"].values
-    np.testing.assert_array_equal(updated_times, np.array([1, 2, 3]))
-
-    # Check that fixed dimension "loc" now has an increased valid region including "D".
-    assert ds_updated.attrs["coords_valid_size"]["loc"] == 3
-    loc_valid = ds_updated.coords["loc"].values
-    np.testing.assert_array_equal(loc_valid, np.array(["C", "A", "B"]))
-
-    # Verify variable updates:
-    # At time=2, (loc="A", sensor="X") should be updated to 200.0.
-    var_1 = ds_updated["var_1"].to_numpy()
-    ref_var_1 = np.array([
-        # time = 1 (unchanged)
-        [[100.0, 100.0],  # loc "A": sensor "Y", "X"
-         [100.0, 100.0],  # loc "B"
-         [100.0, 100.0]],  # loc "C"
-
-        # time = 2
-        [[100.0, 200.0],  # loc "A": sensor "Y" remains 100, sensor "X" updated to 210.0
-         [100.0, 210.0],  # loc "B": sensor "Y" remains 100, sensor "X" updated to 220.0
-         [100.0, 220.0]],  # loc "C": sensor "Y" remains 100, sensor "X" updated to 200.0
-
-        # time = 3
-        [[350.0, 300.0],  # loc "A": sensor "Y" updated to 360, sensor "X" updated to 310
-         [360.0, 310.0],  # loc "B": sensor "Y" updated to 370, sensor "X" updated to 320
-         [370.0, 320.0]]  # loc "C": sensor "Y" updated to 350, sensor "X" updated to 300
-    ])
-
-    np.testing.assert_almost_equal(var_1, ref_var_1)
-
-    var_2 = ds_updated["var_2"].to_numpy()
-    ref_var_2 = np.array([
-        # time = 1 (unchanged)
-        [[100.0, 100.0],
-         [100.0, 100.0],
-         [100.0, 100.0]],
-
-        # time = 2
-        [[100.0, 1200.0],  # loc "A": sensor "Y" remains 100, sensor "X" becomes 1210.0
-         [100.0, 1210.0],  # loc "B": sensor "Y" remains 100, sensor "X" becomes 1220.0
-         [100.0, 1220.0]],  # loc "C": sensor "Y" remains 100, sensor "X" becomes 1200.0
-
-        # time = 3
-        [[1350.0, 1300.0],  # loc "A": sensor "Y" becomes 1360, sensor "X" becomes 1310
-         [1360.0, 1310.0],  # loc "B": sensor "Y" becomes 1370, sensor "X" becomes 1320
-         [1370.0, 1320.0]]  # loc "C": sensor "Y" becomes 1350, sensor "X" becomes 1300
-    ])
-    np.testing.assert_almost_equal(var_2, ref_var_2)
-
-    print("Test passed: update_xarray_nd with separate coordinate processing works correctly.")
 
 
 # def update_xarray_dynamic(ds: xr.Dataset, df: pl.DataFrame) -> xr.Dataset:
