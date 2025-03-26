@@ -1,5 +1,5 @@
 import yaml
-from zarr_structure import read_structure, read_storage
+from zarr_structure import read_structure
 
 """
 This is an inital test of xarray, zarr functionality that we build on.

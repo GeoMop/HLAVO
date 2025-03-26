@@ -2,19 +2,37 @@ import yaml
 import attrs
 import numpy as np
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union, Sequence
+from typing import Optional, List, Dict, Any, Union, Sequence, Tuple
 
-import xarray as xr
 
 reserved_keys = set(['ATTRS', 'COORDS', 'VARS'])
 
-def df_cols_converter(value: Optional[Union[str, List[str]]], default:str) -> Optional[List[str]]:
-    if value is None:
-        return (default,)
-    elif isinstance(value, str):
-        return (value,)
-    else:
-        return tuple(value)
+
+@attrs.define
+class Variable:
+    name: str
+    unit: Optional[str] = None
+    description: Optional[str] = None
+    coords: Union[str, List[str]] = None
+    df_col: Optional[str] = None
+
+    def __attrs_post_init__(self):
+        """Set df_cols to [name] if not explicitly provided."""
+        if self.df_col is None:
+            self.df_col = self.name
+        if self.coords is None:
+            self.coords = [self.name]
+        if isinstance(self.coords, str):
+            self.coords = [self.coords]
+
+    @property
+    def attrs(self):
+        return dict(
+            unit=self.unit,
+            description=self.description,
+            df_col=self.df_col
+        )
+
 
 def coord_values_converter(values):
     if values is None:
@@ -27,40 +45,41 @@ def coord_values_converter(values):
         assert values.ndim == 1
         return values
 
-
 @attrs.define
-class Array:
+class Coord:
     name: str
-    df_cols: Optional[Sequence[str]] = None
-    unit: Optional[str] = None
     description: Optional[str] = None
-
-    def __attrs_post_init__(self):
-        """Set df_cols to [name] if not explicitly provided."""
-        self.df_cols = df_cols_converter(self.df_cols, default=self.name)
-
-
-def coords_converter(coords):
-    if isinstance(coords, str):
-        return [coords]
-    else:
-        return coords
-
-@attrs.define
-class Quantity(Array):
-    coords: Union[str, List[str]] = attrs.field(converter=coords_converter, default=list)
-
-
-@attrs.define
-class Coord(Array):
-    values: Optional[np.ndarray]  = attrs.field(converter=coord_values_converter, default=None)          # Fixed size, given coord values.
+    composed: Dict[str, List[Any]] = None
+    values: Optional[np.ndarray]  = None              # Fixed size, given coord values.
     chunk_size: Optional[int] = 1024    # Explicit chunk size, 1024 default. Equal to 'len(values)' for fixed size coord.
 
+    def __attrs_post_init__(self):
+        if self.composed is None:
+            self.composed = [self.name]
+
+        if self.values is None:
+            self.values = [list() for _ in self.composed]
+        elif isinstance(self.values, int):
+            self.values = [np.arange(self.values)]
+        elif isinstance(self.values, list):
+            # Can express list of empty arrays (for tuple components) as [[], []]
+            # but can not express empty list of pairs (given second dimension while first is 0.
+            if len(self.values) == 0:
+                self.values = [list() for _ in self.composed]
+            else:
+                self.values = list(zip(*self.values))
+        self.values = np.atleast_2d(self.values)
+        assert len(self.values) == len(self.composed)
+
+
 Attrs = Dict[str, Any]
-ZarrNodeStruc = Dict[str, Union[Attrs, List[Coord], List[Quantity], 'ZarrNodeStruc']]
+ZarrNodeStruc = Dict[str, Union[Attrs, Dict[str, Variable], Dict[str, Coord], 'ZarrNodeStruc']]
 
+def set_name(d, name):
+    d['name'] = name
+    return d
 
-def deserialize(content: dict) -> dict:
+def deserialize(content: 'stream') -> dict:
     """
     Recursively deserializes a dictionary.
     Processes special keys:
@@ -69,39 +88,57 @@ def deserialize(content: dict) -> dict:
       - VARS: converted into a list of Quantity objects
     Other keys are processed recursively.
     """
+    content = yaml.safe_load(content)
     result = {}
     if 'ATTRS' in content:
         result['ATTRS'] = content['ATTRS']
-    if 'COORDS' in content:
-        result['COORDS'] = [Coord(**c) for c in content['COORDS']]
     if 'VARS' in content:
-        result['VARS'] = [Quantity(**v) for v in content['VARS']]
+        result['VARS'] = {k: Variable(**set_name(v, k)) for k, v in content['VARS'].items()}
+    if 'COORDS' in content:
+        result['COORDS'] = {k: Coord(**set_name(c, k)) for k, c in content['COORDS'].items()}
     for key, value in content.items():
         if key not in ['ATTRS', 'COORDS', 'VARS']:
             result[key] = deserialize(value) if isinstance(value, dict) else value
     return result
 
 
-def serialize(structure: dict) -> dict:
+
+def convert_value(obj):
     """
-    Recursively serializes a structure.
-    Converts any attrs-decorated objects to dictionaries.
+    Recursively convert an object for YAML serialization.
+
+    - If obj is an instance of an attrs class, convert it to a dict using
+      attrs.asdict with this function as the value_serializer.
+    - If obj is a dict, list, or tuple, process its elements recursively.
+    - For basic types (int, float, str, bool, None), return the value as is.
+    - Otherwise, return the string representation of obj.
     """
-    result = {}
-    for key, value in structure.items():
-        if isinstance(value, dict):
-            result[key] = serialize(value)
-        elif isinstance(value, list):
-            result[key] = [attrs.asdict(v) if attrs.has(v) else v for v in value]
-        else:
-            result[key] = value
-    return result
+    if attrs.has(obj):
+        return attrs.asdict(obj, value_serializer=lambda inst, field, value: convert_value(value))
+    elif isinstance(obj, dict):
+        return {k: convert_value(v) for k, v in obj.items()}
+    elif hasattr(obj, 'dtype'):
+        return obj.tolist()
+    elif isinstance(obj, (list, tuple)):
+        return [convert_value(item) for item in obj]
+    else:
+        return obj
+
+def serialize(hierarchy: dict) -> str:
+    """
+    Serialize a hierarchy of dictionaries (and lists/tuples) with leaf values that
+    may be instances of attrs classes to a YAML string.
+
+    The conversion is performed by the merged convert_value function which uses a
+    custom value serializer for attrs.asdict.
+    """
+    converted = convert_value(hierarchy)
+    return yaml.safe_dump(converted, sort_keys=False)
 
 
 def read_structure(yaml_path: str) -> dict:
     with open(yaml_path, 'r') as file:
-        structure_dict = yaml.safe_load(file)
-    return deserialize(structure_dict)
+        return deserialize(file)
 
 
 def write_structure(structure: dict, yaml_path: str) -> None:

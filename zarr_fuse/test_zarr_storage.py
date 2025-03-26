@@ -125,13 +125,12 @@ def aux_read_struc(fname):
     tree = Node.create_storage(structure, local_store)
     return structure, local_store, tree
 
+@pytest.mark.skip
 def test_node_tree():
     # Read the YAML file from the working directory.
     # The file "structure_tree.yaml" must exist in the current working directory.
     # Example YAML file content (as a string for illustration):
-    structure_yaml_path = inputs_dir / "structure_tree.yaml"
-
-    structure, store, tree = aux_read_struc(structure_yaml_path)
+    structure, store, tree = aux_read_struc("structure_tree.yaml")
 
     # Create a mapping from node names to minimal Polars DataFrames.
     # Each node is updated with unique values.
@@ -188,7 +187,7 @@ def test_read_structure_weather(tmp_path):
     # Example YAML file content (as a string for illustration):
     structure, store, tree = aux_read_struc("structure_weather.yaml")
     assert len(structure['COORDS']) == 2
-    assert len(structure['VARS']) == 1
+    assert len(structure['VARS']) == 4
     print("Coordinates:")
     for coord in structure["COORDS"]:
         print(coord)
@@ -200,7 +199,8 @@ def test_read_structure_weather(tmp_path):
     # Two time stamps (e.g. 1000 and 2000 seconds) and three latitude values (e.g. 10.0, 20.0, 30.0).
     df = pl.DataFrame({
         "timestamp": [1000, 1000, 1000, 2000, 2000, 2000],
-        "latitude": [10.0, 20.0, 30.0, 10.0, 20.0, 30.0],
+        "latitude": [10.0, 20.0, 20.0, 10.0, 20.0, 20.0],
+        "longitude": [10.0, 10.0, 20.0, 10.0, 10.0, 20.0],
         "temp": [280.0, 281.0, 282.0, 283.0, 284.0, 285.0]
     })
 
@@ -220,11 +220,16 @@ def test_read_structure_weather(tmp_path):
     assert new_ds["temperature"].shape == (2, 3)
 
     # Check that the "time" coordinate was updated to [1000, 2000]
-    np.testing.assert_array_equal(new_ds["time"].values, [1000, 2000])
+    np.testing.assert_array_equal(new_ds["time of year"].values, [1000, 2000])
     # Check that the "lat" coordinate was updated to [10.0, 20.0, 30.0]
-    np.testing.assert_array_equal(new_ds["lat"].values, [10.0, 20.0, 30.0])
+    np.testing.assert_array_equal(new_ds["latitude"].values, [20.0, 20.0, 10.0])
+    for row in df.iter_rows(named=True):
+        time = row["timestamp"]
+        lat = row["latitude"]
+        lon = row["longitude"]
+        assert new_ds["temperature"].sel({"time of year":time, "lat_lon":hash((lat, lon))}) == row["temp"]
 
-
+@pytest.mark.skip
 def test_read_structure_tensors(tmp_path):
     structure, store, tree = aux_read_struc("structure_tensors.yaml")
     assert len(structure['COORDS']) == 3

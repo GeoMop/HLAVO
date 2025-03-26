@@ -1,4 +1,4 @@
-from typing import List, Callable, Dict, Optional
+from typing import List, Callable, Dict, Optional, Set, Tuple
 from pathlib import Path
 import polars as pl
 import zarr
@@ -8,10 +8,23 @@ import numpy as np
 import attrs
 from pint import  Unit
 import zarr_structure as struc
-from anytree import NodeMixin
+#from anytree import NodeMixin
 
 
 """
+tuple val coords:
+- source cols as quantities
+- Coordinates object holds both index and non-dim coordinates
+  so we use them. We just form the index coodrinate by hash.
+- How to allow providint tuple coord values in structure. 
+  Ideal as dictionary for source cols, but then there is duplicity of their names
+  Rather have values as dict determining source columns, optionaly providing values 
+
+- pivot_nd - hash source cols
+- future read - hash source cols
+   
+
+
 
 """
 
@@ -40,6 +53,10 @@ class Node:
     - description: str
     - unit: str (interpretable by Pint)
     - df_cols: List[str] (column names in the DataFrame)
+
+    TODO:
+    - initial structure -> initial DataFrame
+    - then use PIVOT to form initial DataSet
     """
     PATH_SEP = "/"
 
@@ -70,7 +87,40 @@ class Node:
             child.initialize_node(structure[key])
 
     @staticmethod
-    def _create_coords(coords: List[struc.Coord]) -> xr.Coordinates:
+    def _variable(var: struc.Variable, coord_names: Set[str]) -> xr.Variable:
+        for coord in var.coords:
+            assert coord in coord_names, f"Variable {var.name} has unknown coordinate {coord}."
+        shape = tuple(0 for coord in var.coords)
+        xr_var = xr.Variable(
+                 dims=var.coords,  # Default dimension named after the coordinate key.
+                 data=np.empty(shape, dtype=float),
+                 attrs=var.attrs
+             )
+        return xr_var
+
+
+    @staticmethod
+    def _coord_variable(name, coord: struc.Coord, vars) -> xr.Variable:
+        if coord.composed is None:
+            # simple coordinate
+            assert name in vars
+            xr_var = vars[name]
+            xr_var.attrs['chunks'] = coord.chunk_size
+            xr_var.attrs['description'] += f"\n\n{coord.description}"
+            xr_var.values = coord.values
+        else:
+            # composed coordinate
+
+            # TODO set values to all tuple vars and hashed var as well
+            xr_var = xr.Variable(
+                dims=coord.composed,
+                data=np.empty([], dtype=float),
+                attrs=coord.attrs
+            )
+        return xr_var
+
+    @staticmethod
+    def _create_coords(coords: Dict[str, struc.Coord], vars: Dict[str, xr.Variable]) -> xr.Coordinates:
         """
         Create xarray Coordinates from a dictionary of Coord objects using
         the explicit Coordinates constructor. Each coordinate is stored as an xarray.Variable.
@@ -84,25 +134,14 @@ class Node:
         Returns:
             Coordinates: An xarray Coordinates object built from the provided variables.
         """
-
         coord_vars = {
-            coord.name:
-            xr.Variable(
-                dims=(coord.name,),  # Default dimension named after the coordinate key.
-                data=coord.values,
-                attrs={
-                    "unit": coord.unit,
-                    "description": coord.description,
-                    "df_cols": coord.df_cols,
-                    "chunk_size": coord.chunk_size,
-                }
-            )
-            for coord in coords
+            Node._coord_variable(k, c, vars)
+            for k, c in coords.items()
         }
         return xr.Coordinates(coord_vars)
 
     @staticmethod
-    def empty_ds(description):
+    def empty_ds(structure):
         """
         Create an *empty* Zarr storage for multiple indices given by index_col.
         - first index is dynamic, e.g. time, new times are appended by update function
@@ -125,25 +164,15 @@ class Node:
         # Build an Xarray Dataset with dims: (time=0, location=max_locations)
         # We'll create a coordinate for "time" (initially empty),
         # and a coordinate for "location" (just an integer range 0..max_locations-1).
-        coords_obj = Node._create_coords(description['COORDS'])
 
-        shape = lambda var: [coords_obj[c].shape[0] for c in var.coords]
-        data_vars = {
-            var.name:
-                xr.Variable(
-                    dims=tuple(var.coords),  # Default dimension named after the coordinate key.
-                    data=np.empty(shape(var), dtype=float),
-                    attrs={
-                        "unit": var.unit,
-                        "description": var.description,
-                        "df_cols": var.df_cols
-                    }
-                )
-            for var in description['VARS']
+        variables = {}
+        coords_obj = {}
+        attrs = {
+            '__structure__': struc.serialize(structure),
+            '__empty__': True
         }
-        attrs = description.get('ATTRS', {})
         ds = xr.Dataset(
-            data_vars=data_vars,
+            data_vars=variables,
             coords=coords_obj,
             attrs=attrs
         )
@@ -239,6 +268,10 @@ class Node:
         rel_path = rel_path.strip(self.PATH_SEP)
         return xr.open_zarr(self.store, group=rel_path)
 
+    @property
+    def structure(self):
+        return struc.deserialize(self.dataset.attrs['__structure__'])
+
     def update(self, polars_df):
         """
         Atomically update this node's dataset using a Polars DataFrame.
@@ -253,71 +286,9 @@ class Node:
            - pivot_nd for DF -> DS conversion, should be a method that uses coords and df_cols
            -
         """
-        ds = self.pivot_nd(polars_df)
+        ds = pivot_nd(self.structure, polars_df)
         return self.update_zarr_loop(ds)
 
-    def pivot_nd(self, df: pl.DataFrame, fill_value=np.nan):
-        """
-        Pivot a Polars DataFrame with columns for each dimension in self.dataset.dims
-        and one value column (per variable) into an N-dim xarray.Dataset.
-
-        For each dimension, the coordinate values are taken as the intersection between
-        the dataset’s coordinate (self.dataset[d].values) and the unique values in df
-        (from the column specified by self.dataset[d].attrs['df_cols'][0]). The intersection
-        is done in a vectorized way and preserves the order given by the dataset coordinate.
-
-        For each variable in self.dataset.variables, values from the corresponding df column
-        are inserted into an output array of shape determined by the sizes of the common
-        coordinate sets. If duplicate keys occur, later values win.
-
-        Returns:
-            xr.Dataset: The pivoted dataset with data variables defined on the new N-dim grid,
-                        and with coordinates for each dimension.
-        """
-        idx_list = []
-        coord_sizes = []
-        coords_dict = {}
-        dims = tuple(self.dataset.dims.keys())
-        # Loop over each dimension in the original dataset.
-        for d in dims:
-            # Get the name(s) of the column(s) in df corresponding to this dimension.
-            df_cols = self.dataset[d].attrs['df_cols']
-            # Get the coordinate values from the DataFrame column.
-            # TODO: deal with df_cols as list of columns, hash tuples
-            df_coord_array = df[df_cols[0]].to_numpy()
-            # Get the coordinate values from the dataset (assumed to be in desired order).
-            coords = np.sort(np.unique(df_coord_array))
-            coords_dict[d] = coords  # will be used as the coordinate values for this dim.
-            coord_sizes.append(len(coords))
-
-            # Map each row’s coordinate (from df) to its index in the common_coords.
-            # (This works as long as common_coords is sorted. In many cases ds coordinates are already sorted.)
-            final_idx = np.searchsorted(coords, df_coord_array)
-            idx_list.append(final_idx)
-
-        # Create an array of indices for all dimensions, one row per dimension.
-        idx_arr = np.vstack(idx_list)
-        # Compute flat indices for the N-dim output array.
-        flat_idx = np.ravel_multi_index(idx_arr, dims=coord_sizes)
-
-        # Helper: for a given variable, build the pivoted array.
-        def values(var_name):
-            col_name = self.dataset[var_name].attrs['df_cols'][0]
-            column_vals = df[col_name].to_numpy()
-            # Choose a dtype based on the column (floating or object)
-            dtype = column_vals.dtype if np.issubdtype(column_vals.dtype, np.floating) else object
-            # Create an empty output array with fill_value.
-            result = np.full(coord_sizes, fill_value, dtype=dtype)
-            # Fill in the values; if duplicate keys occur, later values win.
-            result.flat[flat_idx] = column_vals
-            return (dims, result)
-
-        # Create DataArrays for each variable using the dims specified in self.dataset.
-        data_vars = {var: values(var) for var in self.dataset.data_vars}
-
-        # Build and return the xarray.Dataset with the computed coordinates.
-        ds_out = xr.Dataset(data_vars=data_vars, coords=coords_dict)
-        return ds_out
 
     def write_ds(self, ds, **kwargs):
         rel_path = self.group_path # + self.PATH_SEP + "dataset"
@@ -365,6 +336,10 @@ class Node:
         ds_existing = self.dataset
         # --- Phase 1: Dive (split by dimension) ---
         # We create a dict to hold the extension subset for each dimension.
+        if ds_existing.attrs['__empty__']:
+            self.write_ds(ds_update)
+            return
+
         ds_extend_dict = {}
         ds_overlap = ds_update.copy()
         dims_order = tuple(ds_update.dims.keys())
@@ -409,6 +384,129 @@ class Node:
             merged_coords[dim] = np.concatenate([merged_coords[dim], new_coords_for_dim])
 
         return merged_coords
+
+
+def eliminate_dims_if_equal(arr: np.ndarray, dims_to_check: List[bool]) -> np.ndarray:
+    """
+    Check that for each axis flagged True in dims_to_check, all values along that axis
+    are equal. For each such axis, eliminate that dimension by taking the 0-th slice.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array.
+    dims_to_check : tuple of bool
+        A tuple of booleans, one per dimension of arr. For each dimension where the
+        value is True, the function will check that all values along that axis are equal
+        and then remove that axis.
+
+    Returns
+    -------
+    np.ndarray
+        A new array with the constant axes removed.
+
+    Raises
+    ------
+    ValueError
+        If dims_to_check length does not match arr.ndim, or if any flagged axis does not
+        have all equal values.
+    """
+    if arr.ndim != len(dims_to_check):
+        raise ValueError("Length of dims_to_check must equal number of dimensions in arr")
+
+    # Process axes in descending order so that removal of one axis doesn't change indices.
+    for axis in reversed(range(arr.ndim)):
+        if dims_to_check[axis]:
+            # Take the first element along the axis.
+            ref = np.take(arr, 0, axis=axis)
+            # Expand dims so that it can broadcast for comparison.
+            ref_expanded = np.expand_dims(ref, axis=axis)
+            if not np.all(arr == ref_expanded):
+                raise ValueError(f"Values along axis {axis} are not all equal")
+            # Remove this axis by selecting the 0th element along that axis.
+            arr = np.take(arr, 0, axis=axis)
+    return arr
+
+
+def pivot_nd(structure:struc.ZarrNodeStruc, df: pl.DataFrame, fill_value=np.nan):
+    """
+    Pivot a Polars DataFrame with columns for each dimension in self.dataset.dims
+    and one value column (per variable) into an N-dim xarray.Dataset.
+
+    For each dimension, the coordinate values are taken as the intersection between
+    the dataset’s coordinate (self.dataset[d].values) and the unique values in df
+    (from the column specified by self.dataset[d].attrs['df_cols'][0]). The intersection
+    is done in a vectorized way and preserves the order given by the dataset coordinate.
+
+    For each variable in self.dataset.variables, values from the corresponding df column
+    are inserted into an output array of shape determined by the sizes of the common
+    coordinate sets. If duplicate keys occur, later values win.
+
+    Returns:
+        xr.Dataset: The pivoted dataset with data variables defined on the new N-dim grid,
+                    and with coordinates for each dimension.
+    """
+    # 1. DF -> dict of 1d arrays,
+    data_vars = {
+        k: df[var.df_col].to_numpy()
+        for k, var in structure['VARS'].items()
+    }
+    # 2. apply hash of tuple coords, input Dict: ds_name : [df_cols]
+    for k, c in structure['COORDS'].items():
+        if (c.composed is not None) and (len(c.composed) > 1):
+            # hash tuple coords
+            tuple_list = zip( *(data_vars[c] for c in c.composed) )
+            hash_list = [hash(tuple(t)) for t in tuple_list]
+            data_vars[k] = np.array(hash_list)
+
+    # 3. Extract coords
+    idx_list = []
+    coords_dict = {}
+    dims = list(structure['COORDS'].keys())
+    # Loop over each dimension in the original dataset.
+    for d in dims:
+        # Get the name(s) of the column(s) in df corresponding to this dimension.
+        df_coord_array = data_vars[d]
+        # Get the coordinate values from the dataset (assumed to be in desired order).
+        coords = np.sort(np.unique(df_coord_array))
+        coords_dict[d] = coords  # will be used as the coordinate values for this dim.
+        #coord_sizes[d].append(len(coords))
+        # Map each row’s coordinate (from df) to its index in the common_coords.
+        # (This works as long as common_coords is sorted. In many cases ds coordinates are already sorted.)
+        final_idx = np.searchsorted(coords, df_coord_array)
+        idx_list.append(final_idx)
+    coord_sizes = [len(coords_dict[d]) for d in dims]
+    # Create an array of indices for all dimensions, one row per dimension.
+    idx_arr = np.vstack(idx_list)
+    # Compute flat indices for the N-dim output array.
+    flat_idx = np.ravel_multi_index(idx_arr, dims=coord_sizes)
+
+    # Helper: for a given variable, build the pivoted array.
+    def form_var_array(var_struc):
+        column_vals = data_vars[var_struc.name]
+        # Choose a dtype based on the column (floating or object)
+        dtype = column_vals.dtype if np.issubdtype(column_vals.dtype, np.floating) else object
+        # Create an empty output array with fill_value.
+        result = np.full(coord_sizes, fill_value, dtype=dtype)
+        # Fill in the values; if duplicate keys occur, later values win.
+        result.flat[flat_idx] = column_vals
+        # eliminate inappropriate coordinates
+        dims_to_eliminate = [d not in var_struc.coords for d in dims]
+        np_var = eliminate_dims_if_equal(result, dims_to_eliminate)
+        var_dims = list(var_struc.coords)
+        data_var = xr.Variable(var_dims, np_var, attrs=var_struc.attrs)
+        return data_var
+
+    # 4. form arrays (remaining vars)
+    # Create DataArrays for each variable using the dims specified in self.dataset.
+    data_vars = {k: form_var_array(var) for k, var in structure['VARS'].items() if k not in coords_dict}
+
+    # Build and return the xarray.Dataset with the computed coordinates.
+    attrs = structure['ATTRS']
+    attrs['__structure__'] = struc.serialize(structure)
+    ds_out = xr.Dataset(data_vars=data_vars, coords=coords_dict, attrs=attrs)
+    return ds_out
+
 
     # def update_zarr_loop(self, ds_existing: xr.Dataset, df_update: pl.DataFrame) -> dict:
     #     """
