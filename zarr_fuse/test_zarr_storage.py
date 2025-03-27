@@ -125,7 +125,18 @@ def aux_read_struc(fname):
     tree = Node.create_storage(structure, local_store)
     return structure, local_store, tree
 
-@pytest.mark.skip
+
+# Recursively update each node with its corresponding data.
+def _update_tree(node: Node, df_map: dict):
+    if node.group_path in df_map:
+        node.update(df_map[node.group_path])
+    for key, child in node.items():
+        _update_tree(child, df_map)
+
+    assert len(node.dataset.coords) == 1
+    assert len(node.dataset.data_vars) == 1
+
+
 def test_node_tree():
     # Read the YAML file from the working directory.
     # The file "structure_tree.yaml" must exist in the current working directory.
@@ -141,17 +152,7 @@ def test_node_tree():
         "child_1/child_3": pl.DataFrame({"time": [1003], "temperature": [283.0]}),
     }
 
-    # Recursively update each node with its corresponding data.
-    def update_tree(node: Node):
-        assert len(node.dataset.coords) == 1
-        assert len(node.dataset.data_vars) == 1
-
-        if node.group_path in df_map:
-            node.update(df_map[node.group_path])
-        for key, child in node.items():
-            update_tree(child)
-
-    update_tree(tree)
+    _update_tree(tree, df_map)
 
     # Recursively collect nodes into a dictionary for easy lookup.
     def collect_nodes(node, nodes_dict):
@@ -229,11 +230,11 @@ def test_read_structure_weather(tmp_path):
         lon = row["longitude"]
         assert new_ds["temperature"].sel({"time of year":time, "lat_lon":hash((lat, lon))}) == row["temp"]
 
-@pytest.mark.skip
+
 def test_read_structure_tensors(tmp_path):
     structure, store, tree = aux_read_struc("structure_tensors.yaml")
     assert len(structure['COORDS']) == 3
-    assert len(structure['VARS']) == 2
+    assert len(structure['VARS']) == 5
     print("Coordinates:")
     for coord in structure["COORDS"]:
         print(coord)

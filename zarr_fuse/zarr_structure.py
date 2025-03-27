@@ -71,6 +71,8 @@ class Coord:
         self.values = np.atleast_2d(self.values)
         assert len(self.values) == len(self.composed)
 
+    def is_composed(self):
+        return len(self.composed) > 1
 
 Attrs = Dict[str, Any]
 ZarrNodeStruc = Dict[str, Union[Attrs, Dict[str, Variable], Dict[str, Coord], 'ZarrNodeStruc']]
@@ -79,7 +81,7 @@ def set_name(d, name):
     d['name'] = name
     return d
 
-def deserialize(content: 'stream') -> dict:
+def _deserialize(content: dict) -> dict:
     """
     Recursively deserializes a dictionary.
     Processes special keys:
@@ -88,19 +90,32 @@ def deserialize(content: 'stream') -> dict:
       - VARS: converted into a list of Quantity objects
     Other keys are processed recursively.
     """
-    content = yaml.safe_load(content)
     result = {}
-    if 'ATTRS' in content:
-        result['ATTRS'] = content['ATTRS']
-    if 'VARS' in content:
-        result['VARS'] = {k: Variable(**set_name(v, k)) for k, v in content['VARS'].items()}
-    if 'COORDS' in content:
-        result['COORDS'] = {k: Coord(**set_name(c, k)) for k, c in content['COORDS'].items()}
+    assert 'VARS' in content, ValueError("VARS key is required.")
+    assert 'COORDS' in content, ValueError("COORDS key is required.")
+    result['ATTRS'] = content.get('ATTRS', {})
+    result['VARS'] = {k: Variable(**set_name(v, k)) for k, v in content['VARS'].items()}
+    result['COORDS'] = {k: Coord(**set_name(c, k)) for k, c in content['COORDS'].items()}
+
+    # Add implicitely defined coords.
+    implicit_coords = [
+        coord
+        for var in result.get('VARS', {}).values()
+        for coord in var.coords
+    ]
+    for coord in set(implicit_coords):
+        coord_obj = result['COORDS'].setdefault(coord, Coord(coord))
+        if not coord_obj.is_composed():
+            result['VARS'].setdefault(coord, Variable(coord))
+
+
     for key, value in content.items():
         if key not in ['ATTRS', 'COORDS', 'VARS']:
-            result[key] = deserialize(value) if isinstance(value, dict) else value
+            result[key] = _deserialize(value) if isinstance(value, dict) else value
     return result
 
+def deserialize(stream: 'stream') -> dict:
+    return _deserialize(yaml.safe_load(stream))
 
 
 def convert_value(obj):

@@ -1,3 +1,4 @@
+**/*.zarr
 **/.idea
 surface_model/parflow_reference/parflow
 soil_model/workdir

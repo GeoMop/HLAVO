@@ -1,0 +1,43 @@
+VARS:
+    # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+    temperature:
+      unit: "K"
+      description: "Temperature in Kelvin"
+      df_col: "temp"
+      coords: ["time of year", "lat_lon"]
+    
+    longitude:
+      unit: "deg"
+      description: "Signed Earth longitude."
+      coords: "lat_lon"
+    
+    latitude:
+      unit: "deg"
+      description: "Signed Earth longitude."
+      coords: "lat_lon"
+      # df_col = <var's name is default source data frame column>
+      # coords = <var's name is self coordinated variable> 
+ 
+    "time of year":
+      unit: "seconds"
+      description: "Time coordinate"
+      df_col: "timestamp"
+ 
+ 
+COORDS:
+    "time of year": # Defines coord from the variable of the same name. 
+      chunk_size: 1024
+      
+    "lat_lon":
+      # Secondary description valid for composed coordinates. 
+      description: "Example of coordinate indexed uniquely by a tuple of values. The source columns are converted to the 1D list of tuples."
+      composed: ["latitude", "longitude"]
+      values: 
+        - [53.2, 42.4]
+        - [53.3, 42.5]
+      chunk_size: 512
+
+
+ATTRS:
+    description: "Example dataset"
+    url: "https://example.com"
