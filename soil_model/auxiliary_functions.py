@@ -98,9 +98,9 @@ def add_noise(data_array, noise_level=0.1, std=None, distr_type="uniform", seed=
     if len(data_array) > 0:
 
         if distr_type == "uniform":
-            print("uniform ")
-            print("noise level ", noise_level)
-            print("input data array ", data_array)
+            # print("uniform ")
+            # print("noise level ", noise_level)
+            # print("input data array ", data_array)
 
             lower_bound = -np.abs(noise_level * data_array)
             upper_bound = np.abs(noise_level * data_array)
@@ -124,9 +124,9 @@ def add_noise(data_array, noise_level=0.1, std=None, distr_type="uniform", seed=
         elif distr_type == "gaussian":
             orig_value_sign = np.sign(data_array)
 
-            print("noise level ", noise_level)
-            print("type noise level ", type(noise_level))
-            print("data array ", data_array)
+            # print("noise level ", noise_level)
+            # print("type noise level ", type(noise_level))
+            # print("data array ", data_array)
 
             if std is None:
                 std = np.abs(data_array * noise_level)

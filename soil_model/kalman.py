@@ -1,11 +1,14 @@
+import shutil
 import sys
+import os
+import time
 from pathlib import Path
 import yaml
 import argparse
 import numpy as np
+from itertools import groupby
 #from joblib import Memory
 #memory = Memory(location='cache_dir', verbose=10)
-
 from kalman_result import KalmanResults
 from parflow_model import ToyProblem
 from filterpy.kalman import UnscentedKalmanFilter
@@ -14,6 +17,9 @@ from filterpy.kalman import JulierSigmaPoints, MerweScaledSigmaPoints
 from auxiliary_functions import sqrt_func, add_noise
 from data.load_data import load_data
 from kalman_state import StateStructure, MeasurementsStructure
+from parallel_ukf import ParallelUKF
+from multiprocessing import Manager, Lock
+import cloudpickle
 
 ######
 # Unscented Kalman Filter for Parflow model
@@ -35,20 +41,26 @@ class KalmanFilter:
         np.random.seed(config["seed"])
 
         self.kalman_config = config["kalman_config"]
-
         self.model_config = config["model_config"]
+        self.measurements_config = config["measurements_config"]
         self.model = self._make_model()
         nodes_z = self.model.get_nodes_z()
 
-        self.state_struc = StateStructure(len(nodes_z), self.kalman_config["state_params"])
+        self.state_struc = StateStructure(len(nodes_z) - 1, self.kalman_config["state_params"])
+
+        #print("kalman config meas ", self.kalman_config["train_measurements"])
+
         self.train_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["train_measurements"])
         self.test_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["test_measurements"])
-        self.state_measurements = {}
+
+        manager = Manager()
+        self.state_measurements = manager.dict()  # Shared across processes
+        self.lock = manager.Lock()  # Lock to avoid race conditions
 
         precipitation_list = []
-        for (hours, precipitation) in self.model_config['rain_periods']:
-            precipitation_list.extend([precipitation] * hours)
-        self.model_config["precipitation_list"] = precipitation_list
+        for (time_prec, precipitation) in self.measurements_config['rain_periods']:
+            precipitation_list.extend([precipitation] * time_prec)
+        self.measurements_config["precipitation_list"] = precipitation_list
 
         self.results = KalmanResults(workdir, nodes_z, self.state_struc, self.train_measurements_struc,
                                      self.test_measurements_struc, config['postprocess'])
@@ -61,37 +73,35 @@ class KalmanFilter:
             raise NotImplemented("Import desired class")
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
-    # def plot_pressure(self):
-    #     """
-    #     MS TODO: Not used can remove? See KalmanResults.plot_pressure
-    #     """
-    #     model = self._make_model()
-    #     et_per_time = 0 #ET0(**dict(zip(self.model_config['evapotranspiration_params']["names"], self.model_config['evapotranspiration_params']["values"]))) / 1000 / 24  # mm/day to m/sec
-    #     #model._run.Patch.top.BCPressure.alltime.Value = self.model_config["precipitation_list"][0] + et_per_time
-    #     model.set_dynamic_params(self.model_config["params"]["names"], self.model_config["params"]["values"])
-    #
-    #     model.run(init_pressure=None, precipitation_value=self.model_config["precipitation_list"][0] + et_per_time,
-    #               stop_time=self.model_config['rain_periods'][0][0])
-    #
-    #     # model.save_pressure("pressure.png")
-    #     #model.save_pressure("pressure.png")
-
     def run(self):
         #############################
         ### Generate measurements ###
         #############################
         if "measurements_dir" in self.kalman_config:
-            noisy_measurements, noisy_measurements_to_test = load_data(data_dir=self.kalman_config["measurements_dir"], n_samples=len(self.model_config["precipitation_list"]))
-
+            noisy_measurements, noisy_measurements_to_test = load_data(data_dir=self.kalman_config["measurements_dir"], n_samples=len(self.measurements_config["precipitation_list"]))
             # Why to call model for real data?
             # MS TODO: why this model.run ?
             self.model.run(init_pressure=None, stop_time=1)
-
             sample_variance = np.var(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
         else:
+
+            # import cProfile
+            # import pstats
+            #
+            # pr = cProfile.Profile()
+            # pr.enable()
+
             measurements, noisy_measurements, measurements_to_test, noisy_measurements_to_test, \
-            state_data_iters = self.generate_measurements()
+            state_data_iters, meas_model_iter_time, meas_model_iter_flux = self.generate_measurements()
+
+            # Configure ParFlow executable paths if needed
+            # os.environ['PARFLOW_HOME'] = '/opt/parflow_install'
+            # os.environ['PATH'] += ':/opt/parflow_install/bin'
+            #
+            # pr.disable()
+            # ps = pstats.Stats(pr).sort_stats('cumtime')
+            # ps.print_stats(50)
 
             residuals = noisy_measurements - measurements
             measurement_noise_covariance = np.cov(residuals, rowvar=False)
@@ -102,8 +112,12 @@ class KalmanFilter:
         self.results.ref_states = np.array(state_data_iters)
         self.results.train_measuremnts_exact = measurements
         self.results.test_measuremnts_exact = measurements_to_test
+        self.results.times_measurements = np.cumsum(meas_model_iter_time)
+        self.results.precipitation_flux_measurements = meas_model_iter_flux
 
-        self.results.plot_pressure(self.model, state_data_iters)
+        #self.results.plot_pressure(self.model, state_data_iters)
+        #self.results.plot_saturation(self.model)
+
 
         #######################################
         ### Unscented Kalman filter setting ###
@@ -121,21 +135,24 @@ class KalmanFilter:
 
         return self.results
 
-    def model_run(self, kalman_step, pressure, params):
-        flux = self.model_config["precipitation_list"][kalman_step]
+    def model_run(self, flux, stop_time, time_step, model_n_time_steps_per_iter, pressure, params):
         self.model.run(init_pressure=pressure, precipitation_value=flux,
-                  state_params=params, start_time=kalman_step, stop_time=kalman_step+1)
-        new_pressure = self.model.get_data(current_time=kalman_step+1, data_name="pressure")
+                  state_params=params, start_time=0, stop_time=stop_time, time_step=time_step)
+        new_pressure = self.model.get_data(current_time_step=stop_time, data_name="pressure")
         return new_pressure
 
-    def model_iteration(self, kalman_step, pressure, params):
+    def model_iteration(self, precipitation_flux, pressure, params, model_time_step, model_n_time_steps_per_iter):
         # et_per_time = ET0(n=14, T=20, u2=10, Tmax=27, Tmin=12, RHmax=0.55, RHmin=0.35,
         #                   month=6) / 1000 / 24  # mm/day to m/sec
         et_per_time = 0 #ET0(**dict(zip(self.model_config['evapotranspiration_params']["names"], self.model_config['evapotranspiration_params']["values"]))) / 1000 / 24  # mm/day to m/hour
-        new_pressure = self.model_run(kalman_step, pressure, params)
-        new_saturation = self.model.get_data(current_time=kalman_step, data_name="saturation")
-        measurements_train = self.get_measurement(kalman_step + 1, self.train_measurements_struc)
-        measurements_test = self.get_measurement(kalman_step + 1, self.test_measurements_struc)
+
+        stop_time = model_time_step * model_n_time_steps_per_iter
+
+        new_pressure = self.model_run(precipitation_flux, stop_time, model_time_step, model_n_time_steps_per_iter, pressure, params)
+
+        new_saturation = self.model.get_data(current_time_step=stop_time, data_name="saturation")
+        measurements_train = self.get_measurement(current_time_step=stop_time, measurements_struct=self.train_measurements_struc)
+        measurements_test = self.get_measurement(current_time_step=stop_time, measurements_struct=self.test_measurements_struc)
 
         return measurements_train, measurements_test, new_pressure, new_saturation
 
@@ -156,35 +173,52 @@ class KalmanFilter:
         # JB TODO: finish GField.ref to simplify the following lines
         state_vec = self.state_struc.encode_state(ref_params)
 
-        for i in range(0, len(self.model_config["precipitation_list"])):
-            measurement_train, measurement_test, pressure_vec, sat_vec \
-                = self.model_iteration(i, pressure_vec, ref_params)
-            self.results.ref_saturation.append(sat_vec)
+        total_time = len(self.measurements_config["precipitation_list"])
+        meas_model_iter_time = []
+        meas_model_iter_flux = []
+        for i in range(0, int(total_time), int(self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"])):
+            precipitation_step_start = i
+            precipitation_step_end = np.min([i + int(self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"]), int(total_time)])
+            model_time_step = self.measurements_config["model_time_step"]
+            prec_time_flux_per_iter = [(len(list(n_times)), flux) for flux, n_times in groupby(self.measurements_config["precipitation_list"][precipitation_step_start:precipitation_step_end])]
 
-            train_measurements.append(self.train_measurements_struc.encode(measurement_train))
-            test_measurements.append(self.test_measurements_struc.encode(measurement_test))
+            for (prec_time, prec_flux) in prec_time_flux_per_iter:
+                model_n_time_steps_per_iteration = prec_time / model_time_step
+                measurement_train, measurement_test, pressure_vec, sat_vec \
+                    = self.model_iteration(prec_flux, pressure_vec, ref_params, model_time_step=model_time_step,
+                                           model_n_time_steps_per_iter=model_n_time_steps_per_iteration)
+                self.results.ref_saturation.append(sat_vec)
 
-            noisy_train_measurements.append(self.train_measurements_struc.encode(measurement_train, noisy=True))
-            noisy_test_measurements.append(self.test_measurements_struc.encode(measurement_test, noisy=True))
+                train_measurements.append(self.train_measurements_struc.encode(measurement_train))
+                test_measurements.append(self.test_measurements_struc.encode(measurement_test))
 
-            if self.verbose:
-                print("i: {}, data_pressure: {} ".format(i, pressure_vec))
-            ref_params['pressure_field'] = pressure_vec
+                noisy_train_measurements.append(
+                    self.train_measurements_struc.encode(measurement_train, noisy=True))
+                noisy_test_measurements.append(
+                    self.test_measurements_struc.encode(measurement_test, noisy=True))
 
-            iter_state = self.state_struc.encode_state(ref_params)
-            state_data_iters.append(iter_state)
+                if self.verbose:
+                    print("i: {}, data_pressure: {} ".format(i, pressure_vec))
+                ref_params['pressure_field'] = pressure_vec
+
+                iter_state = self.state_struc.encode_state(ref_params)
+                state_data_iters.append(iter_state)
+
+                meas_model_iter_time.append(prec_time)
+                meas_model_iter_flux.append(prec_flux)
 
         train_measurements = np.array(train_measurements)
         test_measurements = np.array(test_measurements)
         noisy_train_measurements = np.array(noisy_train_measurements)
         noisy_test_measurements = np.array(noisy_test_measurements)
 
-        return train_measurements, noisy_train_measurements, test_measurements, noisy_test_measurements, state_data_iters
+        return train_measurements, noisy_train_measurements, test_measurements, noisy_test_measurements,\
+               state_data_iters, meas_model_iter_time, meas_model_iter_flux
 
-    def get_measurement(self, kalman_step, measurements_struct):
+    def get_measurement(self, current_time_step, measurements_struct):
         measurements_dict = {}
         for measurement_name, measure_obj in measurements_struct.items():
-            data_to_measure = self.model.get_data(current_time=kalman_step, data_name=measurement_name)
+            data_to_measure = self.model.get_data(current_time_step=current_time_step, data_name=measurement_name)
             measurements_dict[measurement_name] = measure_obj.interp @ data_to_measure
         return measurements_dict
 
@@ -199,8 +233,12 @@ class KalmanFilter:
     #####################
     ### Kalman filter ###
     #####################
-    def state_transition_function(self, state_vec, dt, time_step):
-        print("dt: ", dt, "time step: ", time_step)
+    def state_transition_function(self, state_vec, dt, iter_duration, precipitation_flux):
+        print("dt: ", dt, "iter duration time: ", iter_duration)
+        pid = os.getpid()
+        timestamp = int(time.time())
+        parflow_working_dir = os.path.join(self.model._workdir, "parflow_working_dir_{}_{}".format(pid, timestamp))
+        os.makedirs(parflow_working_dir)
         state = self.state_struc.decode_state(state_vec)
         pressure_data = state["pressure_field"]
         flux_eps_std = None
@@ -208,23 +246,23 @@ class KalmanFilter:
         et_per_time = 0 #ET0(**dict(zip(model_config['evapotranspiration_params']["names"],
                    #model_config['evapotranspiration_params']["values"]))) / 1000 / 24
 
-        percipitation = self.model_config["precipitation_list"][time_step]
-        self.model.run(pressure_data, percipitation, state, start_time=time_step, stop_time=time_step+1)
-        state["pressure_field"] = self.model.get_data(current_time=time_step+1, data_name="pressure")
+        iter_duration = float(iter_duration)
 
-        measurements_train = self.get_measurement(time_step + 1, self.train_measurements_struc)
-        measurements_test = self.get_measurement(time_step + 1, self.test_measurements_struc)
+        self.model.run(init_pressure=pressure_data, precipitation_value=precipitation_flux,
+                       state_params=state, start_time=0, stop_time=iter_duration, time_step=self.kalman_config["model_time_step"], working_dir=parflow_working_dir)
+
+        state["pressure_field"] = self.model.get_data(current_time_step=iter_duration, data_name="pressure")
+
+        measurements_train = self.get_measurement(current_time_step=iter_duration, measurements_struct=self.train_measurements_struc)
+        measurements_test = self.get_measurement(current_time_step=iter_duration, measurements_struct=self.test_measurements_struc)
 
         new_state_vec = self.state_struc.encode_state(state)
-        self.state_measurements[tuple(new_state_vec)] = (measurements_train, measurements_test)
-        return new_state_vec
 
-    # @staticmethod
-    # def get_nonzero_std_params(model_params):
-    #     print("model params ", model_params)
-    #     # Filter out items with nonzero std
-    #     filtered_data = {key: value for key, value in model_params.items() if value[1] != 0}
-    #     return filtered_data
+        if self.lock:
+            self.state_measurements[tuple(new_state_vec)] = (measurements_train, measurements_test)
+
+        shutil.rmtree(parflow_working_dir)
+        return new_state_vec
 
     def measurement_function(self, state_vec, measurements_type="train"):
         measurements_train_dict, measurements_test_dict = self.state_measurements[tuple(state_vec)]
@@ -240,6 +278,7 @@ class KalmanFilter:
 
     def set_kalman_filter(self,  measurement_noise_covariance):
         num_state_params = self.state_struc.size()
+        print("num state params ", num_state_params)
         dim_z = measurement_noise_covariance.shape[0]   # Number of measurement inputs
 
         sigma_points_params = self.kalman_config["sigma_points_params"]
@@ -250,24 +289,28 @@ class KalmanFilter:
 
         # Initialize the UKF filter
         time_step = 1 # one hour time step
-        ukf = UnscentedKalmanFilter(dim_x=num_state_params, dim_z=dim_z, dt=time_step,
-                                    fx=self.state_transition_function, #KalmanFilter.state_transition_function_wrapper(len_additional_data=self.additional_data_len, model_config=self.model_config, kalman_config=self.kalman_config),
-                                    hx=self.measurement_function, #KalmanFilter.measurement_function_wrapper(len_additional_data=self.additional_data_len, model_config=self.model_config, kalman_config=self.kalman_config),
-                                    points=sigma_points)
+        # ukf = UnscentedKalmanFilter(dim_x=num_state_params, dim_z=dim_z, dt=time_step,
+        #                             fx=self.state_transition_function, #KalmanFilter.state_transition_function_wrapper(len_additional_data=self.additional_data_len, model_config=self.model_config, kalman_config=self.kalman_config),
+        #                             hx=self.measurement_function, #KalmanFilter.measurement_function_wrapper(len_additional_data=self.additional_data_len, model_config=self.model_config, kalman_config=self.kalman_config),
+        #                             points=sigma_points)
 
+        ukf = ParallelUKF(dim_x=num_state_params, dim_z=dim_z,
+                               dt=time_step,
+                               fx=self.state_transition_function,
+                               hx=self.measurement_function,
+                               points=sigma_points)
 
         Q_state = self.state_struc.compose_Q()
         ukf.Q = Q_state
         print("ukf.Q.shape ", ukf.Q.shape)
         print("ukf.Q ", ukf.Q)
-
         ukf.R = measurement_noise_covariance #* 1e6
         print("R measurement_noise_covariance ", measurement_noise_covariance)
 
-        data_pressure = self.model.get_data(current_time=0, data_name="pressure")
+        data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
 
-        nodes_z = self.model.get_nodes_z()
-        init_mean, init_cov = self.state_struc.compose_init_state(nodes_z)
+        el_centers_z = self.model.get_el_centers_z()
+        init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
         init_state = self.state_struc.decode_state(init_mean)
         init_state["pressure_field"] = add_noise(np.squeeze(data_pressure),
                                             noise_level=self.kalman_config["pressure_saturation_data_noise_level"],
@@ -279,21 +322,14 @@ class KalmanFilter:
         return ukf
 
     def run_kalman_filter(self, ukf, noisy_measurements):
-        pred_loc_measurements = []
-        test_pred_loc_measurements = []
-        pred_model_params = []
-        pred_state_iter = []
-        ukf_p_var_iter = []
+        iter_durations = [self.results.times_measurements[0]] + list(np.array(self.results.times_measurements[1:]) - np.array(self.results.times_measurements[:-1]))
 
-        #model_dynamic_params = KalmanFilter.get_nonzero_std_params(self.model_config["params"])
-        print("noisy_meaesurements ", noisy_measurements)
-        # Loop through measurements at each time step
-        for time_step, measurement in enumerate(noisy_measurements):
-            ukf.predict(time_step=time_step)
+        for i, measurement in enumerate(noisy_measurements):
+            ukf.predict(iter_duration=iter_durations[i], precipitation_flux=self.results.precipitation_flux_measurements[i])
             ukf.update(measurement)
             print("sum ukf.P ", np.sum(ukf.P))
             print("Estimated State:", ukf.x)
-            self.results.times.append(time_step)
+            self.results.times.append(self.results.times_measurements[i])
             self.results.ukf_x.append(ukf.x)
             self.results.ukf_P.append(ukf.P)
             self.results.measurement_in.append(measurement)
@@ -391,15 +427,17 @@ def main():
 if __name__ == "__main__":
     import cProfile
     import pstats
+
+    pr = cProfile.Profile()
+    pr.enable()
+
     main()
-    # pr = cProfile.Profile()
-    # pr.enable()
 
     # Configure ParFlow executable paths if needed
     #os.environ['PARFLOW_HOME'] = '/opt/parflow_install'
     #os.environ['PATH'] += ':/opt/parflow_install/bin'
 
-    # pr.disable()
-    # ps = pstats.Stats(pr).sort_stats('cumtime')
-    # ps.print_stats(50)
+    pr.disable()
+    ps = pstats.Stats(pr).sort_stats('cumtime')
+    ps.print_stats(50)
 

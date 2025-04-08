@@ -201,9 +201,9 @@ class GField:
     def Q_full(self) -> np.ndarray:
         return np.diag(self.size() * [self.Q])
 
-    def init_state(self, nodes_z):
-        assert len(nodes_z) == self.size()
-        return self.mean.make(nodes_z), self.cov.make(nodes_z)
+    def init_state(self, el_centers_z):
+        assert len(el_centers_z) == self.size()
+        return self.mean.make(el_centers_z), self.cov.make(el_centers_z)
 
     def encode(self, value: np.ndarray) -> np.ndarray:
         return value
@@ -346,8 +346,8 @@ class StateStructure(dict):
     def compose_ref_dict(self) -> Dict[str, Any]:
         return {key: var.ref for key, var in self.items()}
 
-    def compose_init_state(self, nodes_z) -> np.ndarray:
-        mean_list, cov_list = zip(*(var.init_state(nodes_z) for var in self.values()))
+    def compose_init_state(self, el_centers_z) -> np.ndarray:
+        mean_list, cov_list = zip(*(var.init_state(el_centers_z) for var in self.values()))
         mean = np.concatenate(mean_list)
         cov = linalg.block_diag(*cov_list)
         return mean, cov
@@ -372,10 +372,15 @@ class StateStructure(dict):
 
 class MeasurementsStructure(dict):
     def __init__(self, nodes_z, var_cfg: Dict[str, Dict[str, Any]]):
-        super().__init__({
-            key: Measure.from_dict(nodes_z, val)
-            for key, val in var_cfg.items()
-        })
+        el_z = (nodes_z[1:] + nodes_z[:-1]) / 2.0
+        measure_dict = {}
+        for key, val in var_cfg.items():
+            if key == "velocity":
+                measure_dict[key] = Measure.from_dict(nodes_z, val)
+            else:
+                measure_dict[key] = Measure.from_dict(el_z, val)
+
+        super().__init__(measure_dict)
 
     def size(self):
         return sum(var.size() for var in self.values())

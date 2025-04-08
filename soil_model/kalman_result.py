@@ -24,6 +24,8 @@ class KalmanResults:
     cfg: Dict[str, Any]
 
     times: List[float] = attrs.field(factory=list)  # List of times
+    times_measurements: List[float] = attrs.field(factory=list)
+    precipitation_flux_measurements: List[float] = attrs.field(factory=list)
     ref_states: List[np.ndarray] = attrs.field(factory=list)  # List of states
     ukf_x: List[np.ndarray] = attrs.field(factory=list)  # List of states
     ukf_P: List[np.ndarray] = attrs.field(factory=list)  # List of states
@@ -38,10 +40,12 @@ class KalmanResults:
     # Future, measurements using StateStruc or similar structure
     #measurements: List[np.ndarray] = attrs.field(default=list)  # List of measurements
     def plot_pressure(self, model, state_data_iter):
+        # for state_vec in state_data_iter:
+        #     print("state vec ", state_vec)
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in state_data_iter]
         pressure = np.array(pressure)
-        print("PRESSURE ", pressure.shape)
-        #model.plot_pressure(pressure)
+        #print("PRESSURE shape", pressure.shape)
+        model.plot_pressure(pressure, self.times_measurements)
 
     def plot_pressure_ref(self):
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in self.ref_states]
@@ -56,6 +60,13 @@ class KalmanResults:
         sat = pressure # not available yet, need to improve API of the model to support spatial vG parameters, etc.
         output = RichardsSolverOutput(self.times, pressure, sat, None, None, self.data_z)
         plot_richards_output(output, [], self.workdir / "mean_solution.pdf")
+
+    def plot_saturation(self, model):
+        print(len(self.ref_saturation))
+        #pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for saturation in self.ref_saturation]
+        saturation = np.array(self.ref_saturation)
+        print("SATURATION shape", saturation.shape)
+        model.plot_saturation(saturation, self.times_measurements)
 
     def plot_results(self):
         #print("state_loc_measurements ", pred_loc_measurements)
@@ -168,15 +179,12 @@ class KalmanResults:
         correlation_matrix = np.clip(correlation_matrix, -1, 1)
 
         # sns.heatmap(cov_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
-        #
         # # Add title and labels
         # axes.set_title('cov_matrix Matrix Heatmap')
         # axes.set_xlabel('Variables')
         # axes.set_ylabel('Variables')
-        #
         # fig.savefig("heatmap.pdf")
         # plt.show()
-        #
         # print("correlation matrix ", correlation_matrix)
 
         sns.heatmap(correlation_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
@@ -300,22 +308,24 @@ class KalmanResults:
         #print("model dynamic params ", model_dynamic_params)
 
         n_params = len(x_params)
-        fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
-        for ax, k in zip(axes, x_params.keys()):
-            #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-            ax.plot(self.times, ref_params[k], label=f"{k}_exact")
-            #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
-            #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
-            #print("variances[:, idx] ", variances[:, idx])
-            ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+        if n_params > 0:
+            fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
-            #axes.set_xlabel("param_name")
-            ax.set_ylabel(k)
-        fig.legend()
-        fig.savefig(self.workdir / f"model_param_{k}.pdf")
-        if self.cfg['show']:
-            plt.show()
+            for ax, k in zip(axes, x_params.keys()):
+                #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
+                ax.plot(self.times, ref_params[k], label=f"{k}_exact")
+                #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
+                #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
+                #print("variances[:, idx] ", variances[:, idx])
+                ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+
+                #axes.set_xlabel("param_name")
+                ax.set_ylabel(k)
+            fig.legend()
+            fig.savefig(self.workdir / f"model_param_{k}.pdf")
+            if self.cfg['show']:
+                plt.show()
 
 
 
