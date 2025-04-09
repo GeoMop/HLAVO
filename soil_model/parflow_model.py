@@ -24,7 +24,7 @@ class ToyProblem(AbstractModel):
             pathlib.Path.mkdir(self._workdir, exist_ok=True, parents=True)
         else:
             self._workdir = pathlib.Path.cwd()
-q
+
         self.setup_config(config["static_params"])
         self.key_to_parflow_param = config["params"]
         # Check PARFLOW installation
