@@ -270,7 +270,7 @@ class KalmanResults:
                 #fig, axes = plt.subplots(1, 1)
                 #axes.scatter(times, pred_loc_measurements[:, i], marker="o", label="predictions")
                 #ax.errorbar(times, meas_x[i], c=col, ms=5, yerr=meas_std[i], fmt='o', capsize=5, label=f'obs_est(z={meas_z[i]})')
-                ax.scatter(times, meas_x[i], c=col, s=30, marker='x', label=f"obs(z={meas_z[i]})")
+                ax.scatter(times, meas_x[i], c=col, s=30, marker='o', label=f"obs(z={meas_z[i]})")
 
                 #ax.plot(times, meas_exact[i], c=col, linewidth=2, label=f"obs_sim(z={meas_z[i]})")
                 if meas_in_all is not None and measurement_name in meas_in_all:

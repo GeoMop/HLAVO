@@ -121,7 +121,8 @@ class GVar:
             z = stats.norm.ppf(1.0 - (1.0 - p) / 2.0)  # z-score for the confidence level
             std = (u - l) / (2.0 * z)
         transform = transforms[data.get('transform', 'identity')]
-        return cls(mean, std, data['Q'], data['ref'], transform)
+        data_Q = (data['rel_std_Q'] * mean) ** 2
+        return cls(mean, std, data_Q, data['ref'], transform)
 
     def size(self) -> int:
         return 1
@@ -192,7 +193,13 @@ class GField:
             mean = FieldMeanLinear(**data['mean_linear'])
         if 'cov_exponential' in data:
             cov = FieldCovExponential(**data['cov_exponential'])
-        return cls(mean, cov, data.get('ref', None), data['Q'], size)
+
+        #print("mean linear ", np.abs((data['mean_linear']['top'] + data['mean_linear']['bottom'])/2))
+        mean_value = np.abs(data['mean_linear']['top'])
+        data_Q = (data['rel_std_Q'] * mean_value)**2
+        #print("data Q ", data_Q)
+
+        return cls(mean, cov, data.get('ref', None), data_Q, size)
 
     def size(self) -> int:
         return self._size
@@ -238,10 +245,10 @@ class Measure:
 
     @property
     def Q_full(self) -> np.ndarray:
-        return np.diag(self.size() * [1e-8])
+        return np.diag(self.size() * [1e-12])
 
     def init_state(self, nodes_z):
-        return np.zeros(self.size()), 1e-8 * np.eye(self.size())
+        return np.zeros(self.size()), 1e-12 * np.eye(self.size())
 
     def encode(self, value: np.ndarray, noisy: bool) -> np.ndarray:
         if noisy:

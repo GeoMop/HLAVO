@@ -64,7 +64,6 @@ class KalmanFilter:
 
         self.results = KalmanResults(workdir, nodes_z, self.state_struc, self.train_measurements_struc,
                                      self.test_measurements_struc, config['postprocess'])
-        pass
 
     def _make_model(self):
         if self.model_config["model_class_name"] == "ToyProblem":
@@ -192,8 +191,10 @@ class KalmanFilter:
                 train_measurements.append(self.train_measurements_struc.encode(measurement_train))
                 test_measurements.append(self.test_measurements_struc.encode(measurement_test))
 
+                #print("Train measurements")
                 noisy_train_measurements.append(
                     self.train_measurements_struc.encode(measurement_train, noisy=True))
+                #print("Test measurements")
                 noisy_test_measurements.append(
                     self.test_measurements_struc.encode(measurement_test, noisy=True))
 
@@ -222,12 +223,12 @@ class KalmanFilter:
             measurements_dict[measurement_name] = measure_obj.interp @ data_to_measure
         return measurements_dict
 
-    @staticmethod
-    def add_noise_to_measurements(measurements, level=0.1, distr_type="uniform"):
-        noisy_measurements = np.zeros(measurements.shape)
-        for i in range(measurements.shape[1]):
-            noisy_measurements[:, i] = add_noise(measurements[:, i], noise_level=level, distr_type=distr_type)
-        return noisy_measurements
+    # @staticmethod
+    # def add_noise_to_measurements(measurements, level=0.1, distr_type="uniform"):
+    #     noisy_measurements = np.zeros(measurements.shape)
+    #     for i in range(measurements.shape[1]):
+    #         noisy_measurements[:, i] = add_noise(measurements[:, i], noise_level=level, distr_type=distr_type)
+    #     return noisy_measurements
 
 
     #####################
@@ -308,6 +309,7 @@ class KalmanFilter:
         print("R measurement_noise_covariance ", measurement_noise_covariance)
 
         data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
+        #print("data pressure ", data_pressure)
 
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
