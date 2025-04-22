@@ -230,7 +230,6 @@ class KalmanFilter:
     #         noisy_measurements[:, i] = add_noise(measurements[:, i], noise_level=level, distr_type=distr_type)
     #     return noisy_measurements
 
-
     #####################
     ### Kalman filter ###
     #####################
@@ -238,7 +237,12 @@ class KalmanFilter:
         print("dt: ", dt, "iter duration time: ", iter_duration)
         pid = os.getpid()
         timestamp = int(time.time())
-        parflow_working_dir = os.path.join(self.model._workdir, "parflow_working_dir_{}_{}".format(pid, timestamp))
+
+        if os.environ.get("SCRATCHDIR"):
+            scratch_dir = os.environ.get("SCRATCHDIR")
+            parflow_working_dir = os.path.join(scratch_dir, "parflow_working_dir_{}_{}".format(pid, timestamp))
+        else:
+            parflow_working_dir = os.path.join(self.model._workdir, "parflow_working_dir_{}_{}".format(pid, timestamp))
         os.makedirs(parflow_working_dir)
         state = self.state_struc.decode_state(state_vec)
         pressure_data = state["pressure_field"]
