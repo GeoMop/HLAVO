@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import yaml
 import argparse
+import joblib
 import numpy as np
 from itertools import groupby
 #from joblib import Memory
@@ -343,6 +344,9 @@ class KalmanFilter:
             measurements_train_dict, measurements_test_dict = self.state_measurements[list(self.state_measurements.keys())[-1]]
             self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
             self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
+
+
+        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
 
         return self.results
 
