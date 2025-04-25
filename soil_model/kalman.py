@@ -304,6 +304,7 @@ class KalmanFilter:
         ukf.Q = Q_state
         print("ukf.Q.shape ", ukf.Q.shape)
         print("ukf.Q ", ukf.Q)
+        print("np.diag(ukf.Q) ", np.diag(ukf.Q))
         ukf.R = measurement_noise_covariance #* 1e6
         print("R measurement_noise_covariance ", measurement_noise_covariance)
 
@@ -311,6 +312,7 @@ class KalmanFilter:
 
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
+        print("init mean ", init_mean)
         init_state = self.state_struc.decode_state(init_mean)
         init_state["pressure_field"] = add_noise(np.squeeze(data_pressure),
                                             noise_level=self.kalman_config["pressure_saturation_data_noise_level"],
@@ -319,6 +321,9 @@ class KalmanFilter:
         # JB TODO: use init_mean, implement random choice of ref using init distr
         ukf.x = self.state_struc.encode_state(init_state) #initial_state_data #(state.data[int(0.3/0.05)], state.data[int(0.6/0.05)])#state  # Initial state vector
         ukf.P = init_cov  # Initial state covariance matrix
+
+        print("init cov ", init_cov)
+        print("np.diag(init cov) ", np.diag(init_cov))
         return ukf
 
     def run_kalman_filter(self, ukf, noisy_measurements):
