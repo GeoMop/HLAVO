@@ -254,6 +254,8 @@ class KalmanFilter:
 
         iter_duration = float(iter_duration)
 
+        print("state ", state)
+
         self.model.run(init_pressure=pressure_data, precipitation_value=precipitation_flux,
                        state_params=state, start_time=0, stop_time=iter_duration, time_step=self.kalman_config["model_time_step"], working_dir=parflow_working_dir)
 
@@ -310,7 +312,8 @@ class KalmanFilter:
         ukf.Q = Q_state
         print("ukf.Q.shape ", ukf.Q.shape)
         print("ukf.Q ", ukf.Q)
-        ukf.R = measurement_noise_covariance #* 1e6
+        print("diag ukf.Q ", np.diag(ukf.Q))
+        ukf.R = measurement_noise_covariance
         print("R measurement_noise_covariance ", measurement_noise_covariance)
 
         data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
@@ -326,6 +329,9 @@ class KalmanFilter:
         # JB TODO: use init_mean, implement random choice of ref using init distr
         ukf.x = self.state_struc.encode_state(init_state) #initial_state_data #(state.data[int(0.3/0.05)], state.data[int(0.6/0.05)])#state  # Initial state vector
         ukf.P = init_cov  # Initial state covariance matrix
+        print("init cov ", init_cov)
+        print("np.diag(init_cov) ", np.diag(init_cov))
+
         return ukf
 
     def run_kalman_filter(self, ukf, noisy_measurements):
@@ -344,7 +350,6 @@ class KalmanFilter:
             measurements_train_dict, measurements_test_dict = self.state_measurements[list(self.state_measurements.keys())[-1]]
             self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
             self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
-
 
         joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
 

@@ -270,15 +270,15 @@ class KalmanResults:
                 #fig, axes = plt.subplots(1, 1)
                 #axes.scatter(times, pred_loc_measurements[:, i], marker="o", label="predictions")
                 #ax.errorbar(times, meas_x[i], c=col, ms=5, yerr=meas_std[i], fmt='o', capsize=5, label=f'obs_est(z={meas_z[i]})')
-                ax.scatter(times, meas_x[i], c=col, s=30, marker='o', label=f"obs(z={meas_z[i]})")
+                if meas_exact is not None:
+                    ax.scatter(times, meas_exact[i], c=col, s=30, marker='o', label=f"obs(z={meas_z[i]})")
 
                 #ax.plot(times, meas_exact[i], c=col, linewidth=2, label=f"obs_sim(z={meas_z[i]})")
                 if meas_in_all is not None and measurement_name in meas_in_all:
                     meas_in = meas_in_all[measurement_name]
                     ax.scatter(times, meas_in[i], c=col, s=30, marker='x', label=f"noisy obs(z={meas_z[i]})")
 
-                if meas_exact is not None:
-                    ax.plot(times, meas_exact[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
+                ax.plot(times, meas_x[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
                 ax.set_xlabel("time[h]")
                 ax.set_ylabel(f"{meas_type} {measurement_name}")
             fig.legend()
@@ -310,6 +310,8 @@ class KalmanResults:
         n_params = len(x_params)
 
         if n_params > 0:
+            if n_params == 1:
+                n_params += 1
             fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
             for ax, k in zip(axes, x_params.keys()):
