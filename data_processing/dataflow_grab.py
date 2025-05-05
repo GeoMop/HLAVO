@@ -2,6 +2,9 @@ import os
 import datetime
 import time
 import requests
+import re
+import csv
+import traceback
 
 from dotenv import load_dotenv
 
@@ -59,6 +62,7 @@ def login(driver):
     password_field.send_keys(login_pass)
     time.sleep(0.5)
     login_button.click()
+    print(f"Logged in.")
 
 
 def fill_in_form(driver, date_interval, logger_group):
@@ -96,6 +100,102 @@ def fill_in_form(driver, date_interval, logger_group):
     dt = datetime.datetime.strptime(date_interval['end_date'], '%Y-%m-%d').date()
     dt_str = dt.strftime('%d-%m-%Y')
     date_to_input.send_keys(dt_str)
+
+
+def gather_logger_info(driver, logger_group, download_dir):
+    """
+    Selects the logger group from the dropdown and goes through loggers.
+    """
+    # <select class="form-control m-b group_selector" name="groups_tab_groups_dropdown" id="groups_dropdown">
+    #   <option>Select Group</option>
+    #   <option selected="selected" value="601">Home</option>
+    #   <option value="618">Lab</option>
+    #   ...
+    #   < / select >
+    # <select class="form-control m-b" name="loggers_dropdown" id="loggers_dropdown">
+    #   <option>Select Logger</option>
+    #   <option value="3093">U01 - E9F7 - Multi Profile Soi Moisture and Temperature</option>
+    #   ...
+    #   </select>
+    print(f"Gathering loggers info.")
+    wait = WebDriverWait(driver, timeout=10)
+    location_dropdown = Select(wait.until(EC.presence_of_element_located((By.ID, "groups_dropdown"))))
+    # there is a delay until all Select options are ready
+    time.sleep(5)
+    wait.until(EC.presence_of_element_located((By.XPATH, f"//option[text()='{logger_group}']")))
+    # location_dropdown = Select(driver.find_element(By.ID, "report_groups_dropdown"))
+    location_dropdown.select_by_visible_text(logger_group)
+    time.sleep(5)
+
+    logger_dropdown = Select(driver.find_element(By.ID, "loggers_dropdown"))
+    # time.sleep(5)
+    # print(f"Waiting for logger_dropdown.")
+    for i in range(60):
+        if len(logger_dropdown.options)>1:
+            # print(f"logger_dropdown ready.")
+            break
+        time.sleep(0.5)
+
+    now = datetime.datetime.now()
+    current_date = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M:%S")
+
+    # Iterate over each option in the logger dropdown
+    print(f"Going through loggers.")
+    rows = []
+    for idx, option in enumerate(logger_dropdown.options):
+        # Skip the "Select Logger" placeholder
+        selected_text = option.text
+        if selected_text == "Select Logger":
+            continue
+
+        print(f"{idx}/{len(logger_dropdown.options)-1} {selected_text[:10]}")
+
+        logger_dropdown.select_by_visible_text(selected_text)
+        time.sleep(0.5)
+
+        # Extract number
+        def extract_num(text):
+            match = re.search(r"([-+]?\d*\.\d+|\d+)", text)
+            if match:
+                return match.group()
+            else:
+                return "0"
+
+        # wait until the logger data are loaded
+        # i.e. until the loggerUid is the same in dropdown and in info div
+        # print(f"Waiting for logger_name.")
+        for i in range(40):
+            logger_name = driver.find_element(By.ID, "logger_name_info_box")
+            # print(f"logger_name_info_box.")
+            logger_type = driver.find_element(By.ID, "logger_type_info_box")
+            # print(f"logger_type_info_box.")
+            # resolve empty info div
+            if ': ' not in logger_name.text or ': ' not in logger_type.text:
+                time.sleep(0.5)
+                continue
+            text = logger_name.text.split(": ", 1)[1] + " - " + logger_type.text.split(": ", 1)[1]
+            # print(f"compare text.")
+            if selected_text == text:
+                # print(f"logger_name ready.")
+                break
+            time.sleep(0.5)
+            # print(f"next.")
+
+        logger_uid = selected_text[:10].replace(" ", "")
+        latitude_div = driver.find_element(By.ID, "logger_lat_info_box")
+        longitude_div = driver.find_element(By.ID, "logger_lng_info_box")
+        latitude = extract_num(latitude_div.text)
+        longitude = extract_num(longitude_div.text)
+
+        rows.append([current_date, current_time, logger_uid, latitude, longitude])
+
+    with open(os.path.join(download_dir,f"logger_gps_list_{logger_group}.csv"), mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['date', 'time', 'loggerUid', 'latitude', 'longitude'])
+        for r in rows:
+            writer.writerow(r)
+
 
 
 def submit_loggers(driver):
@@ -204,7 +304,7 @@ def download_reports(driver, download_dir, logger_count):
             break
 
 
-def run_dataflow_extraction(download_dir, date_interval, logger_group):
+def run_dataflow_extraction(download_dir, date_interval, logger_groups, flags):
     """
     Runs the full extraction process from login to downloading reports.
     """
@@ -218,22 +318,37 @@ def run_dataflow_extraction(download_dir, date_interval, logger_group):
 
         login(driver)
 
-        tab = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href="#reports"]')))
-        # tab = driver.find_element(By.CSS_SELECTOR, 'a[href="#reports"]')
-        tab.click()
+        for logger_group in logger_groups:
+            print(f"DataFlow extraction for group '{logger_group}'")
 
-        fill_in_form(driver, date_interval, logger_group)
-        logger_count = submit_loggers(driver)
-        # logger_count = 2  # testing without submitting
-        # wait before refreshing the report links table
-        time.sleep(5)
+            if flags['location']:
+                # wait for "Map" tab
+                tab = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href="#tab-1"]')))
+                tab.click()
+                print(f"Tab '{tab.text}' Click")
+                gather_logger_info(driver, logger_group, download_dir)
+                # continue
 
-        # <input class="btn btn-success" id="btn_report_refresh" type="submit" value="Refresh">
-        refresh_btn = driver.find_element(By.ID, "btn_report_refresh")
-        refresh_btn.click()
+            if flags['data_reports']:
+                # wait for "Data reports" tab
+                tab = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href="#reports"]')))
+                # tab = driver.find_element(By.CSS_SELECTOR, 'a[href="#reports"]')
+                print(f"Tab '{tab.text}' Click")
+                tab.click()
 
-        download_reports(driver, download_dir, logger_count)
+                fill_in_form(driver, date_interval, logger_group)
+                logger_count = submit_loggers(driver)
+                # logger_count = 2  # testing without submitting
+                # wait before refreshing the report links table
+                time.sleep(15)
 
+                # <input class="btn btn-success" id="btn_report_refresh" type="submit" value="Refresh">
+                refresh_btn = driver.find_element(By.ID, "btn_report_refresh")
+                refresh_btn.click()
+
+                download_reports(driver, download_dir, logger_count)
+
+    except Exception: traceback.print_exc()
     finally:
         print("DataFlow webpage extraction FINISHED")
         driver.quit()  # Ensure the browser is closed after the script runs
@@ -244,8 +359,9 @@ if __name__ == '__main__':
     download_dir = datetime.datetime.now().strftime("%Y%m%dT%H%M%S") + "_dataflow_grab"
     os.makedirs(download_dir)
 
-    date_interval = {'start_date': '2025-01-10', 'end_date': '2025-03-14'}
-    logger_group = "Uhelná"
+    logger_groups = ["Lab", "Uhelná lesík", "Uhelná"]
+    date_interval = {'start_date': '2025-01-01', 'end_date': '2025-04-22'}
 
+    flags = {'location': True, 'data_reports': False}
     # Run the extraction
-    run_dataflow_extraction(download_dir, date_interval, logger_group)
+    run_dataflow_extraction(download_dir, date_interval, logger_groups, flags)
