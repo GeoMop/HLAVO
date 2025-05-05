@@ -19,3 +19,22 @@ Once the VS Code, Platformio extension and the COM port is set up, check `platfo
 whether the correct upload COM port is defined, e.g. `/dev/ttyACM0` in Ubuntu.
 Then select (uncomment) prefered `src_dir` and build the selected application.
 Once connected to a microchip module; monitor, build and upload the application using Platformio toolbar.
+
+Own code in `libraries/Hlavo` mostly includes some wrapping functionality:
+- `common.h` - common Hlavo constants and functions
+- `clock.h` - wrapper for RTC (real time clock)
+- `file_info.h` - wrapper for file handling on SD card filesystem
+- `Logger.h` - Logger prototype for writing loggin messages to a SD card
+- `CSV_handler.h` - wrapper for CSV handling
+- `data_base.h` - base class for CSV data
+  - `bme280_data.h` - data structure for collecting data from BME280 humidity sensor to CSV
+  - `meteo_data.h` - data structure for collecting meteo data from meteostation sensor to CSV
+  - `pr2_data.h` - data structure for collecting data from PR2 sensor to CSV
+  - `teros31_data.h` - data structure for collecting data from PR2 sensor to CSV
+  - `column_flow_data.h` - data structure for collecting water height and flow data in column experiment
+
+- `sdi12_comm.h` - wrapper for SDI12 library regarding Hlavo usage (PR2/Teros31 sensors)
+- `pr2_reader.h` - wrapper for SDI12 to communicate with PR2 sensors
+- `teros31_reader.h` - wrapper for SDI12 to communicate with Teros31 sensors
+- `water_height_sensor.h` - ultra sound measurement of water height (uses analog reader and converts [V]->[mm])
+- `weather_station.h` - wrapper for weather_meters library
