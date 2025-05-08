@@ -4,39 +4,48 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from typing import List, Dict, Any
-from kalman_state import StateStructure, GVar, Measure
+from kalman_state import StateStructure, GVar, Measure, MeasurementsStructure
 from plots import plot_richards_output, RichardsSolverOutput, covariance_plot
+
 
 def trans_state(state_var):
     if state_var is None:
         return None
     return np.array(state_var).T
 
+
 @attrs.define
 class KalmanResults:
     workdir: Path
     data_z: np.ndarray
     state_struc: StateStructure
+    train_measurements_struc: MeasurementsStructure
+    test_measurements_struc: MeasurementsStructure
     cfg: Dict[str, Any]
 
     times: List[float] = attrs.field(factory=list)  # List of times
-    ref_states: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    ukf_x: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    ukf_P: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    measuremnt_in: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    ref_saturation: List[np.ndarray]  = attrs.field(factory=list)  # List of states
+    times_measurements: List[float] = attrs.field(factory=list)
+    precipitation_flux_measurements: List[float] = attrs.field(factory=list)
+    ref_states: List[np.ndarray] = attrs.field(factory=list)  # List of states
+    ukf_x: List[np.ndarray] = attrs.field(factory=list)  # List of states
+    ukf_P: List[np.ndarray] = attrs.field(factory=list)  # List of states
+    train_measuremnts_exact: List[np.ndarray] = attrs.field(factory=list)
+    test_measuremnts_exact: List[np.ndarray] = attrs.field(factory=list)
+    measurement_in: List[np.ndarray] = attrs.field(factory=list)  # List of states
+    ref_saturation: List[np.ndarray] = attrs.field(factory=list)  # List of states
     #mean_saturation: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    #ukf_train_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    #ukf_test_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-
+    ukf_train_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
+    ukf_test_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
 
     # Future, measurements using StateStruc or similar structure
     #measurements: List[np.ndarray] = attrs.field(default=list)  # List of measurements
     def plot_pressure(self, model, state_data_iter):
+        # for state_vec in state_data_iter:
+        #     print("state vec ", state_vec)
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in state_data_iter]
         pressure = np.array(pressure)
-        print("PRESSURE ", pressure.shape)
-        #model.plot_pressure(pressure)
+        #print("PRESSURE shape", pressure.shape)
+        model.plot_pressure(pressure, self.times_measurements)
 
     def plot_pressure_ref(self):
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in self.ref_states]
@@ -51,6 +60,13 @@ class KalmanResults:
         sat = pressure # not available yet, need to improve API of the model to support spatial vG parameters, etc.
         output = RichardsSolverOutput(self.times, pressure, sat, None, None, self.data_z)
         plot_richards_output(output, [], self.workdir / "mean_solution.pdf")
+
+    def plot_saturation(self, model):
+        print(len(self.ref_saturation))
+        #pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for saturation in self.ref_saturation]
+        saturation = np.array(self.ref_saturation)
+        print("SATURATION shape", saturation.shape)
+        model.plot_saturation(saturation, self.times_measurements)
 
     def plot_results(self):
         #print("state_loc_measurements ", pred_loc_measurements)
@@ -113,9 +129,8 @@ class KalmanResults:
         for i in range(0, n_times, 2):
             covariance_plot(self.ukf_P[i], self.times[i], self.state_struc, n_evec=5, show=False)
 
-        self._plot_measurements('train_meas')
-        self._plot_measurements('test_meas')
-
+        self._plot_measurements(meas_type="train")
+        self._plot_measurements(meas_type="test")
 
 
     def _plot_heatmap(self, cov_matrix):
@@ -164,15 +179,12 @@ class KalmanResults:
         correlation_matrix = np.clip(correlation_matrix, -1, 1)
 
         # sns.heatmap(cov_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
-        #
         # # Add title and labels
         # axes.set_title('cov_matrix Matrix Heatmap')
         # axes.set_xlabel('Variables')
         # axes.set_ylabel('Variables')
-        #
         # fig.savefig("heatmap.pdf")
         # plt.show()
-        #
         # print("correlation matrix ", correlation_matrix)
 
         sns.heatmap(correlation_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
@@ -205,9 +217,14 @@ class KalmanResults:
         param_dict = {k: v for k, v in states_dict.items() if isinstance(self.state_struc[k], Measure)}
         return param_dict
 
-    def _plot_measurements(self, meas_key):
+    def _plot_measurements(self, meas_type="train"):
         times = np.array(self.times)
-        measurements_data_name = "saturation"
+        #measurements_data_name = "saturation"
+
+        if meas_type == "train":
+            measurements_struc = self.train_measurements_struc
+        else:
+            measurements_struc = self.test_measurements_struc
 
         import matplotlib
         from matplotlib import ticker
@@ -215,48 +232,60 @@ class KalmanResults:
         formatter.set_scientific(True)
         matplotlib.rcParams.update({'font.size': 13})
 
-        #print("n measurements ", n_measurements)
-        if meas_key == 'train_meas':
-            meas_in = trans_state(self.measuremnt_in)
+        # #print("n measurements ", n_measurements)
+        if meas_type == 'train':
+            meas_in_all = measurements_struc.decode(np.array(self.measurement_in).T)
         else:
-            meas_in = None
-        meas_exact = self._decode_meas(self.ref_states).get(meas_key, None)
+            meas_in_all = None
 
-        meas_x = self._decode_meas(self.ukf_x)[meas_key]
-        P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
-        meas_var = self._decode_meas(P_diag)[meas_key]
-        meas_std = np.sqrt(meas_var)
-        n_meas = len(meas_x)
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
-        meas_z = self.state_struc[meas_key].z_pos
-        colors = sns.color_palette("tab10")
-        for i in range(n_meas):
-            col = colors[i % 10]
-            mse_vs_exact = np.sqrt(np.mean((meas_exact[i] - meas_x[i]) ** 2))
-            mse_vs_obs = np.mean((meas_exact[i] - meas_x[i]) ** 2)
-            mean_std = np.mean(meas_std[i])
-            print(f"d=(exact - ukf_est) {i}: std(d) {mse_vs_exact}, std(d)/mean(std_est): {mse_vs_exact / mean_std}")
-            print(f"d=(obs - ukf_est) {i}: std(d) {mse_vs_obs} std(d)/mean(std_est): {mse_vs_exact / mean_std}")
+        meas_exact_all = self.train_measuremnts_exact if meas_type == "train" else self.test_measuremnts_exact
+        ukf_meas_all = self.ukf_train_meas if meas_type == "train" else self.ukf_test_meas
 
+        meas_exact_dict = measurements_struc.decode(meas_exact_all.T)
+        #meas_exact_dict = {k: v for k, v in states_dict.items()}
 
+        meas_x_all = measurements_struc.decode(np.array(ukf_meas_all).T)
 
-            #print("np.sqrt(pred_loc_measurements_variances[:, i]) ",
-            #fig, axes = plt.subplots(1, 1)
-            #axes.scatter(times, pred_loc_measurements[:, i], marker="o", label="predictions")
-            ax.errorbar(times, meas_x[i], c=col, ms=5, yerr=meas_std[i], fmt='o', capsize=5, label=f'obs_est(z={meas_z[i]})')
-            ax.plot(times, meas_exact[i], c=col, linewidth=2, label=f"obs_sim(z={meas_z[i]})")
-            if meas_in is not None:
-                ax.scatter(times, meas_in[i], c=col, s=30, marker='x', label=f"obs(z={meas_z[i]})")
+        measurements_dict = {}
+        for measurement_name, measure_obj in measurements_struc.items():
+            meas_x = meas_x_all[measurement_name] #measurements_struc.decode(self.ukf_train_meas)   #self._decode_meas(self.ukf_x)[meas_key]
+            meas_exact = meas_exact_dict[measurement_name]
+            #P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
+            #meas_var = self._decode_meas(P_diag)[meas_key]
+            #meas_std = np.sqrt(meas_var)
+            n_meas = len(meas_x)
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+            meas_z = measure_obj.z_pos
 
-            if meas_exact is not None:
-                ax.plot(times, meas_exact[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
-            ax.set_xlabel("time[h]")
-            ax.set_ylabel(f"{meas_key} {measurements_data_name}")
-        fig.legend()
-        fig.tight_layout()
-        fig.savefig(self.workdir / f"{meas_key}_{measurements_data_name}_loc.pdf")
-        if self.cfg['show']:
-            plt.show()
+            colors = sns.color_palette("tab10")
+            for i in range(n_meas):
+                col = colors[i % 10]
+                mse_vs_exact = np.sqrt(np.mean((meas_exact[i] - meas_x[i]) ** 2))
+                mse_vs_obs = np.mean((meas_exact[i] - meas_x[i]) ** 2)
+                #mean_std = np.mean(meas_std[i])
+                #print(f"d=(exact - ukf_est) {i}: std(d) {mse_vs_exact}, std(d)/mean(std_est): {mse_vs_exact / mean_std}")
+                #print(f"d=(obs - ukf_est) {i}: std(d) {mse_vs_obs} std(d)/mean(std_est): {mse_vs_exact / mean_std}")
+
+                #print("np.sqrt(pred_loc_measurements_variances[:, i]) ",
+                #fig, axes = plt.subplots(1, 1)
+                #axes.scatter(times, pred_loc_measurements[:, i], marker="o", label="predictions")
+                #ax.errorbar(times, meas_x[i], c=col, ms=5, yerr=meas_std[i], fmt='o', capsize=5, label=f'obs_est(z={meas_z[i]})')
+                if meas_exact is not None:
+                    ax.scatter(times, meas_exact[i], c=col, s=30, marker='o', label=f"obs(z={meas_z[i]})")
+
+                #ax.plot(times, meas_exact[i], c=col, linewidth=2, label=f"obs_sim(z={meas_z[i]})")
+                if meas_in_all is not None and measurement_name in meas_in_all:
+                    meas_in = meas_in_all[measurement_name]
+                    ax.scatter(times, meas_in[i], c=col, s=30, marker='x', label=f"noisy obs(z={meas_z[i]})")
+
+                ax.plot(times, meas_x[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
+                ax.set_xlabel("time[h]")
+                ax.set_ylabel(f"{meas_type} {measurement_name}")
+            fig.legend()
+            fig.tight_layout()
+            fig.savefig(self.workdir / f"{meas_type}_{measurement_name}_loc.pdf")
+            if self.cfg['show']:
+                plt.show()
 
     def _decode_params(self, state_array_list):
         state_array = np.array(state_array_list).T
@@ -279,22 +308,26 @@ class KalmanResults:
         #print("model dynamic params ", model_dynamic_params)
 
         n_params = len(x_params)
-        fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
-        for ax, k in zip(axes, x_params.keys()):
-            #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-            ax.plot(self.times, ref_params[k], label=f"{k}_exact")
-            #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
-            #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
-            #print("variances[:, idx] ", variances[:, idx])
-            ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+        if n_params > 0:
+            if n_params == 1:
+                n_params += 1
+            fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
-            #axes.set_xlabel("param_name")
-            ax.set_ylabel(k)
-        fig.legend()
-        fig.savefig(self.workdir / f"model_param_{k}.pdf")
-        if self.cfg['show']:
-            plt.show()
+            for ax, k in zip(axes, x_params.keys()):
+                #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
+                ax.plot(self.times, ref_params[k], label=f"{k}_exact")
+                #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
+                #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
+                #print("variances[:, idx] ", variances[:, idx])
+                ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+
+                #axes.set_xlabel("param_name")
+                ax.set_ylabel(k)
+            fig.legend()
+            fig.savefig(self.workdir / f"model_param_{k}.pdf")
+            if self.cfg['show']:
+                plt.show()
 
 
 
