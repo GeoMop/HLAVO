@@ -245,6 +245,7 @@ class KalmanFilter:
         else:
             parflow_working_dir = os.path.join(self.model._workdir, "parflow_working_dir_{}_{}".format(pid, timestamp))
         os.makedirs(parflow_working_dir)
+        #print("state vec ", state_vec)
         state = self.state_struc.decode_state(state_vec)
         pressure_data = state["pressure_field"]
         flux_eps_std = None
@@ -254,7 +255,7 @@ class KalmanFilter:
 
         iter_duration = float(iter_duration)
 
-        print("state ", state)
+        #print("state ", state)
 
         self.model.run(init_pressure=pressure_data, precipitation_value=precipitation_flux,
                        state_params=state, start_time=0, stop_time=iter_duration, time_step=self.kalman_config["model_time_step"], working_dir=parflow_working_dir)
@@ -283,6 +284,22 @@ class KalmanFilter:
     @staticmethod
     def get_sigma_points_obj(sigma_points_params, num_state_params):
         return MerweScaledSigmaPoints(n=num_state_params, sqrt_method=sqrt_func, **sigma_points_params, )
+
+    def add_noise_to_init_state(self, init_state, init_pressure_data):
+        for key in self.state_struc.keys():
+            if key in init_state:
+                if key == "pressure_field":
+                    init_state["pressure_field"] = add_noise(np.squeeze(init_pressure_data),
+                                                             noise_level=self.kalman_config["pressure_saturation_data_noise_level"],
+                                                             distr_type=self.kalman_config["noise_distr_type"])
+                else:
+                    print(self.state_struc[key])
+                    noisy_param_value = self.state_struc[key].transform_from_gauss(add_noise(np.array([self.state_struc[key].transform_to_gauss(init_state[key])]),
+                                                             noise_level=self.state_struc[key].std,
+                                                             distr_type=self.kalman_config["noise_distr_type"]))
+                    init_state[key] = noisy_param_value[0]
+        return init_state
+
 
     def set_kalman_filter(self,  measurement_noise_covariance):
         num_state_params = self.state_struc.size()
@@ -321,14 +338,28 @@ class KalmanFilter:
 
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
+        #print("init mean ", init_mean)
+
         init_state = self.state_struc.decode_state(init_mean)
-        init_state["pressure_field"] = add_noise(np.squeeze(data_pressure),
-                                            noise_level=self.kalman_config["pressure_saturation_data_noise_level"],
-                                            distr_type=self.kalman_config["noise_distr_type"])
+
+        #print("init state (no normal distr) ", init_state)
+
+        init_state = self.add_noise_to_init_state(init_state, data_pressure)
+
+        #print("noisy init state (no normal distr) ", init_state)
 
         # JB TODO: use init_mean, implement random choice of ref using init distr
         ukf.x = self.state_struc.encode_state(init_state) #initial_state_data #(state.data[int(0.3/0.05)], state.data[int(0.6/0.05)])#state  # Initial state vector
-        ukf.P = init_cov  # Initial state covariance matrix
+
+        #print("ukf.x (normal distr) ", ukf.x)
+
+        init_cov_multiplicator = self.kalman_config["init_cov_P_multiplicator"] if "init_cov_P_multiplicator" in self.kalman_config else 1
+
+        # print("init_cov_multiplicator ", init_cov_multiplicator)
+        # print("init cov ", init_cov)
+
+        ukf.P = init_cov * init_cov_multiplicator  # Initial state covariance matrix
+
         print("init cov ", init_cov)
         print("np.diag(init_cov) ", np.diag(init_cov))
 

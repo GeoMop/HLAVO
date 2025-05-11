@@ -1,5 +1,6 @@
 from typing import Any, Dict, Tuple, Union, List, Callable
 import attrs
+from scipy import special
 from scipy import stats
 import numpy as np
 from scipy import linalg
@@ -77,6 +78,12 @@ def build_linear_interpolator_matrix(node_z, obs_z):
     return M
 
 
+def log_minus_one_to_gauss(value):
+    return np.log(value - 1)
+
+def log_minus_one_from_gauss(value):
+    return 1 + np.exp(value)
+
 
 #############################
 # Transforms
@@ -85,7 +92,9 @@ OneWayTransform = Callable[[np.ndarray], np.ndarray]
 TwoWayTransform = Tuple[OneWayTransform, OneWayTransform]
 transforms = dict(
     lognormal = (np.log, np.exp),   # to gauss, from gauss
-    identity = (np.array, np.array)
+    identity = (np.array, np.array),
+    log_minus_one = (log_minus_one_to_gauss, log_minus_one_from_gauss),
+    logit = (special.logit, special.expit)
 )
 #############################
 # Variable Classes
@@ -121,7 +130,10 @@ class GVar:
             z = stats.norm.ppf(1.0 - (1.0 - p) / 2.0)  # z-score for the confidence level
             std = (u - l) / (2.0 * z)
         transform = transforms[data.get('transform', 'identity')]
+        print("mean ", mean)
         data_Q = (data['rel_std_Q'] * mean) ** 2
+        print("data Q ", data_Q)
+
         return cls(mean, std, data_Q, data['ref'], transform)
 
     def size(self) -> int:

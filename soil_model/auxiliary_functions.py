@@ -122,7 +122,7 @@ def add_noise(data_array, noise_level=0.1, distr_type="uniform", seed=12345):
             data_array = data_array + noise
 
         elif distr_type == "gaussian":
-            orig_value_sign = np.sign(data_array)
+            #orig_value_sign = np.sign(data_array)
 
             # print("noise level ", noise_level)
             # print("type noise level ", type(noise_level))
