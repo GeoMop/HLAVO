@@ -1,5 +1,6 @@
 import attrs
 import numpy as np
+from scipy.stats import norm
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -293,17 +294,24 @@ class KalmanResults:
         param_dict = {k:v for k, v in states_dict.items() if isinstance(self.state_struc[k], GVar)}
         return param_dict
 
-    def _plot_model_params(self):
-        import matplotlib
-        from matplotlib import ticker
-        formatter = ticker.ScalarFormatter(useMathText=True)
-        formatter.set_scientific(True)
-        matplotlib.rcParams.update({'font.size': 13})
+    def _plot_model_params_quantiles(self, ref_params, x_params, var_params):
+        median_values = {}
+        q05_values = {}
+        q95_values = {}
 
-        ref_params = self._decode_params(self.ref_states)
-        x_params = self._decode_params(self.ukf_x)
-        P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
-        var_params = self._decode_params(P_diag)
+        for var_key, values in x_params.items():
+            encoded_values = self.state_struc[var_key].encode(values)
+            encoded_vars = self.state_struc[var_key].encode(var_params[var_key])
+
+            #q05, median, q95 = norm.ppf([0.05, 0.5, 0.95], loc=encoded_values, scale=encoded_vars)
+            median = norm.ppf(0.5, loc=encoded_values, scale=encoded_vars)
+            q05 = norm.ppf(0.05, loc=encoded_values, scale=encoded_vars)
+            q95 = norm.ppf(0.95, loc=encoded_values, scale=encoded_vars)
+
+            median_values[var_key] = self.state_struc[var_key].decode(median)
+            q05_values[var_key] = self.state_struc[var_key].decode(q05)
+            q95_values[var_key] = self.state_struc[var_key].decode(q95)
+
         #model_dynamic_params = KalmanFilter.get_nonzero_std_params(model_config["params"])
         #print("model dynamic params ", model_dynamic_params)
 
@@ -320,14 +328,59 @@ class KalmanResults:
                 #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
                 #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
                 #print("variances[:, idx] ", variances[:, idx])
-                ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+                # Compute asymmetric error bars
+                lower_err = median_values[k] - q05_values[k]
+                upper_err = q95_values[k] - median_values[k]
+
+                ax.errorbar(self.times, median_values[k], yerr=[lower_err, upper_err], fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
 
                 #axes.set_xlabel("param_name")
                 ax.set_ylabel(k)
             fig.legend()
-            fig.savefig(self.workdir / f"model_param_{k}.pdf")
+            fig.savefig(self.workdir / f"model_param_{k}_q_err.pdf")
             if self.cfg['show']:
                 plt.show()
+
+
+    def _plot_model_params(self):
+        import matplotlib
+        from matplotlib import ticker
+        formatter = ticker.ScalarFormatter(useMathText=True)
+        formatter.set_scientific(True)
+        matplotlib.rcParams.update({'font.size': 13})
+
+
+        ref_params = self._decode_params(self.ref_states)
+        x_params = self._decode_params(self.ukf_x)
+        P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
+        var_params = self._decode_params(P_diag)
+
+        self._plot_model_params_quantiles(ref_params, x_params, var_params)
+
+        #model_dynamic_params = KalmanFilter.get_nonzero_std_params(model_config["params"])
+        #print("model dynamic params ", model_dynamic_params)
+
+        # n_params = len(x_params)
+        #
+        # if n_params > 0:
+        #     if n_params == 1:
+        #         n_params += 1
+        #     fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
+        #
+        #     for ax, k in zip(axes, x_params.keys()):
+        #         #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
+        #         ax.plot(self.times, ref_params[k], label=f"{k}_exact")
+        #         #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
+        #         #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
+        #         #print("variances[:, idx] ", variances[:, idx])
+        #         ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
+        #
+        #         #axes.set_xlabel("param_name")
+        #         ax.set_ylabel(k)
+        #     fig.legend()
+        #     fig.savefig(self.workdir / f"model_param_{k}.pdf")
+        #     if self.cfg['show']:
+        #         plt.show()
 
 
 
