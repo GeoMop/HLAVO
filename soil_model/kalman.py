@@ -173,6 +173,9 @@ class KalmanFilter:
         # JB TODO: finish GField.ref to simplify the following lines
         state_vec = self.state_struc.encode_state(ref_params)
 
+        # print("ref params ", ref_params)
+        # print("state vec ", state_vec)
+
         total_time = len(self.measurements_config["precipitation_list"])
         meas_model_iter_time = []
         meas_model_iter_flux = []
@@ -189,8 +192,18 @@ class KalmanFilter:
                                            model_n_time_steps_per_iter=model_n_time_steps_per_iteration)
                 self.results.ref_saturation.append(sat_vec)
 
+                #print("ref params ", ref_params)
+
                 train_measurements.append(self.train_measurements_struc.encode(measurement_train))
                 test_measurements.append(self.test_measurements_struc.encode(measurement_test))
+
+                #print("self.train_measurements_struc.z_positions ", self.train_measurements_struc.z_positions())
+
+                calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
+
+                measurement_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc, measurement_train, ref_params["calibration_coeffs"], np.squeeze(calibration_coeffs_z_positions))
+
+                #print("measurement_train mult coeffs ", measurement_train)
 
                 #print("Train measurements")
                 noisy_train_measurements.append(
@@ -277,7 +290,12 @@ class KalmanFilter:
         measurements_train_dict, measurements_test_dict = self.state_measurements[tuple(state_vec)]
 
         if measurements_type == "train":
-            return self.train_measurements_struc.encode(measurements_train_dict)
+            calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
+            measurements_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc,
+                                                                                    measurements_train_dict,
+                                                                                    self.state_struc.decode_state(state_vec)["calibration_coeffs"],
+                                                                                    np.squeeze(calibration_coeffs_z_positions))
+            return self.train_measurements_struc.encode(measurements_train)
         elif measurements_type == "test":
             return self.test_measurements_struc.encode(measurements_test_dict)
 
@@ -286,6 +304,7 @@ class KalmanFilter:
         return MerweScaledSigmaPoints(n=num_state_params, sqrt_method=sqrt_func, **sigma_points_params, )
 
     def add_noise_to_init_state(self, init_state, init_pressure_data):
+
         for key in self.state_struc.keys():
             if key in init_state:
                 if key == "pressure_field":
@@ -293,17 +312,14 @@ class KalmanFilter:
                                                              noise_level=self.kalman_config["pressure_saturation_data_noise_level"],
                                                              distr_type=self.kalman_config["noise_distr_type"])
                 else:
-                    print(self.state_struc[key])
                     noisy_param_value = self.state_struc[key].transform_from_gauss(add_noise(np.array([self.state_struc[key].transform_to_gauss(init_state[key])]),
                                                              noise_level=self.state_struc[key].std,
                                                              distr_type=self.kalman_config["noise_distr_type"]))
-                    init_state[key] = noisy_param_value[0]
+                    init_state[key] = np.squeeze(noisy_param_value)
         return init_state
-
 
     def set_kalman_filter(self,  measurement_noise_covariance):
         num_state_params = self.state_struc.size()
-        print("num state params ", num_state_params)
         dim_z = measurement_noise_covariance.shape[0]   # Number of measurement inputs
 
         sigma_points_params = self.kalman_config["sigma_points_params"]
@@ -341,17 +357,9 @@ class KalmanFilter:
         #print("init mean ", init_mean)
 
         init_state = self.state_struc.decode_state(init_mean)
-
-        #print("init state (no normal distr) ", init_state)
-
         init_state = self.add_noise_to_init_state(init_state, data_pressure)
-
-        #print("noisy init state (no normal distr) ", init_state)
-
         # JB TODO: use init_mean, implement random choice of ref using init distr
         ukf.x = self.state_struc.encode_state(init_state) #initial_state_data #(state.data[int(0.3/0.05)], state.data[int(0.6/0.05)])#state  # Initial state vector
-
-        #print("ukf.x (normal distr) ", ukf.x)
 
         init_cov_multiplicator = self.kalman_config["init_cov_P_multiplicator"] if "init_cov_P_multiplicator" in self.kalman_config else 1
 
@@ -360,7 +368,7 @@ class KalmanFilter:
 
         ukf.P = init_cov * init_cov_multiplicator  # Initial state covariance matrix
 
-        print("init cov ", init_cov)
+        print("init cov ", init_cov.shape)
         print("np.diag(init_cov) ", np.diag(init_cov))
 
         return ukf

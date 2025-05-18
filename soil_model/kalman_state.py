@@ -112,6 +112,7 @@ class GVar:
     std: float
     Q: float
     ref: None
+    z_pos: None
     transform: TwoWayTransform = transforms['identity']
 
     @classmethod
@@ -134,7 +135,10 @@ class GVar:
         data_Q = (data['rel_std_Q'] * mean) ** 2
         print("data Q ", data_Q)
 
-        return cls(mean, std, data_Q, data['ref'], transform)
+        z_pos = data.get("z_pos", None)
+
+        # Optional z_pos
+        return cls(mean=mean, std=std, Q=data_Q, ref=data['ref'], z_pos=z_pos, transform=transform)
 
     def size(self) -> int:
         return 1
@@ -189,7 +193,6 @@ class GField:
     """
     Gaussian correlation field (1D).
     """
-
     mean: MeanField
     cov: CovField
     ref: None
@@ -346,6 +349,8 @@ class StateStructure(dict):
             return GField
         elif key.endswith('_meas'):
             return Measure
+        elif key.endswith('calibration_coeffs'):
+            return CalibrationCoeffs
         else:
             return GVar
 
@@ -354,6 +359,29 @@ class StateStructure(dict):
             key: self._resolve_var_class(key).from_dict(n_nodes, val)
             for key, val in var_cfg.items()
         })
+
+    def from_dict(cls, n_nodes, data: Dict[str, Any]) -> 'KalmanVar':
+        if 'mean_std' in data:
+            mean, std = data['mean_std']
+        elif 'conf_int' in data:
+            conf_int: List[float] = data['conf_int']
+            if len(conf_int) == 2:
+                conf_int.append(0.95)   # Default confidence level (95%)
+            l, u, p = conf_int
+
+            # Compute the mean as the midpoint of the interval
+            mean = (l + u) / 2.0
+            # Compute the standard deviation from the confidence interval
+            z = stats.norm.ppf(1.0 - (1.0 - p) / 2.0)  # z-score for the confidence level
+            std = (u - l) / (2.0 * z)
+        transform = transforms[data.get('transform', 'identity')]
+        print("mean ", mean)
+        data_Q = (data['rel_std_Q'] * mean) ** 2
+        print("data Q ", data_Q)
+
+        # Optional z_pos
+        z_pos = data.get('z_pos', None)
+        return cls(mean=mean, std=std, Q=data_Q, ref=data['ref'], z_pos=z_pos, transform=transform)
 
     def size(self):
         return sum(var.size() for var in self.values())
@@ -369,6 +397,7 @@ class StateStructure(dict):
         mean_list, cov_list = zip(*(var.init_state(el_centers_z) for var in self.values()))
         mean = np.concatenate(mean_list)
         cov = linalg.block_diag(*cov_list)
+
         return mean, cov
 
     def encode_state(self, value_dict: Dict[str, Any]) -> np.ndarray:
@@ -388,6 +417,10 @@ class StateStructure(dict):
         }
         return state_dict
 
+    def get_calibration_coeffs_z_positions(self):
+        calibration_coeffs = self.get("calibration_coeffs", [])
+        return [calib_coeff.z_pos for calib_coeff in calibration_coeffs.GVar_coeffs]
+
 
 class MeasurementsStructure(dict):
     def __init__(self, nodes_z, var_cfg: Dict[str, Dict[str, Any]]):
@@ -404,9 +437,26 @@ class MeasurementsStructure(dict):
     def size(self):
         return sum(var.size() for var in self.values())
 
+    def z_positions(self, meas_key):
+        return [var.z_pos for key, var in self.items() if meas_key == key]
+
     def encode(self, value_dict: Dict[str, Any], noisy=False) -> np.ndarray:
         components = [var.encode(value_dict[key], noisy) for key, var in self.items()]
         return np.concatenate(components)
+
+    def mult_calibration_coef(self, measurements_struct, measurements: Dict[str, Any], calibration_coefs, calibration_coeffs_z_positions) -> np.ndarray:
+        for key, values in measurements.items():
+            print("measurements_struct.z_positions(meas_key=key) ", measurements_struct.z_positions(meas_key=key))
+            for idx, z_position in enumerate(measurements_struct.z_positions(meas_key=key)[0]):
+                print("z_position ", z_position)
+                print("np.where(calibration_coeffs_z_positions == z_position) ", np.where(calibration_coeffs_z_positions == z_position)[0])
+                callibration_mult_coeff = calibration_coefs[np.squeeze(np.where(calibration_coeffs_z_positions == z_position)[0])]
+                measurements[key][idx] *= callibration_mult_coeff
+
+        print("measurements ", measurements)
+        return measurements
+
+
 
     def decode(self, meas_vector: np.ndarray) -> Dict[str, Any]:
         """
@@ -420,4 +470,71 @@ class MeasurementsStructure(dict):
         }
         return state_dict
 
+@attrs.define
+class CalibrationCoeffs:
+    ref: None
+    GVar_coeffs: None
 
+    @classmethod
+    def from_dict(cls, n_nodes, data: Dict[str, Any]):
+        print("data", data)
+
+        #z_positions = data["z_positions"]
+
+        GVar_coeffs = []
+        ref = []
+        for position_coeff in data:
+            ref.append(position_coeff["ref"])
+            GVar_coeffs.append(GVar.from_dict(n_nodes=n_nodes, data=position_coeff))
+
+        # print("z_positions ", z_positions)
+        # print("GVar_coeffs ", GVar_coeffs)
+
+        return cls(ref=ref, GVar_coeffs=GVar_coeffs)
+
+    def size(self):
+        return sum(var.size() for var in self.GVar_coeffs)
+
+    @property
+    def Q_full(self) -> np.ndarray:
+        return np.diag([var.Q for var in self.GVar_coeffs])
+
+    @property
+    def mean(self) -> np.ndarray:
+        return np.array([var.mean for var in self.GVar_coeffs])
+
+    @property
+    def std(self) -> np.ndarray:
+        return np.array([var.std for var in self.GVar_coeffs])
+
+    def init_state(self, nodes_z):
+        return np.array([var.mean for var in self.GVar_coeffs]), np.diag(np.array([[var.std**2 for var in self.GVar_coeffs]]).flatten())
+
+    def encode(self, values) -> np.ndarray:
+        print("encode values ", values)
+        print("self.GVar_coeffs ", self.GVar_coeffs)
+        components = [var.encode(values[idx]) for idx, var in enumerate(self.GVar_coeffs)]
+        print("components ", components)
+        return np.concatenate(components)
+
+    def decode(self, values: np.ndarray) -> np.ndarray:
+        print("values ", values)
+        return [var.decode([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)]
+
+    @property
+    def transform_from_gauss(self):
+        def transform_from_gauss_coeffs(values):
+            print("values ", values)
+            values = np.squeeze(values)
+            print("from gauss: [var.transform_from_gauss([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)] ", np.squeeze([var.transform_from_gauss([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)]))
+            return np.squeeze([var.transform_from_gauss([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)])
+        return transform_from_gauss_coeffs
+
+    @property
+    def transform_to_gauss(self):
+        def transform_to_gauss_coeffs(values):
+            print("values ", values)
+            print("to gauss: ", np.squeeze([var.transform_to_gauss([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)]))
+            return np.squeeze([var.transform_to_gauss([values[idx]]) for idx, var in enumerate(self.GVar_coeffs)])
+
+        return transform_to_gauss_coeffs

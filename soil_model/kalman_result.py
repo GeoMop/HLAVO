@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from typing import List, Dict, Any
-from kalman_state import StateStructure, GVar, Measure, MeasurementsStructure
+from kalman_state import StateStructure, GVar, Measure, MeasurementsStructure, CalibrationCoeffs
 from plots import plot_richards_output, RichardsSolverOutput, covariance_plot
 
 
@@ -133,7 +133,6 @@ class KalmanResults:
         self._plot_measurements(meas_type="train")
         self._plot_measurements(meas_type="test")
 
-
     def _plot_heatmap(self, cov_matrix):
         # Generate a heatmap using seaborn
         fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 10))
@@ -220,7 +219,6 @@ class KalmanResults:
 
     def _plot_measurements(self, meas_type="train"):
         times = np.array(self.times)
-        #measurements_data_name = "saturation"
 
         if meas_type == "train":
             measurements_struc = self.train_measurements_struc
@@ -291,8 +289,51 @@ class KalmanResults:
     def _decode_params(self, state_array_list):
         state_array = np.array(state_array_list).T
         states_dict = self.state_struc.decode_state(state_array)
-        param_dict = {k:v for k, v in states_dict.items() if isinstance(self.state_struc[k], GVar)}
+        param_dict = {k:v for k, v in states_dict.items() if isinstance(self.state_struc[k], (GVar, CalibrationCoeffs))}
         return param_dict
+
+    def plot_calibration_coeffs(self, ref_values, values, vars):
+        calibration_coeffs_z_positions = np.array(self.state_struc.get_calibration_coeffs_z_positions())
+        fig, axes = plt.subplots(nrows=len(calibration_coeffs_z_positions), ncols=1, figsize=(10, 5))
+
+        for ax, z_position in zip(axes, calibration_coeffs_z_positions):
+            index = np.squeeze(np.where(calibration_coeffs_z_positions == z_position)[0])
+            callibration_mult_coeff = values[index]
+            calib_ref_value = ref_values[index]
+            calib_var = vars[index]
+
+            GVar_instance = self.state_struc.get("calibration_coeffs").GVar_coeffs[index]
+
+            encoded_values = GVar_instance.encode(callibration_mult_coeff)
+            encoded_vars = GVar_instance.encode(calib_var)
+
+            median = norm.ppf(0.5, loc=encoded_values, scale=encoded_vars)
+            q05 = norm.ppf(0.05, loc=encoded_values, scale=encoded_vars)
+            q95 = norm.ppf(0.95, loc=encoded_values, scale=encoded_vars)
+
+            median_values = GVar_instance.decode(median)
+            q05_values = GVar_instance.decode(q05)
+            q95_values = GVar_instance.decode(q95)
+
+            # print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
+            ax.plot(self.times, calib_ref_value, label="exact_pos: {}".format(z_position))
+            # ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
+            # axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
+            # print("variances[:, idx] ", variances[:, idx])
+            # Compute asymmetric error bars
+            lower_err = median_values - q05_values
+            upper_err = q95_values - median_values
+
+            ax.errorbar(self.times, median_values, yerr=[lower_err, upper_err], fmt='o', capsize=5,
+                        label="calibration_coeff, pos: {}".format(z_position))  # label='Data with variance')
+
+            # axes.set_xlabel("param_name")
+            ax.set_ylabel("pos: {}".format(z_position))
+        fig.legend()
+        fig.savefig(self.workdir / f"calibration_coeffs.pdf")
+        if self.cfg['show']:
+            plt.show()
+
 
     def _plot_model_params_quantiles(self, ref_params, x_params, var_params):
         median_values = {}
@@ -311,9 +352,6 @@ class KalmanResults:
             median_values[var_key] = self.state_struc[var_key].decode(median)
             q05_values[var_key] = self.state_struc[var_key].decode(q05)
             q95_values[var_key] = self.state_struc[var_key].decode(q95)
-
-        #model_dynamic_params = KalmanFilter.get_nonzero_std_params(model_config["params"])
-        #print("model dynamic params ", model_dynamic_params)
 
         n_params = len(x_params)
 
@@ -341,7 +379,6 @@ class KalmanResults:
             if self.cfg['show']:
                 plt.show()
 
-
     def _plot_model_params(self):
         import matplotlib
         from matplotlib import ticker
@@ -354,6 +391,14 @@ class KalmanResults:
         x_params = self._decode_params(self.ukf_x)
         P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
         var_params = self._decode_params(P_diag)
+
+        if "calibration_coeffs" in ref_params:
+            self.plot_calibration_coeffs(ref_params["calibration_coeffs"], x_params["calibration_coeffs"], var_params["calibration_coeffs"])
+            del ref_params["calibration_coeffs"]
+            del x_params["calibration_coeffs"]
+            del var_params["calibration_coeffs"]
+
+
 
         self._plot_model_params_quantiles(ref_params, x_params, var_params)
 
