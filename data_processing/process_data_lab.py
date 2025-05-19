@@ -2,6 +2,7 @@ import os
 import glob
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 from process_data import create_output_dir, read_data, read_odyssey_data, setup_plt_fontsizes, select_time_interval, \
     plot_columns, add_start_of_days, set_date_time_axis
@@ -50,13 +51,16 @@ def merge_teros31_data(teros31_data, atm_data):
     # add atmospheric data for pressure
     teros31_merged = pd.merge_asof(teros31_merged, atm_data, on='DateTime', direction='nearest')
 
+    teros31_merged.set_index('DateTime', inplace=True)
+    return teros31_merged
+
+
+def teros31_pressure_diff(df):
     # substract atmospheric pressure
     teros_ids = ['A', 'B', 'C']
     for tid in teros_ids:
-        teros31_merged[f'Pressure_{tid}{tid}'] = teros31_merged[f'Pressure_{tid}'] - teros31_merged['Pressure'] / 1000
+        df[f'Pressure_{tid}{tid}'] = df[f'Pressure_{tid}'] - df['Pressure'] / 1000
 
-    teros31_merged.set_index('DateTime', inplace=True)
-    return teros31_merged
 
 def read_atmospheric_data(base_dir):
     filename_pattern = os.path.join(base_dir, '**', 'atmospheric', '*.csv')
@@ -69,24 +73,6 @@ def read_flow_data(base_dir):
     data = read_data(filename_pattern)
     return data
 
-
-# def read_odyssey_data(filter=False):
-#     pattern = os.path.join(base_dir, 'odyssey_*.csv')
-#     data = read_data(pattern, dt_column='Date/Time', sep=',')
-#     for i in range(5):
-#         selected_column = f"sensor-{i+1} %"
-#         new_col_name = f"odyssey_{i}"
-#         data[selected_column] = data[selected_column]/100
-#         data.rename(columns={selected_column: new_col_name}, inplace=True)
-#     # FILTERING
-#     if filter:
-#         for i in range(0, 6):
-#             selected_column = f"odyssey_{i}"
-#             # pr2_a0_data_filtered = pr2_a0_data_filtered[(pr2_a0_data_filtered[selected_column] != 0)]
-#             # Filter rows where a selected column is between 0 and 1
-#             data = data[(data[selected_column] > 0.01) & (data[selected_column] <= 100)]
-#
-#     return data
 
 # Plot some columns using matplotlib
 def plot_atm_data(ax, df, title):
@@ -106,8 +92,6 @@ def plot_atm_data(ax, df, title):
 
     ax.set_title(title)
     # ax.legend()
-
-    df.to_csv(os.path.join(output_folder, 'atm_data_filtered.csv'), index=True)
 
 # Plot some columns using matplotlib
 def plot_pr2_data(ax, df, title):
@@ -133,8 +117,6 @@ def plot_pr2_data(ax, df, title):
     ax.set_title(title)
     ax.legend()
 
-    filtered_df.to_csv(os.path.join(output_folder, 'pr2_data_filtered.csv'), index=True)
-
     # cl_name = 'Humidity'
     # hum_df = interval_df[interval_df[cl_name]>0].dropna(subset=cl_name)
     # ax2 = ax.twinx()
@@ -152,7 +134,7 @@ def plot_teros31_data(ax, df, title, diff=True):
     else:
         columns = [f"{cl_name}_{i}" for i in ['A', 'B', 'C']]
 
-    col_labels = [f"Teros31 {i} - {j} cm" for i,j in zip(['A', 'B', 'C'],['10', '30', '100'])]
+    col_labels = [f"Teros31 {i} - {j} cm" for i,j in zip(['A', 'B', 'C'],['10', '40', '100'])]
 
     # filtered_df = interval_df.dropna(subset=columns)
     filtered_df = df[(df != 0).all(axis=1)]
@@ -180,7 +162,7 @@ def plot_teros31_data(ax, df, title, diff=True):
     ax.set_title(title)
     ax.legend()
 
-    filtered_df.to_csv(os.path.join(output_folder, 'teros31_data_filtered.csv'), index=True)
+    # filtered_df.to_csv(os.path.join(output_folder, 'teros31_data_filtered.csv'), index=True)
 
 
 # Plot some columns using matplotlib
@@ -202,17 +184,118 @@ def plot_odyssey(ax, df):
     ax.set_ylabel('Soil Moisture $\mathregular{[m^3\cdot m^{-3}]}$')
     ax.legend()
 
-if __name__ == '__main__':
+
+def process_flow_data(base_dir, output_dir, time_interval):
+    flow_data = select_time_interval(read_flow_data(base_dir), **time_interval)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plot_height_data(ax, flow_data, 'Water Height Over Time', output_dir)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'height_data.pdf'), format='pdf')
+
+    flow_data_resampled = flow_data.resample('10min').mean()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plot_columns(ax, flow_data_resampled, ['Flux'])
+    ax.axhline(0, color='grey', linestyle='-', linewidth=0.5)
+    ax.set_ylim([-0.1, 0.05])
+    ax.set_title('Water Flux Over Time')
+    fig.savefig(os.path.join(output_dir, 'flux_data.pdf'), format='pdf')
+
+
+def read_all_data(base_dir):
+
+    atm_data = read_atmospheric_data(base_dir)
+    pr2_data = read_pr2_data(base_dir)
+    teros31_data = read_teros31_data(base_dir)
+    ods_data = read_odyssey_data(base_dir, filter=False, ids=[36])[0]
+
+    # SHIFT UTC time to CEST (in Lab)
+    # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
+    ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
+
+    return [atm_data, pr2_data, *teros31_data, ods_data]
+
+
+def merge_all_dfs(dfs):
+
+    # Start from the first DataFrame
+    merged_df = dfs[0]
+    for df in dfs[1:]:
+        if df is not None:
+            merged_df = pd.merge_asof(merged_df, df,
+                                      on='DateTime',
+                                      tolerance=pd.Timedelta('3min'),
+                                      direction='nearest')
+
+    merged_df.set_index('DateTime', inplace=True)
+    teros31_pressure_diff(merged_df)
+    return merged_df
+
+
+def main():
+    setup_plt_fontsizes()
+    base_dir, output_dir, time_interval = select_inputs()
+    odyssey = True
+
+    # all_dfs = [atm_data, pr2_data, *teros31_data, odyssey_data]
+    all_dfs = read_all_data(base_dir)
+    merged_all = merge_all_dfs(all_dfs)
+    data = select_time_interval(merged_all, **time_interval)
+    # data.to_parquet("hlavo_lab_merged_data_2025_03-05.parquet")
+    data.to_csv("hlavo_lab_merged_data_2025_03-05.csv")
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plot_atm_data(ax, data, "Atmospheric data")
+    fig.legend(loc="upper left", bbox_to_anchor=(0.01, 1), bbox_transform=ax.transAxes)
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'atm_data.pdf'), format='pdf')
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plot_odyssey(ax, data)
+    plot_pr2_data(ax, data, "PR2 vs Odyssey")
+    legend = ax.get_legend()
+    legend.set_bbox_to_anchor((1, 1))  # Move legend to top-right outside plot
+    legend.set_loc('upper left')  # Anchor inside the box
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'pr2_vs_odyssey.pdf'), format='pdf')
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plot_pr2_data(ax, data, "Humidity vs Soil Moisture")
+    ax.set_title('PR2 - Soil Moisture Mineral')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'pr2_data.pdf'), format='pdf')
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plot_teros31_data(ax, data, "Teros 31", diff=False)
+    ax.set_title('Teros31 - Total Potential')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'teros31_data_abs.pdf'), format='pdf')
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plot_teros31_data(ax, data, "Teros 31", diff=True)
+    ax.set_title('Teros31 - Matric Potential')
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'teros31_data_diff.pdf'), format='pdf')
+
+    if odyssey:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        # plot_columns(ax, odyssey_data, columns=[f"odyssey_{i}" for i in range(4)], ylabel="", startofdays=True)
+        plot_odyssey(ax, data)
+        fig.savefig(os.path.join(output_dir, "odyssey_data.pdf"), format='pdf')
+        # data.to_csv(os.path.join(output_dir, 'odyssey_data_filtered.csv'), index=True)
+
+    process_flow_data(base_dir, output_dir, time_interval)
+
+
+def select_inputs():
     # Define the directory structure
     hlavo_data_dir = '../../hlavo_data'
-    base_dir = os.path.join(hlavo_data_dir, 'data_lab/data_lab_04')
+    base_dir = os.path.join(hlavo_data_dir, 'data_lab/data_lab_09')
     # Define the output folder
-    output_folder = create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', "lab_results_04"))
+    output_folder = create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', "lab_results_09"))
 
-    odyssey = True
-    # odyssey = False
-
-    setup_plt_fontsizes()
+    # Odyssey is in UTC time
+    # Lab is in CEST (Central European Summer Time) = UTC+2
 
     # odyssey
     # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2024-12-14T11:59:59'}
@@ -228,85 +311,20 @@ if __name__ == '__main__':
     # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2025-01-20T23:59:59'}
 
     # full saturation experiment 1
-    time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2025-02-04T23:59:59'}
+    # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2025-02-04T23:59:59'}
+    # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2024-12-20T23:59:59'}
 
-    flow_data = select_time_interval(read_flow_data(base_dir), **time_interval)
-    atm_data = select_time_interval(read_atmospheric_data(base_dir), **time_interval)
-    pr2_data = select_time_interval(read_pr2_data(base_dir), **time_interval)
+    # full saturation experiment 2
+    # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2025-02-04T23:59:59'}
+    # time_interval = {'start_date': '2025-03-12T12:30:00', 'end_date': '2025-03-26T11:00:00'}
+    # time_interval = {'start_date': '2025-03-26T11:00:00', 'end_date': '2025-05-15T12:00:00'}
+    # time_interval = {'start_date': '2025-05-10T11:00:00', 'end_date': '2025-05-15T12:00:00'}
 
-    teros31_data = read_teros31_data(base_dir)
-    teros31_merged = merge_teros31_data(teros31_data, atm_data)
-    teros31_merged = select_time_interval(teros31_merged, **time_interval)
-
-    # Resample the data to get samples at every 5 minutes
-    # meteo_data_resampled = meteo_data.resample('5min').first()
-    # flow_data_resampled = flow_data.resample('1min').mean()
-    # flow_data_resampled = flow_data
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    plot_height_data(ax, flow_data, 'Water Height Over Time')
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_folder, 'height_data.pdf'), format='pdf')
-
-    flow_data_resampled = flow_data.resample('10min').mean()
-    fig, ax = plt.subplots(figsize=(10, 6))
-    plot_columns(ax, flow_data_resampled, ['Flux'])
-    ax.axhline(0, color='grey', linestyle='-', linewidth=0.5)
-    ax.set_ylim([-0.1,0.05])
-    ax.set_title('Water Flux Over Time')
-    fig.savefig(os.path.join(output_folder, 'flux_data.pdf'), format='pdf')
-
-    fig, ax = plt.subplots(figsize=(10, 7))
-    plot_atm_data(ax, atm_data, "Atmospheric data")
-    fig.legend(loc="upper left", bbox_to_anchor=(0.01, 1), bbox_transform=ax.transAxes)
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_folder, 'atm_data.pdf'), format='pdf')
-
-    # plot_columns(ax, pr2_a0_data_filtered, ['SoilMoistMin_0', 'SoilMoistMin_5'], 'Soil Moisture Mineral')
-    # plot_columns(ax, all_data, ['SoilMoistMin_0', 'SoilMoistMin_5'], 'Soil Moisture Mineral')
-    # plot_pr2_data(ax, data_merged, "Rain vs Soil Moisture", **merging_dates)
-
-    if odyssey:
-        odyssey_data = read_odyssey_data(base_dir, filter=False, ids=[5])[0]
-        # skip all data outside [0,1]
-        # columns_to_check = [f"odyssey_{i}" for i in range(5)]  # List of columns to check
-        columns_to_check = [f"odyssey_{i}" for i in range(4)]  # List of columns to check
-        condition = (odyssey_data[columns_to_check] >= 0).all(axis=1) & (odyssey_data[columns_to_check] <= 1).all(axis=1)
-        odyssey_data = odyssey_data.loc[condition]
-        # odyssey_data = select_time_interval(odyssey_data[0], start_date='2024-10-01T00:00:00', end_date='2024-10-31T23:00:00')
-        odyssey_data = select_time_interval(odyssey_data, **time_interval)
+    # full saturation experiment 3
+    time_interval = {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-19T10:00:00'}
+    return base_dir, output_folder, time_interval
 
 
-
-    data_merged = pd.merge(atm_data, pr2_data, how='outer', left_index=True, right_index=True, sort=True)
-
-    # merging_dates = {'start_date': '2024-07-05', 'end_date': '2024-07-15'}
-
-    fig, ax = plt.subplots(figsize=(10, 7))
-    plot_pr2_data(ax, pr2_data, "Humidity vs Soil Moisture")
-    ax.set_title('PR2 - Soil Moisture Mineral')
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_folder, 'pr2_data.pdf'), format='pdf')
-
-    # plt.show()
-
-    fig, ax = plt.subplots(figsize=(10, 7))
-    plot_teros31_data(ax, teros31_merged, "Teros 31", diff=False)
-    ax.set_title('Teros31 - Total Potential')
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_folder, 'teros31_data_abs.pdf'), format='pdf')
-
-    fig, ax = plt.subplots(figsize=(10, 7))
-    plot_teros31_data(ax, teros31_merged, "Teros 31", diff=True)
-    ax.set_title('Teros31 - Matric Potential')
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_folder, 'teros31_data_diff.pdf'), format='pdf')
-
-    if odyssey:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        # plot_columns(ax, odyssey_data, columns=[f"odyssey_{i}" for i in range(4)], ylabel="", startofdays=True)
-        plot_odyssey(ax, odyssey_data)
-        fig.savefig(os.path.join(output_folder, "odyssey_data.pdf"), format='pdf')
-        odyssey_data.to_csv(os.path.join(output_folder, 'odyssey_data_filtered.csv'), index=True)
-
+if __name__ == '__main__':
+    main()
     # plt.show()
