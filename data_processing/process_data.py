@@ -35,9 +35,9 @@ def add_start_of_days(df, ax):
     if time_span <= pd.Timedelta(days=6):
         # Generate timestamps every 4 hours
         if time_span <= pd.Timedelta(days=3):
-            time_ticks = df.resample('2H').mean().index
+            time_ticks = df.resample('2h').mean().index
         else:
-            time_ticks = df.resample('4H').mean().index
+            time_ticks = df.resample('4h').mean().index
         # Plot vertical lines
         for t in time_ticks:
             ax.axvline(t, color='lightgrey', linestyle='--', linewidth=0.5)

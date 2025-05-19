@@ -171,10 +171,10 @@ def plot_height_data(ax, df, title):
     ax.set_title(title)
 
 def plot_odyssey(ax, df):
-    # columns = [f"odyssey_{i}" for i in range(5)]
-    # col_labels = [f"Odyssey - {i} cm" for i in [10, 20, 40, 60, 100]]
-    columns = [f"odyssey_{i}" for i in range(4)]
-    col_labels = [f"Odyssey - {i} cm" for i in [10, 20, 40, 60]]
+    columns = [f"odyssey_{i}" for i in range(5)]
+    col_labels = [f"Odyssey - {i} cm" for i in [10, 20, 40, 60, 100]]
+    # columns = [f"odyssey_{i}" for i in range(4)]
+    # col_labels = [f"Odyssey - {i} cm" for i in [10, 20, 40, 60]]
     for column, clb in zip(columns, col_labels):
         ax.plot(df.index, df[column], label=clb)
 
