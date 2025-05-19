@@ -30,6 +30,18 @@ def select_time_interval(df, start_date=None, end_date=None):
     return subset_df
 
 def add_start_of_days(df, ax):
+    # Calculate total time span of the data
+    time_span = df.index.max() - df.index.min()
+    if time_span <= pd.Timedelta(days=6):
+        # Generate timestamps every 4 hours
+        if time_span <= pd.Timedelta(days=3):
+            time_ticks = df.resample('2H').mean().index
+        else:
+            time_ticks = df.resample('4H').mean().index
+        # Plot vertical lines
+        for t in time_ticks:
+            ax.axvline(t, color='lightgrey', linestyle='--', linewidth=0.5)
+
     # Add vertical lines at the start of each day
     start_of_days = df.resample('D').mean().index
     for day in start_of_days:
