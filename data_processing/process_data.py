@@ -154,6 +154,9 @@ def read_odyssey_data(base_dir, filter=False, ids=[]):
     for a in ids:
         pattern = os.path.join(base_dir, 'data_odyssey', '*U' + str(a).zfill(2) + '*.csv')
         data = read_data(pattern, dt_column='dateTime', sep=',')
+        # data.rename(columns={'dateTime': 'DateTime'}, inplace=True)
+        # data.set_index('DateTime', inplace=True)
+        data.index.name = 'DateTime'
         for i in range(5):
             # moisture
             selected_column = f"s{i+1}"
