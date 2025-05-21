@@ -35,15 +35,15 @@ def add_start_of_days(df, ax):
     if time_span <= pd.Timedelta(days=6):
         # Generate timestamps every 4 hours
         if time_span <= pd.Timedelta(days=3):
-            time_ticks = df.resample('2h').mean().index
+            time_ticks = df.select_dtypes(include='number').resample('2h').mean().index
         else:
-            time_ticks = df.resample('4h').mean().index
+            time_ticks = df.select_dtypes(include='number').resample('4h').mean().index
         # Plot vertical lines
         for t in time_ticks:
             ax.axvline(t, color='lightgrey', linestyle='--', linewidth=0.5)
 
     # Add vertical lines at the start of each day
-    start_of_days = df.resample('D').mean().index
+    start_of_days = df.select_dtypes(include='number').resample('D').mean().index
     for day in start_of_days:
         ax.axvline(day, color='grey', linestyle='--', linewidth=0.5)
 
@@ -90,7 +90,7 @@ def parse_datetime_column(column):
     return column.apply(detect_and_parse)
 
 
-def read_data(file_pattern, dt_column='DateTime', sep=';'):
+def read_data(file_pattern, dt_column='DateTime', sep=';', non_float_cols=[]):
     """
     Reads data from CSV file with file structure given by :param:`file_pattern`
     """
@@ -118,7 +118,7 @@ def read_data(file_pattern, dt_column='DateTime', sep=';'):
     # Drop rows with NaT in 'DateTime' column
     merged_df = merged_df.dropna(subset=[dt_column])
 
-    float_columns = merged_df.columns.drop(dt_column)
+    float_columns = merged_df.columns.drop([dt_column, *non_float_cols])
     # when converting to floats, make NaN where invalid strings are present
     merged_df[float_columns] = merged_df[float_columns].apply(pd.to_numeric, errors='coerce')
     # Drop rows with NaN values in float columns if necessary
@@ -153,7 +153,7 @@ def read_odyssey_data(base_dir, filter=False, ids=[]):
     # for each Odyssey sensor
     for a in ids:
         pattern = os.path.join(base_dir, 'data_odyssey', '*U' + str(a).zfill(2) + '*.csv')
-        data = read_data(pattern, dt_column='dateTime', sep=',')
+        data = read_data(pattern, dt_column='dateTime', sep=',', non_float_cols=['loggerUid'])
         # data.rename(columns={'dateTime': 'DateTime'}, inplace=True)
         # data.set_index('DateTime', inplace=True)
         data.index.name = 'DateTime'
