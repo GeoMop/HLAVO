@@ -102,8 +102,8 @@ def plot_pr2_data(ax, df, title):
     filtered_df = df.dropna(subset=columns)
 
     for column, clb in zip(columns, col_labels):
-        ax.plot(filtered_df.index, filtered_df[column], label=clb,
-                marker='o', linestyle='-', markersize=2)
+        ax.plot(filtered_df.index, filtered_df[column], label=clb, #marker='o',
+                linestyle='-', markersize=2)
         # dat = filtered_df[(filtered_df[column] > 0.01) & (filtered_df[column] < 1)]
         # window_size = 5  # You can adjust the window size
         # smoothed_dat = dat.rolling(window=window_size).max()
@@ -185,13 +185,14 @@ def plot_odyssey(ax, df):
     ax.legend()
 
 
-def process_flow_data(base_dir, output_dir, time_interval):
-    flow_data = select_time_interval(read_flow_data(base_dir), **time_interval)
+def process_flow_data(cfg):
+    flow_data = select_time_interval(read_flow_data(cfg["base_dir"]), **cfg["time_interval"])
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    plot_height_data(ax, flow_data, 'Water Height Over Time', output_dir)
+    plot_height_data(ax, flow_data, 'Water Height Over Time', cfg["output_dir"])
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'height_data.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'height_data.pdf'), format='pdf')
+
 
     flow_data_resampled = flow_data.resample('10min').mean()
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -202,12 +203,13 @@ def process_flow_data(base_dir, output_dir, time_interval):
     fig.savefig(os.path.join(output_dir, 'flux_data.pdf'), format='pdf')
 
 
-def read_all_data(base_dir):
-
+def read_all_data(cfg):
+    base_dir = cfg["base_dir"]
     atm_data = read_atmospheric_data(base_dir)
     pr2_data = read_pr2_data(base_dir)
     teros31_data = read_teros31_data(base_dir)
-    ods_data = read_odyssey_data(base_dir, filter=False, ids=[36])[0]
+    odyssey_id = cfg["odyssey_id"]
+    ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
 
     # SHIFT UTC time to CEST (in Lab)
     # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
@@ -234,21 +236,22 @@ def merge_all_dfs(dfs):
 
 def main():
     setup_plt_fontsizes()
-    base_dir, output_dir, time_interval = select_inputs()
-    odyssey = True
+    cfg = select_inputs()
+
+    process_flow_data(cfg)
 
     # all_dfs = [atm_data, pr2_data, *teros31_data, odyssey_data]
-    all_dfs = read_all_data(base_dir)
+    all_dfs = read_all_data(cfg)
     merged_all = merge_all_dfs(all_dfs)
-    data = select_time_interval(merged_all, **time_interval)
+    data = select_time_interval(merged_all, **cfg["time_interval"])
     # data.to_parquet("hlavo_lab_merged_data_2025_03-05.parquet")
-    data.to_csv("hlavo_lab_merged_data_2025_03-05.csv")
+    data.to_csv(os.path.join(cfg["output_dir"], "hlavo_lab_merged_data.csv"))
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_atm_data(ax, data, "Atmospheric data")
     fig.legend(loc="upper left", bbox_to_anchor=(0.01, 1), bbox_transform=ax.transAxes)
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'atm_data.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'atm_data.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 6))
     plot_odyssey(ax, data)
@@ -257,42 +260,37 @@ def main():
     legend.set_bbox_to_anchor((1, 1))  # Move legend to top-right outside plot
     legend.set_loc('upper left')  # Anchor inside the box
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'pr2_vs_odyssey.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'pr2_vs_odyssey.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_pr2_data(ax, data, "Humidity vs Soil Moisture")
     ax.set_title('PR2 - Soil Moisture Mineral')
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'pr2_data.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'pr2_data.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_teros31_data(ax, data, "Teros 31", diff=False)
     ax.set_title('Teros31 - Total Potential')
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'teros31_data_abs.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'teros31_data_abs.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_teros31_data(ax, data, "Teros 31", diff=True)
     ax.set_title('Teros31 - Matric Potential')
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'teros31_data_diff.pdf'), format='pdf')
+    fig.savefig(os.path.join(cfg["output_dir"], 'teros31_data_diff.pdf'), format='pdf')
 
-    if odyssey:
+    if cfg["odyssey"]:
         fig, ax = plt.subplots(figsize=(10, 6))
         # plot_columns(ax, odyssey_data, columns=[f"odyssey_{i}" for i in range(4)], ylabel="", startofdays=True)
         plot_odyssey(ax, data)
-        fig.savefig(os.path.join(output_dir, "odyssey_data.pdf"), format='pdf')
-        # data.to_csv(os.path.join(output_dir, 'odyssey_data_filtered.csv'), index=True)
-
-    process_flow_data(base_dir, output_dir, time_interval)
+        fig.savefig(os.path.join(cfg["output_dir"], "odyssey_data.pdf"), format='pdf')
+        # data.to_csv(os.path.join(cfg["output_dir"], 'odyssey_data_filtered.csv'), index=True)
 
 
 def select_inputs():
     # Define the directory structure
     hlavo_data_dir = '../../hlavo_data'
-    base_dir = os.path.join(hlavo_data_dir, 'data_lab/data_lab_09')
-    # Define the output folder
-    output_folder = create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', "lab_results_09"))
 
     # Odyssey is in UTC time
     # Lab is in CEST (Central European Summer Time) = UTC+2
@@ -315,14 +313,34 @@ def select_inputs():
     # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2024-12-20T23:59:59'}
 
     # full saturation experiment 2
+    # time_interval = {'start_date': '2025-03-26T11:00:00', 'end_date': '2025-04-01T12:00:00'}
+    # time_interval = {'start_date': '2025-03-26T12:00:00', 'end_date': '2025-03-28T12:00:00'}
     # time_interval = {'start_date': '2024-12-13T12:00:00', 'end_date': '2025-02-04T23:59:59'}
     # time_interval = {'start_date': '2025-03-12T12:30:00', 'end_date': '2025-03-26T11:00:00'}
     # time_interval = {'start_date': '2025-03-26T11:00:00', 'end_date': '2025-05-15T12:00:00'}
     # time_interval = {'start_date': '2025-05-10T11:00:00', 'end_date': '2025-05-15T12:00:00'}
 
     # full saturation experiment 3
-    time_interval = {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-19T10:00:00'}
-    return base_dir, output_folder, time_interval
+    # time_interval = {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'}
+
+    folder_id = "08"
+    cfg = {
+        "base_dir": os.path.join(hlavo_data_dir, f'data_lab/data_lab_{folder_id}'),
+        "output_dir": create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', f"lab_results_{folder_id}")),
+
+        # full saturation experiment 2
+        # "time_interval": {'start_date': '2025-03-26T11:00:00', 'end_date': '2025-05-15T12:00:00'},
+        "time_interval": {'start_date': '2025-03-26T12:00:00', 'end_date': '2025-03-28T12:00:00'},
+
+        # full saturation experiment 3
+        # "time_interval": {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'},
+
+        "odyssey": True,
+        "odyssey_id": 5,
+        # "odyssey_id": 36
+    }
+
+    return cfg
 
 
 if __name__ == '__main__':
