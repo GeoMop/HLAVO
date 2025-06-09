@@ -111,11 +111,11 @@ char* PR2Data::dataToCsvLine(char* csvLine, size_t size) const {
     strcat_safe(csvLine, size, number);
   }
   for(uint8_t i=0; i<data_size-1; i++){
-    snprintf(number, sizeof(number), "%.4f%s", voltage[i], delimiter);
+    snprintf(number, sizeof(number), "%.2f%s", voltage[i], delimiter);
     strcat_safe(csvLine, size, number);
   }
   // last value without delimiter
-  snprintf(number, sizeof(number), "%.4f\n", voltage[data_size-1]);
+  snprintf(number, sizeof(number), "%.2f\n", voltage[data_size-1]);
   strcat_safe(csvLine, size, number);
 
   // for(uint8_t i=0; i<data_size-1; i++){
@@ -150,11 +150,11 @@ char* PR2Data::print(char* msg_buf, size_t size) const {
   }
   strcat_safe(msg_buf, size, "\n    Voltage. ");
   for(uint8_t i=0; i<data_size-1; i++){
-    snprintf(number, sizeof(number), "%.4f, ", voltage[i]);
+    snprintf(number, sizeof(number), "%.2f, ", voltage[i]);
     strcat_safe(msg_buf, size, number);
   }
   // last value without delimiter
-  snprintf(number, sizeof(number), "%.4f", voltage[data_size-1]);
+  snprintf(number, sizeof(number), "%.2f", voltage[data_size-1]);
   strcat_safe(msg_buf, size, number);
 
   // strcat_safe(msg_buf, size, "\n    RawADC. ");
