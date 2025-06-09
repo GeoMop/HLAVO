@@ -13,6 +13,7 @@ class PR2Data : public DataBase{
 
     float permitivity[data_size];
     float soil_moisture[data_size];
+    float voltage[data_size];
     float raw_ADC[data_size];
 
     static char* headerToCsvLine(char* csvLine, size_t size);
@@ -29,6 +30,11 @@ class PR2Data : public DataBase{
     void setSoilMoisture(float* sourceArray, uint8_t n_values)
     {
       copyArray(soil_moisture, sourceArray, n_values);
+    }
+
+    void setVoltage(float* sourceArray, uint8_t n_values)
+    {
+      copyArray(voltage, sourceArray, n_values);
     }
 
     void setRaw_ADC(float* sourceArray, uint8_t n_values)
@@ -56,7 +62,9 @@ char* PR2Data::headerToCsvLine(char* csvLine, size_t size) {
   for(uint8_t i=0; i<data_size; i++)
     sprintf(columnNames[j++],"SoilMoistMin_%d", i);
   for(uint8_t i=0; i<data_size; i++)
-    sprintf(columnNames[j++],"rawADC_%d", i);
+    sprintf(columnNames[j++],"Voltage_%d", i);
+  // for(uint8_t i=0; i<data_size; i++)
+  //   sprintf(columnNames[j++],"rawADC_%d", i);
   
   csvLine[0] = '\0'; // Initialize the CSV line as an empty string
 
@@ -82,6 +90,7 @@ PR2Data::PR2Data()
   {
     permitivity[i] = 0.0f;
     soil_moisture[i] = 0.0f;
+    voltage[i] = 0.0f;
     raw_ADC[i] = 0.0f;
   }
 }
@@ -102,12 +111,21 @@ char* PR2Data::dataToCsvLine(char* csvLine, size_t size) const {
     strcat_safe(csvLine, size, number);
   }
   for(uint8_t i=0; i<data_size-1; i++){
-    snprintf(number, sizeof(number), "%.0f%s", raw_ADC[i], delimiter);
+    snprintf(number, sizeof(number), "%.4f%s", voltage[i], delimiter);
     strcat_safe(csvLine, size, number);
   }
   // last value without delimiter
-  snprintf(number, sizeof(number), "%.0f\n", raw_ADC[data_size-1]);
+  snprintf(number, sizeof(number), "%.4f\n", voltage[data_size-1]);
   strcat_safe(csvLine, size, number);
+
+  // for(uint8_t i=0; i<data_size-1; i++){
+  //   snprintf(number, sizeof(number), "%.0f%s", raw_ADC[i], delimiter);
+  //   strcat_safe(csvLine, size, number);
+  // }
+  // last value without delimiter
+  // snprintf(number, sizeof(number), "%.0f\n", raw_ADC[data_size-1]);
+  // strcat_safe(csvLine, size, number);
+
   // strcat(csvLine,"\n");
 
   return csvLine;
@@ -130,14 +148,24 @@ char* PR2Data::print(char* msg_buf, size_t size) const {
     snprintf(number, sizeof(number), "%.4f, ", soil_moisture[i]);
     strcat_safe(msg_buf, size, number);
   }
-  strcat_safe(msg_buf, size, "\n    RawADC. ");
+  strcat_safe(msg_buf, size, "\n    Voltage. ");
   for(uint8_t i=0; i<data_size-1; i++){
-    snprintf(number, sizeof(number), "%.0f, ", raw_ADC[i]);
+    snprintf(number, sizeof(number), "%.4f, ", voltage[i]);
     strcat_safe(msg_buf, size, number);
   }
   // last value without delimiter
-  snprintf(number, sizeof(number), "%.0f", raw_ADC[data_size-1]);
+  snprintf(number, sizeof(number), "%.4f", voltage[data_size-1]);
   strcat_safe(msg_buf, size, number);
+
+  // strcat_safe(msg_buf, size, "\n    RawADC. ");
+  // for(uint8_t i=0; i<data_size-1; i++){
+  //   snprintf(number, sizeof(number), "%.0f, ", raw_ADC[i]);
+  //   strcat_safe(msg_buf, size, number);
+  // }
+  // // last value without delimiter
+  // snprintf(number, sizeof(number), "%.0f", raw_ADC[data_size-1]);
+  // strcat_safe(msg_buf, size, number);
+  
   return msg_buf;
 }
 
