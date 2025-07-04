@@ -343,6 +343,12 @@ class Measure:
 
 
 class StateStructure(dict):
+    """
+    Kalman filter works with the state vector that could actualy be composed from distinct quantities of
+    different name, scale and distribution
+    Encode and decode the state dictionary to and from measurement vector.
+    """
+
     @staticmethod
     def _resolve_var_class(key):
         if key.endswith('_field'):
@@ -423,6 +429,11 @@ class StateStructure(dict):
 
 
 class MeasurementsStructure(dict):
+    """
+    Kalman filter works with measurement vector that could actualy be composed from distinct quantities of
+    different name, scale and distribution
+    Encode and decode the measurement dictionary to and from measurement vector.
+    """
     def __init__(self, nodes_z, var_cfg: Dict[str, Dict[str, Any]]):
         el_z = (nodes_z[1:] + nodes_z[:-1]) / 2.0
         measure_dict = {}
