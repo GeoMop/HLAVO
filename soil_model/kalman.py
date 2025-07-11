@@ -50,7 +50,6 @@ class KalmanFilter:
         self.state_struc = StateStructure(len(nodes_z) - 1, self.kalman_config["state_params"])
 
         #print("kalman config meas ", self.kalman_config["train_measurements"])
-
         self.train_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["train_measurements"])
         self.test_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["test_measurements"])
 
@@ -77,15 +76,22 @@ class KalmanFilter:
         #############################
         ### Generate measurements ###
         #############################
-        if "measurements_dir" in self.kalman_config:
-            noisy_measurements, noisy_measurements_to_test = load_data(data_dir=self.kalman_config["measurements_dir"], n_samples=len(self.measurements_config["precipitation_list"]))
+        if "measurements_file" in self.measurements_config:
+            noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux = load_data(self.train_measurements_struc,
+                                                                                       self.test_measurements_struc,
+                                                                                       data_csv=self.measurements_config["measurements_file"])
             # Why to call model for real data?
             # MS TODO: why this model.run ?
-            self.model.run(init_pressure=None, stop_time=1)
+            pressure_vec = self.model.make_linear_pressure(self.model_config)
+            ref_params = self.state_struc.compose_ref_dict()
+            ref_params['pressure_field'] = pressure_vec
+            precipitation_flux = 0
+            start_time = 0
+            stop_time = 0
+            new_pressure = self.model_run(precipitation_flux, stop_time, start_time, pressure_vec, ref_params)
             sample_variance = np.var(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
         else:
-
             # import cProfile
             # import pstats
             #
@@ -106,13 +112,14 @@ class KalmanFilter:
             residuals = noisy_measurements - measurements
             measurement_noise_covariance = np.cov(residuals, rowvar=False)
 
-        # if "flux_eps" in self.model_config:
-        #     self.additional_data_len += 1
+            # if "flux_eps" in self.model_config:
+            #     self.additional_data_len += 1
 
-        self.results.ref_states = np.array(state_data_iters)
-        self.results.train_measuremnts_exact = measurements
-        self.results.test_measuremnts_exact = measurements_to_test
-        self.results.times_measurements = np.cumsum(meas_model_iter_time)
+            self.results.ref_states = np.array(state_data_iters)
+            self.results.train_measuremnts_exact = measurements
+            self.results.test_measuremnts_exact = measurements_to_test
+            self.results.times_measurements = np.cumsum(meas_model_iter_time)
+
         self.results.precipitation_flux_measurements = meas_model_iter_flux
 
         #self.results.plot_pressure(self.model, state_data_iters)
@@ -135,7 +142,7 @@ class KalmanFilter:
 
         return self.results
 
-    def model_run(self, flux, stop_time, time_step, model_n_time_steps_per_iter, pressure, params):
+    def model_run(self, flux, stop_time, time_step, pressure, params):
         self.model.run(init_pressure=pressure, precipitation_value=flux,
                   state_params=params, start_time=0, stop_time=stop_time, time_step=time_step)
         new_pressure = self.model.get_data(current_time_step=stop_time, data_name="pressure")
@@ -148,9 +155,9 @@ class KalmanFilter:
 
         stop_time = model_time_step * model_n_time_steps_per_iter
 
-        new_pressure = self.model_run(precipitation_flux, stop_time, model_time_step, model_n_time_steps_per_iter, pressure, params)
+        new_pressure = self.model_run(precipitation_flux, stop_time, model_time_step, pressure, params)
 
-        new_saturation = self.model.get_data(current_time_step=stop_time, data_name="saturation")
+        new_saturation = self.model.get_data(current_time_step=stop_time, data_name="moisture")
         measurements_train = self.get_measurement(current_time_step=stop_time, measurements_struct=self.train_measurements_struc)
         measurements_test = self.get_measurement(current_time_step=stop_time, measurements_struct=self.test_measurements_struc)
 
