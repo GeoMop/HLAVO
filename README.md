@@ -1,5 +1,5 @@
 # HLAVO
-Sowftware part of the HLAVO project.
+Software part of the HLAVO project.
 
 # Local run
 Use docker image: `martinspetlik/kalman_parflow:v1.0.0`
