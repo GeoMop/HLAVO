@@ -425,6 +425,8 @@ class StateStructure(dict):
 
     def get_calibration_coeffs_z_positions(self):
         calibration_coeffs = self.get("calibration_coeffs", [])
+        if len(calibration_coeffs) == 0:
+            return []
         return [calib_coeff.z_pos for calib_coeff in calibration_coeffs.GVar_coeffs]
 
 

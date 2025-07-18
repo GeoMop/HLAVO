@@ -367,7 +367,7 @@ class ToyProblem(AbstractModel):
 
         if data_name == "pressure":
             return data.pressure[:, 0, 0]
-        elif data_name == "saturation":
+        elif data_name == "moisture":
             return data.saturation[:, 0, 0]
         elif data_name == "velocity":
             return self.get_velocity(data_accessor=data)[:, 0, 0]

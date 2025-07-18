@@ -72,25 +72,129 @@ class KalmanFilter:
             raise NotImplemented("Import desired class")
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
+    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test):
+        total_time = len(self.measurements_config["precipitation_list"])
+        print("total time ", total_time)
+        meas_model_iter_time = []
+        meas_model_iter_flux = []
+        noisy_train_measurements = []
+        noisy_test_measurements = []
+
+        print("len(noisy_measurements_train) ", len(noisy_measurements_train))
+        total_index = 0
+        for i in range(0, int(total_time), int(self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"])):
+            precipitation_step_start = i
+            precipitation_step_end = np.min([i + int(
+                self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"]),
+                                             int(total_time)])
+            print("prec start: {}, end: {}".format(precipitation_step_start, precipitation_step_end))
+            model_time_step = self.measurements_config["model_time_step"]
+            prec_time_flux_per_iter = [(len(list(n_times)), flux) for flux, n_times in groupby(
+                self.measurements_config["precipitation_list"][precipitation_step_start:precipitation_step_end])]
+
+            print("prec_time_flux_per_iter ", prec_time_flux_per_iter)
+
+            #continue
+
+            for (prec_time, prec_flux) in prec_time_flux_per_iter:
+                measurements_time_step = self.measurements_config["measurements_time_step"]
+                n_time_steps_per_iteration = prec_time / measurements_time_step
+                print("n_time_steps_per_iteration ", n_time_steps_per_iteration)
+
+                total_index += int(n_time_steps_per_iteration)
+
+                print("total index ", total_index)
+
+                try:
+                    print("noisy_measurements_train[total_index])", noisy_measurements_train[total_index])
+                    print("noisy_measurements_test[total_index])", noisy_measurements_test[total_index])
+
+                    noisy_train_measurements.append(noisy_measurements_train[total_index])
+                    noisy_test_measurements.append(noisy_measurements_test[total_index])
+                except IndexError as idxerr:
+                    print("idx_error ", idxerr)
+                    noisy_train_measurements.append(noisy_measurements_train[total_index-1])
+                    noisy_test_measurements.append(noisy_measurements_test[total_index-1])
+
+                # continue
+                #
+                # model_n_time_steps_per_iteration = model_n_time_steps_per_iteration
+                # measurement_train, measurement_test, pressure_vec, sat_vec \
+                #     = self.model_iteration(prec_flux, pressure_vec, ref_params, model_time_step=model_time_step,
+                #                            model_n_time_steps_per_iter=model_n_time_steps_per_iteration)
+                # self.results.ref_saturation.append(sat_vec)
+                #
+                # # print("ref params ", ref_params)
+                #
+                # train_measurements.append(self.train_measurements_struc.encode(measurement_train))
+                # test_measurements.append(self.test_measurements_struc.encode(measurement_test))
+                #
+                # # print("self.train_measurements_struc.z_positions ", self.train_measurements_struc.z_positions())
+                #
+                # calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
+                # if len(calibration_coeffs_z_positions) > 0:
+                #     measurement_train = self.train_measurements_struc.mult_calibration_coef(
+                #         self.train_measurements_struc, measurement_train, ref_params["calibration_coeffs"],
+                #         np.squeeze(calibration_coeffs_z_positions))
+                #
+                # # print("measurement_train mult coeffs ", measurement_train)
+                #
+                # # print("Train measurements")
+                # noisy_train_measurements.append(
+                #     self.train_measurements_struc.encode(measurement_train, noisy=True))
+                # # print("Test measurements")
+                # noisy_test_measurements.append(
+                #     self.test_measurements_struc.encode(measurement_test, noisy=True))
+                #
+                # if self.verbose:
+                #     print("i: {}, data_pressure: {} ".format(i, pressure_vec))
+                # ref_params['pressure_field'] = pressure_vec
+                #
+                # iter_state = self.state_struc.encode_state(ref_params)
+                # state_data_iters.append(iter_state)
+                #
+                meas_model_iter_time.append(prec_time)
+                meas_model_iter_flux.append(prec_flux)
+
+        #exit()
+        return noisy_train_measurements, noisy_test_measurements, meas_model_iter_time, meas_model_iter_flux
+
     def run(self):
         #############################
         ### Generate measurements ###
         #############################
         if "measurements_file" in self.measurements_config:
             noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux = load_data(self.train_measurements_struc,
-                                                                                       self.test_measurements_struc,
-                                                                                       data_csv=self.measurements_config["measurements_file"])
+                                                                                             self.test_measurements_struc,
+                                                                                             data_csv=self.measurements_config["measurements_file"],
+                                                                                             measurements_config=self.measurements_config)
+            print("meas_model_iter_flux ", meas_model_iter_flux)
+
+            precipitation_list = []
+            for (time_prec, precipitation) in meas_model_iter_flux:
+                precipitation_list.extend([precipitation] * time_prec)
+            self.measurements_config["precipitation_list"] = precipitation_list
+
+            noisy_measurements, noisy_measurements_to_test, meas_model_iter_time, meas_model_iter_flux = self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test)
+
+            measurements_time_step = self.measurements_config["measurements_time_step"]
             # Why to call model for real data?
             # MS TODO: why this model.run ?
-            pressure_vec = self.model.make_linear_pressure(self.model_config)
-            ref_params = self.state_struc.compose_ref_dict()
-            ref_params['pressure_field'] = pressure_vec
-            precipitation_flux = 0
-            start_time = 0
-            stop_time = 0
-            new_pressure = self.model_run(precipitation_flux, stop_time, start_time, pressure_vec, ref_params)
+            # pressure_vec = self.model.make_linear_pressure(self.model_config)
+            # ref_params = self.state_struc.compose_ref_dict()
+            # ref_params['pressure_field'] = pressure_vec
+            # precipitation_flux = 0
+            # start_time = 0
+            # stop_time = 0
+            # new_pressure = self.model_run(precipitation_flux, stop_time, start_time, pressure_vec, ref_params)
             sample_variance = np.var(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
+            #@TODO: to simplify, There are no shorter periods of rain/no rain than 'measurements_time_step'
+            print("[measurements_time_step] * len(meas_model_iter_flux) " ,[measurements_time_step] * len(meas_model_iter_flux))
+            print("meas_model_iter_time ", meas_model_iter_time)
+            print("meas_model_iter_flux ", meas_model_iter_flux)
+            self.results.times_measurements = np.cumsum(meas_model_iter_time)
+            print("self.results.times_measurements ", self.results.times_measurements)
         else:
             # import cProfile
             # import pstats
@@ -118,13 +222,14 @@ class KalmanFilter:
             self.results.ref_states = np.array(state_data_iters)
             self.results.train_measuremnts_exact = measurements
             self.results.test_measuremnts_exact = measurements_to_test
+            print("meas_model_iter_time ", meas_model_iter_time)
             self.results.times_measurements = np.cumsum(meas_model_iter_time)
+            print("self.results.times_measurements ", self.results.times_measurements)
 
         self.results.precipitation_flux_measurements = meas_model_iter_flux
 
         #self.results.plot_pressure(self.model, state_data_iters)
         #self.results.plot_saturation(self.model)
-
 
         #######################################
         ### Unscented Kalman filter setting ###
@@ -155,10 +260,14 @@ class KalmanFilter:
 
         stop_time = model_time_step * model_n_time_steps_per_iter
 
+        print("model stop time ", stop_time)
+        print("model time step ", model_time_step)
+
         new_pressure = self.model_run(precipitation_flux, stop_time, model_time_step, pressure, params)
 
         new_saturation = self.model.get_data(current_time_step=stop_time, data_name="moisture")
         measurements_train = self.get_measurement(current_time_step=stop_time, measurements_struct=self.train_measurements_struc)
+        print("measurements_train ", measurements_train)
         measurements_test = self.get_measurement(current_time_step=stop_time, measurements_struct=self.test_measurements_struc)
 
         return measurements_train, measurements_test, new_pressure, new_saturation
@@ -183,14 +292,20 @@ class KalmanFilter:
         # print("ref params ", ref_params)
         # print("state vec ", state_vec)
 
+        print("precipitation list ", self.measurements_config["precipitation_list"])
+
         total_time = len(self.measurements_config["precipitation_list"])
+        print("total time ", total_time)
         meas_model_iter_time = []
         meas_model_iter_flux = []
         for i in range(0, int(total_time), int(self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"])):
             precipitation_step_start = i
             precipitation_step_end = np.min([i + int(self.measurements_config["model_time_step"] * self.measurements_config["model_n_time_steps_per_iter"]), int(total_time)])
+            print("prec start: {}, end: {}".format(precipitation_step_start, precipitation_step_end))
             model_time_step = self.measurements_config["model_time_step"]
             prec_time_flux_per_iter = [(len(list(n_times)), flux) for flux, n_times in groupby(self.measurements_config["precipitation_list"][precipitation_step_start:precipitation_step_end])]
+
+            print("prec_time_flux_per_iter ", prec_time_flux_per_iter)
 
             for (prec_time, prec_flux) in prec_time_flux_per_iter:
                 model_n_time_steps_per_iteration = prec_time / model_time_step
@@ -207,8 +322,8 @@ class KalmanFilter:
                 #print("self.train_measurements_struc.z_positions ", self.train_measurements_struc.z_positions())
 
                 calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
-
-                measurement_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc, measurement_train, ref_params["calibration_coeffs"], np.squeeze(calibration_coeffs_z_positions))
+                if len(calibration_coeffs_z_positions) > 0:
+                    measurement_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc, measurement_train, ref_params["calibration_coeffs"], np.squeeze(calibration_coeffs_z_positions))
 
                 #print("measurement_train mult coeffs ", measurement_train)
 
@@ -275,15 +390,21 @@ class KalmanFilter:
 
         iter_duration = float(iter_duration)
 
+        #print("iter duration ", iter_duration)
+        #print("precipitation flux ", precipitation_flux)
         #print("state ", state)
 
         self.model.run(init_pressure=pressure_data, precipitation_value=precipitation_flux,
-                       state_params=state, start_time=0, stop_time=iter_duration, time_step=self.kalman_config["model_time_step"], working_dir=parflow_working_dir)
+                       state_params=state, start_time=0, stop_time=iter_duration,
+                       time_step=self.kalman_config["model_time_step"],
+                       working_dir=parflow_working_dir)
 
         state["pressure_field"] = self.model.get_data(current_time_step=iter_duration, data_name="pressure")
 
-        measurements_train = self.get_measurement(current_time_step=iter_duration, measurements_struct=self.train_measurements_struc)
-        measurements_test = self.get_measurement(current_time_step=iter_duration, measurements_struct=self.test_measurements_struc)
+        measurements_train = self.get_measurement(current_time_step=iter_duration,
+                                                  measurements_struct=self.train_measurements_struc)
+        measurements_test = self.get_measurement(current_time_step=iter_duration,
+                                                 measurements_struct=self.test_measurements_struc)
 
         new_state_vec = self.state_struc.encode_state(state)
 
@@ -298,11 +419,15 @@ class KalmanFilter:
 
         if measurements_type == "train":
             calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
-            measurements_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc,
-                                                                                    measurements_train_dict,
-                                                                                    self.state_struc.decode_state(state_vec)["calibration_coeffs"],
-                                                                                    np.squeeze(calibration_coeffs_z_positions))
-            return self.train_measurements_struc.encode(measurements_train)
+            if len(calibration_coeffs_z_positions) > 0:
+                measurements_train = self.train_measurements_struc.mult_calibration_coef(self.train_measurements_struc,
+                                                                                        measurements_train_dict,
+                                                                                        self.state_struc.decode_state(state_vec)["calibration_coeffs"],
+                                                                                        np.squeeze(calibration_coeffs_z_positions))
+
+                return self.train_measurements_struc.encode(measurements_train)
+            else:
+                return self.train_measurements_struc.encode(measurements_train_dict)
         elif measurements_type == "test":
             return self.test_measurements_struc.encode(measurements_test_dict)
 
@@ -356,8 +481,13 @@ class KalmanFilter:
         ukf.R = measurement_noise_covariance
         print("R measurement_noise_covariance ", measurement_noise_covariance)
 
-        data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
-        #print("data pressure ", data_pressure)
+        print("self.model ", self.model)
+
+        data_pressure = self.model.make_linear_pressure(self.model_config)
+
+        #data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
+        print("data pressure ", data_pressure)
+
 
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
@@ -382,6 +512,7 @@ class KalmanFilter:
 
     def run_kalman_filter(self, ukf, noisy_measurements):
         iter_durations = [self.results.times_measurements[0]] + list(np.array(self.results.times_measurements[1:]) - np.array(self.results.times_measurements[:-1]))
+        print("iter durations ", iter_durations)
 
         for i, measurement in enumerate(noisy_measurements):
             ukf.predict(iter_duration=iter_durations[i], precipitation_flux=self.results.precipitation_flux_measurements[i])
@@ -467,7 +598,6 @@ class KalmanFilter:
     #     print("iter_mse_test_measurements ", iter_mse_test_measurements)
     #     print("iter_mse_model_config_data ", iter_mse_model_config_data)
     #
-
 
 
 #@memory.cache

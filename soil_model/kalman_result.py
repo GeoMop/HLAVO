@@ -122,7 +122,8 @@ class KalmanResults:
         ######
         #print("pred model params ", pred_model_params)
         #print("pred_model_params shape ", np.array(pred_model_params).shape)
-        self.plot_pressure_ref()
+        if len(self.ref_states) > 0:
+            self.plot_pressure_ref()
         self.plot_pressure_mean()
         self._plot_model_params()
 
@@ -240,7 +241,9 @@ class KalmanResults:
         meas_exact_all = self.train_measuremnts_exact if meas_type == "train" else self.test_measuremnts_exact
         ukf_meas_all = self.ukf_train_meas if meas_type == "train" else self.ukf_test_meas
 
-        meas_exact_dict = measurements_struc.decode(meas_exact_all.T)
+        meas_exact_dict = {}
+        if len(meas_exact_all) > 0:
+            meas_exact_dict = measurements_struc.decode(meas_exact_all.T)
         #meas_exact_dict = {k: v for k, v in states_dict.items()}
 
         meas_x_all = measurements_struc.decode(np.array(ukf_meas_all).T)
@@ -248,7 +251,9 @@ class KalmanResults:
         measurements_dict = {}
         for measurement_name, measure_obj in measurements_struc.items():
             meas_x = meas_x_all[measurement_name] #measurements_struc.decode(self.ukf_train_meas)   #self._decode_meas(self.ukf_x)[meas_key]
-            meas_exact = meas_exact_dict[measurement_name]
+            meas_exact = None
+            if measurement_name in meas_exact_dict:
+                meas_exact = meas_exact_dict[measurement_name]
             #P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
             #meas_var = self._decode_meas(P_diag)[meas_key]
             #meas_std = np.sqrt(meas_var)
@@ -259,8 +264,8 @@ class KalmanResults:
             colors = sns.color_palette("tab10")
             for i in range(n_meas):
                 col = colors[i % 10]
-                mse_vs_exact = np.sqrt(np.mean((meas_exact[i] - meas_x[i]) ** 2))
-                mse_vs_obs = np.mean((meas_exact[i] - meas_x[i]) ** 2)
+                #mse_vs_exact = np.sqrt(np.mean((meas_exact[i] - meas_x[i]) ** 2))
+                #mse_vs_obs = np.mean((meas_exact[i] - meas_x[i]) ** 2)
                 #mean_std = np.mean(meas_std[i])
                 #print(f"d=(exact - ukf_est) {i}: std(d) {mse_vs_exact}, std(d)/mean(std_est): {mse_vs_exact / mean_std}")
                 #print(f"d=(obs - ukf_est) {i}: std(d) {mse_vs_obs} std(d)/mean(std_est): {mse_vs_exact / mean_std}")
@@ -362,7 +367,9 @@ class KalmanResults:
 
             for ax, k in zip(axes, x_params.keys()):
                 #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-                ax.plot(self.times, ref_params[k], label=f"{k}_exact")
+
+                if k in ref_params:
+                    ax.plot(self.times, ref_params[k], label=f"{k}_exact")
                 #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
                 #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
                 #print("variances[:, idx] ", variances[:, idx])
@@ -387,18 +394,18 @@ class KalmanResults:
         matplotlib.rcParams.update({'font.size': 13})
 
 
-        ref_params = self._decode_params(self.ref_states)
         x_params = self._decode_params(self.ukf_x)
         P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
         var_params = self._decode_params(P_diag)
 
-        if "calibration_coeffs" in ref_params:
-            self.plot_calibration_coeffs(ref_params["calibration_coeffs"], x_params["calibration_coeffs"], var_params["calibration_coeffs"])
-            del ref_params["calibration_coeffs"]
-            del x_params["calibration_coeffs"]
-            del var_params["calibration_coeffs"]
-
-
+        ref_params = {}
+        if len(self.ref_states):
+            ref_params = self._decode_params(self.ref_states)
+            if "calibration_coeffs" in ref_params:
+                self.plot_calibration_coeffs(ref_params["calibration_coeffs"], x_params["calibration_coeffs"], var_params["calibration_coeffs"])
+                del ref_params["calibration_coeffs"]
+                del x_params["calibration_coeffs"]
+                del var_params["calibration_coeffs"]
 
         self._plot_model_params_quantiles(ref_params, x_params, var_params)
 
@@ -426,8 +433,6 @@ class KalmanResults:
         #     fig.savefig(self.workdir / f"model_param_{k}.pdf")
         #     if self.cfg['show']:
         #         plt.show()
-
-
 
     def postprocess(self):
         ##############################
