@@ -77,10 +77,6 @@ def get_precipitations(df, time_step):
     print(df["Inflow"])
     print(df["Inflow_cm"])
 
-    print("df ", df)
-
-    df.to_csv("/home/martin/Documents/HLAVO/get_precipitations_output.csv")
-
     # Loop through each non-NaN inflow row
     for date_time_round, row in df[df["Inflow_cm"].notna()].iterrows():
         print("date_time_round ", date_time_round)
@@ -274,10 +270,6 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv,  meas
 
     data = preprocess_data(data[min_idx:max_idx])
 
-    print("data ", data)
-
-    print("measurements_time_step ", measurements_time_step)
-
     probe = measurements_config["probe"] if "probe" in measurements_config else None
     if probe == "pr2":
         probe_data = load_pr2_data(data, measurements_time_step, window_size=mean_window_size)
@@ -288,30 +280,13 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv,  meas
 
     precipitations = get_precipitations(data, time_step=measurements_time_step)
 
-    print("precipitations ", precipitations)
-
-
     train_measurements = []
     test_measurements = []
     for i in range(len(data)):
         measurement_train = get_measurements(i, train_measurements_struc, probe_data)
         measurement_test = get_measurements(i, test_measurements_struc, probe_data)
 
-        # print("measurement_train ", measurement_train)
-        # print("train_measurements_struc.encode(measurement_train) ", train_measurements_struc.encode(measurement_train))
-        #
-        # print("measurement_test ", measurement_test)
-        # print("test_measurements_struc.encode(measurement_test) ", test_measurements_struc.encode(measurement_test))
-
         train_measurements.append(train_measurements_struc.encode(measurement_train))
         test_measurements.append(test_measurements_struc.encode(measurement_test))
 
-    # print("train_measurements ", train_measurements)
-    # print("test measurements ", test_measurements)
-    #
-    # print("precipitations ", precipitations)
-
     return train_measurements, test_measurements, precipitations
-
-
-
