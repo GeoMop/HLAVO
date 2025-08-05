@@ -23,6 +23,13 @@ float minimal_water_height = 100; // mm
 // cable: 6 mm
 // hadicka: 6 mm (ale jen tloustka)
 
+// 1l: 3:43
+// 7s vymena
+// 2l: 3:43
+// 3l: 3:44:90
+// 4l: 3:44:50
+
+
 /************************************************ RAIN *************************************************/
 #define PUMP_IN_PIN 6
 bool pump_in_finished = true;
@@ -65,6 +72,10 @@ void setup() {
 
   whs.setWindow(0.0,3.0);
   whs.begin();
+
+  pinMode(PUMP_IN_PIN, OUTPUT);
+  digitalWrite(PUMP_IN_PIN, HIGH);
+  summary += " - PUMP IN OFF (" +  String(PUMP_IN_PIN) + " off)\n";
 
   Serial.println("setup completed.");
   Serial.println(F("Start loop " __FILE__ " " __DATE__ " " __TIME__));
