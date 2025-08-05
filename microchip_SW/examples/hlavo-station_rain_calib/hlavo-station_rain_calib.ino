@@ -11,20 +11,39 @@ Every timer_L1(1000); // fine timer
 
 /*********************************************** WATER HEIGHT ***********************************************/
 #include "linear_voltage_sensor.h"
-
-// ultrasonic sensor S18U
-// LinearVoltageSensor whs(5, 0.05, 3.13, 220, 30);  // pin, aVolt, bVolt, aVal, bVal
-
 //    0 mm: 630 mm - 2.21 V : water height of filled column (10 mm below top)
 // -240 mm: 390 mm - 1.33 V
 // -620 mm:  10 mm - 0.05 V
 LinearVoltageSensor whs(7, 0.05, 2.21, 10, 630);  // pin, aVolt, bVolt, aVal, bVal
-// radius:
-// column: 60 mm
-// hadice: 6 mm
-// cable: 3 mm
-// hadicka: 3 mm (ale jen tloustka)
+float minimal_water_height = 100; // mm
 
+// diameter
+// column: 120 mm
+// hadice: 12 mm
+// cable: 6 mm
+// hadicka: 6 mm (ale jen tloustka)
+
+/************************************************ RAIN *************************************************/
+#define PUMP_IN_PIN 6
+bool pump_in_finished = true;
+Timer timer_rain_start(10*1000, false);    // timer before rain
+
+
+void start_rain()
+{
+  // start rain
+  digitalWrite(PUMP_IN_PIN, LOW);
+  Serial.printf("rain ON\n");
+  pump_in_finished = false;
+}
+
+void stop_rain()
+{
+    // stop rain
+  digitalWrite(PUMP_IN_PIN, HIGH);
+  Serial.printf("rain OFF\n");
+  pump_in_finished = true;
+}
 
 /*********************************************** SETUP ***********************************************/
 void setup() {
@@ -44,7 +63,6 @@ void setup() {
   pinMode(PIN_ON, OUTPUT);      // Set EN pin for uSUP stabilisator as output
   digitalWrite(PIN_ON, HIGH);   // Turn on the uSUP power
 
-  // setup water height sensor
   whs.setWindow(0.0,3.0);
   whs.begin();
 
@@ -54,14 +72,22 @@ void setup() {
 
   // synchronize timers after setup
   timer_L1.reset(true);
+  timer_rain_start.reset();
 }
 
 
+unsigned int time_counter = 0;
 unsigned int counter = 0;
 float voltage_sum = 0.0;
 
 /*********************************************** LOOP ***********************************************/
 void loop() {
+
+  if(timer_rain_start())
+  {
+    start_rain();
+    time_counter = 0;
+  }
 
   // read value to buffer at fine time scale
   if(timer_L1())
@@ -73,7 +99,16 @@ void loop() {
     voltage_sum += voltage;
     counter ++;
 
-    // Serial.printf("Voltage: %.2f V    Height: %.2f mm\n", voltage, height);
-    Serial.printf("Voltage: %.2f V   Height: %.2f mm   Volt_Avg: %.2f (n=%d)\n", voltage, height, voltage_sum/counter, counter);
+    Serial.printf("Voltage: %.2f V    Height: %.2f mm\n", voltage, height);
+    // Serial.printf("Voltage: %.2f V   Height: %.2f mm   Volt_Avg: %.2f V (n=%d)\n", voltage, height, voltage_sum/counter, counter);
+
+    if(!pump_in_finished)
+      time_counter++;
+
+    if(height < minimal_water_height) // mm
+    {
+      stop_rain();
+      Serial.printf("Rain length: %d s\n", time_counter);
+    }
   }
 }
