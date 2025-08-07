@@ -283,7 +283,7 @@ class KalmanResults:
                     ax.scatter(times, meas_in[i], c=col, s=30, marker='x', label=f"noisy obs(z={meas_z[i]})")
 
                 ax.plot(times, meas_x[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
-                ax.set_xlabel("time[h]")
+                ax.set_xlabel("time[min]")
                 ax.set_ylabel(f"{meas_type} {measurement_name}")
             fig.legend()
             fig.tight_layout()

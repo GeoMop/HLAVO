@@ -29,7 +29,6 @@ import cloudpickle
 
 
 class KalmanFilter:
-
     @staticmethod
     def from_config(workdir, config_path, verbose=False):
         with config_path.open("r") as f:
@@ -94,8 +93,6 @@ class KalmanFilter:
 
             print("prec_time_flux_per_iter ", prec_time_flux_per_iter)
 
-            #continue
-
             for (prec_time, prec_flux) in prec_time_flux_per_iter:
                 measurements_time_step = self.measurements_config["measurements_time_step"]
                 n_time_steps_per_iteration = prec_time / measurements_time_step
@@ -156,6 +153,13 @@ class KalmanFilter:
                 meas_model_iter_time.append(prec_time)
                 meas_model_iter_flux.append(prec_flux)
 
+        # import matplotlib.pyplot as plt
+        # train_meas = np.array(noisy_train_measurements)
+        # for i in range(train_meas.shape[1]):
+        #     plt.scatter(np.cumsum(meas_model_iter_time), train_meas[:, i], label="SoilMoistMin_{}".format(i))
+        # plt.legend()
+        # plt.show()
+
         #exit()
         return noisy_train_measurements, noisy_test_measurements, meas_model_iter_time, meas_model_iter_flux
 
@@ -190,7 +194,7 @@ class KalmanFilter:
             sample_variance = np.var(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
             #@TODO: to simplify, There are no shorter periods of rain/no rain than 'measurements_time_step'
-            print("[measurements_time_step] * len(meas_model_iter_flux) " ,[measurements_time_step] * len(meas_model_iter_flux))
+            print("[measurements_time_step] * len(meas_model_iter_flux) ", [measurements_time_step] * len(meas_model_iter_flux))
             print("meas_model_iter_time ", meas_model_iter_time)
             print("meas_model_iter_flux ", meas_model_iter_flux)
             self.results.times_measurements = np.cumsum(meas_model_iter_time)
@@ -488,7 +492,6 @@ class KalmanFilter:
         #data_pressure = self.model.get_data(current_time_step=0, data_name="pressure")
         print("data pressure ", data_pressure)
 
-
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
         #print("init mean ", init_mean)
@@ -518,6 +521,7 @@ class KalmanFilter:
             ukf.predict(iter_duration=iter_durations[i], precipitation_flux=self.results.precipitation_flux_measurements[i])
             ukf.update(measurement)
             print("sum ukf.P ", np.sum(ukf.P))
+            #ukf.residual_z
             print("Estimated State:", ukf.x)
             self.results.times.append(self.results.times_measurements[i])
             self.results.ukf_x.append(ukf.x)

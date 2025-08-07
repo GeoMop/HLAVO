@@ -206,12 +206,11 @@ class ToyProblem(AbstractModel):
         # Boundary Conditions: Pressure
         #-----------------------------------------------------------------------------
         self._run.BCPressure.PatchNames = "bottom top"
-
         self._run.Patch.bottom.BCPressure.Type = "DirEquilRefPatch"
         self._run.Patch.bottom.BCPressure.Cycle = "constant"
         self._run.Patch.bottom.BCPressure.RefGeom = "domain"
         self._run.Patch.bottom.BCPressure.RefPatch = "bottom"
-        self._run.Patch.bottom.BCPressure.alltime.Value = -50
+        self._run.Patch.bottom.BCPressure.alltime.Value = static_params_dict["BCPressure_bottom"] if "BCPressure_bottom" in static_params_dict else -50
 
         # self._run.Patch.bottom.BCPressure.Type = "FluxConst"
         # self._run.Patch.bottom.BCPressure.Cycle = "constant"
@@ -338,7 +337,7 @@ class ToyProblem(AbstractModel):
         self._run.Geom.domain.Porosity.Type = "PFBFile"
         self._run.Geom.domain.Porosity.FileName = filename
 
-    def run(self, init_pressure, precipitation_value, state_params, start_time, stop_time, time_step, working_dir=None):
+    def run(self, init_pressure, precipitation_value, state_params=None, start_time=0, stop_time=20, time_step=0.025, working_dir=None):
         import shutil
         import os
         if working_dir is None:
@@ -346,7 +345,8 @@ class ToyProblem(AbstractModel):
         shutil.rmtree(working_dir)
         os.makedirs(working_dir)
 
-        self.set_dynamic_params(state_params)
+        if state_params is not None:
+            self.set_dynamic_params(state_params)
         self._run.Patch.top.BCPressure.alltime.Value = precipitation_value
         self.set_init_pressure(init_pressure, working_dir=working_dir)
         self._run.TimingInfo.StartTime = start_time
