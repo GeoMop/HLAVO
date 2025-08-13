@@ -12,6 +12,7 @@ class ColumnFlowData : public DataBase{
     float flux;
     uint8_t pump_in;
     uint8_t pump_out;
+    float rain_height;
 
     static char* headerToCsvLine(char* csvLine, size_t size);
     ColumnFlowData();
@@ -23,13 +24,14 @@ class ColumnFlowData : public DataBase{
 
 
 char* ColumnFlowData::headerToCsvLine(char* csvLine, size_t size){
-    const int n_columns = 5;
+    const int n_columns = 6;
     const char* columnNames[] = {
       "DateTime",
       "Height",
       "Flux",
       "PumpIn",
-      "PumpOut"
+      "PumpOut",
+      "RainHeight"
     };
     csvLine[0] = '\0'; // Initialize the CSV line as an empty string
 
@@ -55,6 +57,7 @@ ColumnFlowData::ColumnFlowData()
   flux = std::numeric_limits<float>::quiet_NaN();
   pump_in = 0;
   pump_out = 0;
+  rain_height = std::numeric_limits<float>::quiet_NaN();
 }
 
 char* ColumnFlowData::dataToCsvLine(char* csvLine, size_t size) const
@@ -66,12 +69,14 @@ char* ColumnFlowData::dataToCsvLine(char* csvLine, size_t size) const
           "%.2f%s"  // height
           "%.2f%s"  // flux
           "%d%s"    // pump in
-          "%d\n", // valve out
+          "%d%s"    // valve out
+          "%.2f\n", // rain height
           dt, delimiter,
           height, delimiter,
           flux, delimiter,
           pump_in, delimiter,
-          pump_out);
+          pump_out, delimiter,
+          rain_height);
   return csvLine;
 }
 
@@ -82,11 +87,13 @@ char* ColumnFlowData::print(char* msg_buf, size_t size) const
           "Height %.2f, " // height
           "Flux %.2f, "   // flux
           "PumpIn %d, "   // pump in
-          "PumpOut %d",   // valve out
+          "PumpOut %d, "  // valve out
+          "RainHeight %.2f", // rain height
           datetime.timestamp().c_str(),
           height,
           flux,
           pump_in,
-          pump_out);
+          pump_out,
+          rain_height);
   return msg_buf;
 }

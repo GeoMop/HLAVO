@@ -74,7 +74,7 @@ bool start_valve_out = false;
 bool valve_out_open = false;
 
 Timer timer_outflow(45*1000, false);    // time for pumping water out
-const float H_limit = 200;              // [mm] limit water height to release
+const float outflow_min_wh = 200;              // [mm] limit water height to release
 AverageValue outflow_wh(5);
 float previous_height = 0;
 
@@ -87,6 +87,10 @@ bool pump_in_finished = true;
 Timer timer_rain(1000, false);    // timer for rain
 uint8_t current_rain_idx = 0;
 FileInfo current_rain_file("/current_rain.txt");
+
+LinearVoltageSensor rain_whs(7, 0.05, 2.21, 10, 630);  // pin, aVolt, bVolt, aVal, bVal
+float rain_min_wh = 100; // mm
+AverageValue rain_wh(5);
 
 class RainRegime{
   public:
@@ -182,14 +186,29 @@ void loadCurrentRain() {
   file.close();
 }
 
+void start_rain()
+{
+  // start rain
+  digitalWrite(PUMP_IN_PIN, LOW);
+  Serial.printf("rain ON\n");
+  pump_in_finished = false;
+}
+
+void stop_rain()
+{
+    // stop rain
+  digitalWrite(PUMP_IN_PIN, HIGH);
+  Serial.printf("rain OFF\n");
+  pump_in_finished = true;
+}
+
 void controlRain()
 {
   if(timer_rain.after())
   {
     // stop raining
     // ...
-
-
+    stop_rain();
   }
 
   uint8_t n_rain_regimes = sizeof(rain_regimes);
@@ -258,27 +277,37 @@ bool teros31_all_finished = false;
 /****************************************** DATA COLLECTION ******************************************/
 
 
-void read_water_height()
+void measure_flow_values()
 {
   // read water height
   float voltage;
   float height = whs.read(&voltage);
   Serial.printf("Voltage: %.2f    Height: %.2f\n", voltage, height);
+  float rain_height = rain_whs.read(&voltage);
+  Serial.printf("Voltage: %.2f    Rain Height: %.2f\n", voltage, rain_height);
 
   outflow_wh.add(height);
+  rain_wh.add(rain_height);
 
   // check height limit, possibly run pump out
-  if(outflow_wh.average_unfilled() >= H_limit)
+  if(outflow_wh.average_unfilled() >= outflow_min_wh)
   {
     start_valve_out = true; // open valve (once at a time)
     outflow_wh.reset();
     previous_height = std::numeric_limits<float>::quiet_NaN();
   }
 
+  // check rain height limit, possibly stop raining
+  if(outflow_wh.average_unfilled() <= rain_min_wh)
+  {
+    stop_rain();
+  }
+
   ColumnFlowData data;
   data.datetime = dt_now;
   data.pump_in = !pump_in_finished;   // is pump running?
   data.pump_out = valve_out_open;     // is valve open?
+  data.rain_height = rain_wh.average();
 
   if(valve_out_open){
     // safe NaN during outflow
@@ -673,7 +702,7 @@ void loop() {
     unsigned int L2_left = (timer_L2.interval + timer_L2.last - millis())/1000;
     Serial.printf("L1: %d s\n", L2_left);
     Serial.flush();
-    read_water_height();
+    measure_flow_values();
   }
   controlValveOut();
 
