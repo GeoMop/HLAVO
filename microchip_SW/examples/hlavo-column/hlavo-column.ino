@@ -35,7 +35,7 @@ Every timer_L1(timer_L1_period*1000);     // read water height timer
 Every timer_L2(timer_L2_period*1000);     // date reading timer - PR2
 Every timer_L4(timer_L4_period*1000);     // watchdog timer
 
-
+// saturation rain
 Every timer_rain_start(60*60*1000);         // every T start rain
 Timer timer_rain_length(46*1000, false);    // length of rain
 int rain_n_cycles = 0;                      // current number of rains
@@ -62,9 +62,11 @@ DateTime dt_now;
 
 /************************************************ FLOW *************************************************/
 #include "column_flow_data.h"
+#include "linear_voltage_sensor.h"
+#include "average_value.h"
+
 #define VALVE_OUT_PIN 15
 
-#include "linear_voltage_sensor.h"
 // ultrasonic sensor S18U
 LinearVoltageSensor whs(5, 0.05, 3.13, 220, 30);  // pin, aVolt, bVolt, aVal, bVal
 
@@ -73,12 +75,7 @@ bool valve_out_open = false;
 
 Timer timer_outflow(45*1000, false);    // time for pumping water out
 const float H_limit = 200;              // [mm] limit water height to release
-const uint8_t n_H_avg = 5;              // number of flow samples to average
-
-float H_window[n_H_avg];    // collected water height
-uint8_t n_H_collected = 0;    // collected water height
-uint8_t n_H_collected_start = 0;    // collected water height
-
+AverageValue outflow_wh(5);
 float previous_height = 0;
 
 char data_flow_filename[max_filepath_length] = "column_flow.csv";
@@ -268,17 +265,13 @@ void read_water_height()
   float height = whs.read(&voltage);
   Serial.printf("Voltage: %.2f    Height: %.2f\n", voltage, height);
 
-  H_window[n_H_collected] = height;
-  n_H_collected++;
-  if(n_H_collected == n_H_avg)
-    n_H_collected = 0;
+  outflow_wh.add(height);
 
   // check height limit, possibly run pump out
-  if(height >= H_limit)
+  if(outflow_wh.average_unfilled() >= H_limit)
   {
     start_valve_out = true; // open valve (once at a time)
-    n_H_collected = 0;
-    n_H_collected_start = 0;
+    outflow_wh.reset();
     previous_height = std::numeric_limits<float>::quiet_NaN();
   }
 
@@ -290,26 +283,17 @@ void read_water_height()
   if(valve_out_open){
     // safe NaN during outflow
   }
-  else if(n_H_collected_start < n_H_avg)
+  else if(!outflow_wh.isReady())
   {
-    n_H_collected_start++;
     // safe NaN until window is filled
   }
   else
   {
-    // compute average over H window
-    float H_avg = 0;
-    for (uint8_t i=0; i<n_H_avg; i++)
-    {
-      H_avg += H_window[i];
-    }
-    H_avg /= n_H_avg;
-    // Serial.printf("H avg = %f\n", H_avg);
-    data.height = H_avg;
+    data.height = outflow_wh.average();
     // flux is difference of heights
     //TODO multiply by cross-section
-    data.flux = (previous_height - H_avg) / timer_L1_period;
-    previous_height = H_avg;
+    data.flux = (previous_height - data.height) / timer_L1_period;
+    previous_height = data.height;
   }
 
   // write data
