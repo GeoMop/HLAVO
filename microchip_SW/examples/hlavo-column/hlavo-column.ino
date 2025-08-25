@@ -38,13 +38,6 @@ Every timer_L4(timer_L4_period*1000);     // watchdog timer
 // rain regimes timers
 Timer timer_rain_wait(10*1000, false);      // wait between rain regimes, once timer
 Timer timer_rain_regime(60*1000, false);    // rain regime, once timer
-Every timer_rain_start(60*60*1000);         // every T start rain
-Timer timer_rain_length(46*1000, false);    // length of rain
-
-// saturation rain
-int rain_n_cycles = 0;                      // current number of rains
-const int rain_max_n_cycles = 12;           // max number of rains
-
 
 /*********************************************** SD CARD ***********************************************/
 // SD card IO
@@ -182,7 +175,7 @@ void start_rain()
   digitalWrite(PUMP_IN_PIN, LOW);
   Serial.printf("rain ON\n");
   pump_in_finished = false;
-  timer_rain_length.reset(rain_regimes[current_rain_regime_idx].trigger_length);
+  rain_regimes[current_rain_regime_idx].reset_timer_length();
 }
 
 void stop_rain()
@@ -196,13 +189,15 @@ void stop_rain()
 
 void start_rain_regime()
 {
-  Serial.printf("RAIN REGIME: %d s\n", rain_regimes[current_rain_regime_idx].length/1000);
+  RainRegime& rain_reg = rain_regimes[current_rain_regime_idx];
+
+  Serial.printf("RAIN REGIME: %d s\n", rain_reg.length/1000);
   char msg[100];
-  hlavo::SerialPrintf(sizeof(msg), rain_regimes[current_rain_regime_idx].print(msg, sizeof(msg)));
+  hlavo::SerialPrintf(sizeof(msg), rain_reg.print(msg, sizeof(msg)));
   rain_regime = true;
   start_rain();
-  timer_rain_regime.reset(rain_regimes[current_rain_regime_idx].length);
-  timer_rain_start.reset(rain_regimes[current_rain_regime_idx].trigger_period);
+  timer_rain_regime.reset(rain_reg.length);
+  rain_reg.reset_timer_period();
 }
 
 /******************************************* TEMP. AND HUM. *******************************************/
@@ -652,24 +647,6 @@ void control_valve_out()
   }
 }
 
-// Overnight full saturation rain
-void saturation_rain()
-{
-  if(rain_n_cycles < rain_max_n_cycles
-    && timer_rain_start())
-  {
-    // start rain
-    start_rain();
-    Serial.printf("rain counter %d of %d\n", rain_n_cycles, rain_max_n_cycles);
-    rain_n_cycles++;
-  }
-  if(!pump_in_finished && timer_rain_length.after())
-  {
-    // stop rain
-    stop_rain();
-    Serial.printf("rain counter %d of %d\n", rain_n_cycles, rain_max_n_cycles);
-  }
-}
 
 void control_rain()
 {
@@ -678,15 +655,16 @@ void control_rain()
     return;
   }
 
+  RainRegime& rain_reg = rain_regimes[current_rain_regime_idx];
   // rain interval timer
-  if(rain_regime && timer_rain_start())
+  if(rain_regime && rain_reg.timer_period())
   {
     start_rain();
     // Serial.printf("rain counter\n");
   }
 
   // rain timer finishes
-  if(!pump_in_finished && timer_rain_length())
+  if(!pump_in_finished && rain_reg.timer_length())
   {
     stop_rain();
   }
@@ -696,8 +674,8 @@ void control_rain()
   {
     // stop_rain();
     rain_regime = false;
-    timer_rain_wait.reset(rain_regimes[current_rain_regime_idx].wait);
-    Serial.printf("WAIT REGIME: %d s\n", rain_regimes[current_rain_regime_idx].wait/1000);
+    timer_rain_wait.reset(rain_reg.wait);
+    Serial.printf("WAIT REGIME: %d s\n", rain_reg.wait/1000);
   }
 
   // rain wait timer finishes
@@ -716,8 +694,6 @@ void control_rain()
 
 /*********************************************** LOOP ***********************************************/ 
 void loop() {
-
-  // saturation_rain();
 
   if(timer_L0()){
     dt_now = rtc_clock.now();
