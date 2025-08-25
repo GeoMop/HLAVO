@@ -168,4 +168,4 @@ microchip_SW/.pio
 microchip_SW/.vscode
 
 data_processing/.env
-
+/data_processing/.python-version

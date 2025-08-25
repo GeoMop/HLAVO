@@ -86,6 +86,8 @@ char data_flow_filename[max_filepath_length] = "column_flow.csv";
 
 
 /************************************************ RAIN *************************************************/
+#include "rain_regime.h"
+
 #define PUMP_IN_PIN 6
 bool pump_in_finished = true;
 bool rain_regime = false;
@@ -96,52 +98,6 @@ LinearVoltageSensor rain_whs(7, 0.05, 2.21, 10, 630);  // pin, aVolt, bVolt, aVa
 float rain_min_wh = 100; // mm
 bool no_more_rain = false;
 AverageValue rain_wh(5);
-
-class RainRegime{
-  public:
-    static const float pump_rate;       // [l/min]
-    static const float column_radius;   // [m]
-    static const float column_cross;    // [m2]
-
-    unsigned long trigger_length; // [s]
-    unsigned long trigger_period; // [h]
-    unsigned long length;         // [h]
-    unsigned long wait;           // [h]
-
-
-    DateTime last_rain;
-
-    // [s], [h], [h], [h]
-    RainRegime(unsigned long tr_legnth_s, float tr_period_h, float length_h, float wait_h)
-    {
-      trigger_length = tr_legnth_s * 1000;
-      trigger_period = (unsigned long) (tr_period_h * 3600 * 1000);
-
-      length = (unsigned long) (length_h * 3600 * 1000);
-      wait = (unsigned long) (wait_h * 3600 * 1000);
-
-      last_rain = DateTime((uint32_t)0);
-    }
-
-    char* print(char* msg_buf, size_t size) const
-    {
-      snprintf(msg_buf,  size,
-              "Rain Regime: "
-              "tl %d, "
-              "tp %d, "
-              "L %d, "
-              "W %d\n",
-              trigger_length/1000,
-              trigger_period/1000,
-              length/1000,
-              wait/1000);
-      return msg_buf;
-    }
-};
-
-const float RainRegime::pump_rate = 1/(3.0+43.0/60.0);            // [l/min], measurement 1l in 3:43 min
-const float RainRegime::column_radius = 0.15;        // [m]
-const float RainRegime::column_cross = PI * column_radius*column_radius;  // [m2]
 
 /**
   15s kropení každých 30min; po dobu 8 hodin, pak 4 hodiny čekat
