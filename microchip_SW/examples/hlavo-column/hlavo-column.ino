@@ -86,6 +86,7 @@ bool pump_in_finished = true;
 bool rain_regime = false;
 uint8_t current_rain_regime_idx = 0;
 FileInfo current_rain_file("/current_rain.txt");
+const bool force_fresh_rain_regimes = false;  // if true, ignore saved rain regime
 
 LinearVoltageSensor rain_whs(7, 0.05, 2.21, 10, 630);  // pin, aVolt, bVolt, aVal, bVal
 float rain_min_wh = 100; // mm
@@ -137,16 +138,36 @@ RainRegime rain_regimes[n_rain_regimes] = {
 void saveCurrentRain() {
   char text[100];
   DateTime dt = rain_regimes[current_rain_regime_idx].last_rain;
-  snprintf(text, sizeof(text), "%s\n%d", dt.timestamp().c_str(), current_rain_regime_idx);
+  snprintf(text, sizeof(text), "%s\n%d\n%d",
+      dt.timestamp().c_str(),
+      current_rain_regime_idx,
+      rain_regimes[current_rain_regime_idx].counter);
   current_rain_file.write(text);
 }
 
 void loadCurrentRain() {
+
+  if( ! SD.exists(current_rain_file.getPath()))
+  {
+      Logger::printf(Logger::INFO, "No last rain found.\n");
+      current_rain_regime_idx = 0;
+      return;
+  }
+  else
+  {
+    if(force_fresh_rain_regimes)
+    {
+        Logger::printf(Logger::INFO, "Removing last rain found.\n");
+        SD.remove(current_rain_file.getPath());
+        current_rain_regime_idx = 0;
+        return;
+    }
+  }
+
   File file = SD.open(current_rain_file.getPath());
   if(!file){
-      Serial.println("Failed to open file for reading.");
+      Logger::printf(Logger::ERROR, "Failed to open file for reading: %s\n", current_rain_file.getPath());
       current_rain_regime_idx = 0;
-      rain_regimes[current_rain_regime_idx].last_rain = DateTime((uint32_t)0);
       return;
   }
 
@@ -154,17 +175,35 @@ void loadCurrentRain() {
   if(file.available()){
       String dt_string = file.readStringUntil('\n');
       DateTime dt(dt_string.c_str());
-      uint8_t idx = file.readStringUntil('\n').toInt();
       
+      uint8_t idx = file.readStringUntil('\n').toInt();
       current_rain_regime_idx = idx;
+
+      uint8_t counter = file.readStringUntil('\n').toInt();
+
       if(idx >= sizeof(rain_regimes))
       {
         Logger::printf(Logger::ERROR, "Invalid rain regime index: %d\n", idx);
         current_rain_regime_idx = 0;
         rain_regimes[current_rain_regime_idx].last_rain = dt;
+        rain_regimes[current_rain_regime_idx].counter = 0;
       }
       else
+      {
+        char msg[100];
+        Logger::printf(Logger::INFO, "Last rain regime [ORIG]:");
+        hlavo::SerialPrintf(sizeof(msg), rain_regimes[current_rain_regime_idx].print(msg, sizeof(msg)));
+
         rain_regimes[current_rain_regime_idx].last_rain = dt;
+        rain_regimes[current_rain_regime_idx].counter = counter;
+
+        int rest_length = rain_regimes[current_rain_regime_idx].length
+            - counter * rain_regimes[current_rain_regime_idx].trigger_period;
+        rain_regimes[current_rain_regime_idx].length = rest_length;
+
+        Logger::printf(Logger::INFO, "Last rain regime [LOADED]:");
+        hlavo::SerialPrintf(sizeof(msg), rain_regimes[current_rain_regime_idx].print(msg, sizeof(msg)));
+      }
   }
   file.close();
 }
@@ -175,7 +214,8 @@ void start_rain()
   digitalWrite(PUMP_IN_PIN, LOW);
   Serial.printf("rain ON\n");
   pump_in_finished = false;
-  rain_regimes[current_rain_regime_idx].reset_timer_length();
+  rain_regimes[current_rain_regime_idx].reset_timer_length(dt_now);
+  saveCurrentRain();
 }
 
 void stop_rain()
@@ -582,6 +622,8 @@ void setup() {
     char msg[100];
     hlavo::SerialPrintf(sizeof(msg), rain_regimes[i].print(msg, sizeof(msg)));
   }
+
+  loadCurrentRain();
 
   // while(1)
     // ;
