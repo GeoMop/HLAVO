@@ -145,11 +145,10 @@ def get_data_at_time_step(data, time_step):
     data_at_time_steps = data.resample('{}min'.format(int(time_step)), origin=data.index[0]).first().reset_index()
 
     print(data_at_time_steps[:10])
-
     return data_at_time_steps
 
 
-def load_pr2_data(data, measurements_time_step, window_size=50):
+def load_pr2_data(data, window_size=50):
     #data = data[min_idx:max_idx]
 
     data_at_time_steps = data #get_data_at_time_step(data, measurements_time_step)
@@ -173,9 +172,7 @@ def load_pr2_data(data, measurements_time_step, window_size=50):
     moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth,
                  SoilMoistMin_4_smooth]
 
-    return [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
-
-    #return moistures
+    #return [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
 
     calibrated_moistures = []
     for moisture, pr2_coeff in zip(moistures, pr2_a3.values()):
@@ -272,9 +269,9 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv,  meas
 
     probe = measurements_config["probe"] if "probe" in measurements_config else None
     if probe == "pr2":
-        probe_data = load_pr2_data(data, measurements_time_step, window_size=mean_window_size)
+        probe_data = load_pr2_data(data, window_size=mean_window_size)
     elif probe == "odyssey":
-        probe_data = load_odyssey_data(data, measurements_time_step, window_size=mean_window_size)
+        probe_data = load_odyssey_data(data, window_size=mean_window_size)
     else:
         raise AttributeError("Probe: {} nor supported. Use 'pr2' or  'odyssey'".format(probe))
 

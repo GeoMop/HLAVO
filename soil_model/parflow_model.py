@@ -25,8 +25,8 @@ class ToyProblem(AbstractModel):
         else:
             self._workdir = pathlib.Path.cwd()
 
-        self.setup_config(config["static_params"])
         self.key_to_parflow_param = config["params"]
+        self.setup_config(config["static_params"])
         # Check PARFLOW installation
         parflow_dir = os.environ.get('PARFLOW_DIR', None)
         assert parflow_dir is not None, "The PARFLOW_DIR environment variable is not set."
@@ -114,15 +114,14 @@ class ToyProblem(AbstractModel):
         #-----------------------------------------------------------------------------
         # Permeability
         #-----------------------------------------------------------------------------
-        self._run.Geom.Perm.Names = "domain"
-
-        self._run.Geom.domain.Perm.Type = "Constant"
-        self._run.Geom.domain.Perm.Value = 0.0737 #30.8 / 100 / 24 #30.8 / 100 / 24 # 1.2833e-2 [cm/d] -> [m/h]
-        self._run.Perm.TensorType = "TensorByGeom"
-        self._run.Geom.Perm.TensorByGeom.Names = "domain"
-        self._run.Geom.domain.Perm.TensorValX = 1.0
-        self._run.Geom.domain.Perm.TensorValY = 1.0
-        self._run.Geom.domain.Perm.TensorValZ = 1.0
+        # self._run.Geom.Perm.Names = "domain"
+        # self._run.Geom.domain.Perm.Type = "Constant"
+        # self._run.Geom.domain.Perm.Value = 0.0737 #30.8 / 100 / 24 #30.8 / 100 / 24 # 1.2833e-2 [cm/d] -> [m/h]
+        # self._run.Perm.TensorType = "TensorByGeom"
+        # self._run.Geom.Perm.TensorByGeom.Names = "domain"
+        # self._run.Geom.domain.Perm.TensorValX = 1.0
+        # self._run.Geom.domain.Perm.TensorValY = 1.0
+        # self._run.Geom.domain.Perm.TensorValZ = 1.0
 
         #-----------------------------------------------------------------------------
         # Specific Storage
@@ -305,7 +304,41 @@ class ToyProblem(AbstractModel):
         #-----------------------------------------------------------------------------
         self._run.KnownSolution = "NoKnownSolution"
 
-        # === End Other required and unused parameters ===
+        if "Perm" in static_params_dict:
+            self.set_perm(list(static_params_dict["Perm"].keys()), list(static_params_dict["Perm"].values()))
+
+    def set_perm(self, z_coords, perms):
+        # set piecewise constant permeability (z_coords assumed to be in descending order)
+        regions_str = " ".join(f"region{i}" for i, z in enumerate(z_coords))
+        self._run.GeomInput.Names = "domain_input " + regions_str
+        print(self._run.GeomInput.Names)
+
+        z_coords.append(self._run.Geom.domain.Lower.Z)
+        for i, z in enumerate(perms):
+            reg_name = f"region{i}"
+            self._run.GeomInput[reg_name].InputType = 'Box'
+            self._run.GeomInput[reg_name].GeomName = reg_name
+            g = self._run.Geom[reg_name]
+            g.Upper.X, g.Upper.Y, g.Upper.Z = 1.0, 1.0, z_coords[i]
+            g.Lower.X, g.Lower.Y, g.Lower.Z = 0.0, 0.0, z_coords[i + 1]
+
+            # Sufficient for 'kolona' experiments
+            #@TODO: make it more general
+            if i == 0:
+                self.key_to_parflow_param["vG_K_s"] = "Geom.{}.Perm.Value".format(reg_name)
+
+        self._run.Geom.Perm.Names = regions_str
+        self._run.Perm.TensorType = 'TensorByGeom'
+        for i, p in enumerate(perms):
+            g = self._run.Geom[f"region{i}"]
+            g.Perm.Type = 'Constant'
+            g.Perm.Value = p
+
+        self._run.Perm.TensorType = "TensorByGeom"
+        self._run.Geom.Perm.TensorByGeom.Names = "domain"
+        self._run.Geom.domain.Perm.TensorValX = 1.0
+        self._run.Geom.domain.Perm.TensorValY = 1.0
+        self._run.Geom.domain.Perm.TensorValZ = 1.0
 
     def set_init_pressure(self, init_p, working_dir=None):
         # setting custom initial pressure
@@ -422,8 +455,6 @@ class ToyProblem(AbstractModel):
     #     settings.set_working_directory(cwd)
 
     def set_dynamic_params(self, model_params):
-
-        #model_params_new_values = []
         for key, val in model_params.items():
             if not key in self.key_to_parflow_param:
                 continue

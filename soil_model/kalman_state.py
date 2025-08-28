@@ -84,18 +84,68 @@ def log_minus_one_to_gauss(value):
 def log_minus_one_from_gauss(value):
     return 1 + np.exp(value)
 
+def saturation_to_moisture(saturation, state=None):
+    if state is None:
+        return saturation
+    print("decoded_state ", state)
+    theta_sat = state["vG_Th_s"]
+    theta_res = state["vG_Th_r"]
+    return theta_sat * (saturation - theta_res) + theta_res
+
+def moisture_to_saturation(moisture, state=None):
+    if state is None:
+        return moisture
+    print("state ", state)
+    theta_sat = state["vG_Th_s"]
+    theta_res = state["vG_Th_r"]
+    return (moisture + theta_res)/theta_sat + theta_res
 
 #############################
 # Transforms
 #############################
 OneWayTransform = Callable[[np.ndarray], np.ndarray]
 TwoWayTransform = Tuple[OneWayTransform, OneWayTransform]
+
+# To allow 'saturation_to_moisture' and 'moisture_to_saturation' to be used as transformations,
+# all other transforms must also accept a 'state' parameter.
+class TwoArgWrapper:
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, value, state=None):
+        return self.func(value)
+
+
 transforms = dict(
-    lognormal = (np.log, np.exp),   # to gauss, from gauss
-    identity = (np.array, np.array),
-    log_minus_one = (log_minus_one_to_gauss, log_minus_one_from_gauss),
-    logit = (special.logit, special.expit)
+    lognormal = (
+        TwoArgWrapper(np.log),
+        TwoArgWrapper(np.exp)
+    ),
+    saturation_to_moisture = (
+        TwoArgWrapper(moisture_to_saturation),
+        TwoArgWrapper(saturation_to_moisture)
+    ),
+    identity = (
+        TwoArgWrapper(np.array),
+        TwoArgWrapper(np.array)
+    ),
+    log_minus_one = (
+        TwoArgWrapper(log_minus_one_to_gauss),
+        TwoArgWrapper(log_minus_one_from_gauss)
+    ),
+    logit = (
+        TwoArgWrapper(special.logit),
+        TwoArgWrapper(special.expit)
+    )
 )
+# OneWayTransform = Callable[[np.ndarray], np.ndarray]
+# TwoWayTransform = Tuple[OneWayTransform, OneWayTransform]
+# transforms = dict(
+#     lognormal = (np.log, np.exp),   # to gauss, from gauss
+#     identity = (np.array, np.array),
+#     log_minus_one = (log_minus_one_to_gauss, log_minus_one_from_gauss),
+#     logit = (special.logit, special.expit)
+# )
 #############################
 # Variable Classes
 #############################
@@ -242,13 +292,15 @@ class Measure:
     noise_level: float
     noise_distr_type: str
     interp: np.ndarray
-    #transform: Callable[[float], float] = None
+    transform: TwoWayTransform = transforms['identity']
 
     @classmethod
     def from_dict(cls, nodes_z, data: Dict[str, Any]) -> 'GField':
         # JB TODO: check form wring config keyword make more structured config
         # to simplify implementation
         data["interp"] = build_linear_interpolator_matrix(nodes_z, data["z_pos"])
+
+        data["transform"] = transforms[data.get('transform', 'identity')]
         return cls(**data)
 
     def size(self) -> int:
@@ -265,12 +317,16 @@ class Measure:
     def init_state(self, nodes_z):
         return np.zeros(self.size()), 1e-12 * np.eye(self.size())
 
-    def encode(self, value: np.ndarray, noisy: bool) -> np.ndarray:
+    def encode(self, value: np.ndarray, state=None, noisy:bool=False) -> np.ndarray:
+        if self.transform is not None:
+            value = self.transform[0](value, state)
         if noisy:
             value = add_noise(value, noise_level=self.noise_level, distr_type=self.noise_distr_type)
         return value
 
-    def decode(self, value: np.ndarray) -> np.ndarray:
+    def decode(self, value: np.ndarray, state=None) -> np.ndarray:
+        if self.transform is not None:
+            value = self.transform[1](value, state)
         return value
 
 
@@ -453,8 +509,8 @@ class MeasurementsStructure(dict):
     def z_positions(self, meas_key):
         return [var.z_pos for key, var in self.items() if meas_key == key]
 
-    def encode(self, value_dict: Dict[str, Any], noisy=False) -> np.ndarray:
-        components = [var.encode(value_dict[key], noisy) for key, var in self.items()]
+    def encode(self, value_dict: Dict[str, Any], state=None, noisy=False) -> np.ndarray:
+        components = [var.encode(value_dict[key], state, noisy) for key, var in self.items()]
         return np.concatenate(components)
 
     def mult_calibration_coef(self, measurements_struct, measurements: Dict[str, Any], calibration_coefs, calibration_coeffs_z_positions) -> np.ndarray:
