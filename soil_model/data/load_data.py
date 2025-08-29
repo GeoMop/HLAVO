@@ -167,8 +167,6 @@ def load_pr2_data(data, window_size=50):
     SoilMoistMin_3_smooth = SoilMoistMin_3.rolling(window=window_size, min_periods=1).mean()
     SoilMoistMin_4_smooth = SoilMoistMin_4.rolling(window=window_size, min_periods=1).mean()
 
-    print("SoilMoistMin_0_smooth ", SoilMoistMin_0_smooth[:15])
-
     moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth,
                  SoilMoistMin_4_smooth]
 
@@ -177,9 +175,8 @@ def load_pr2_data(data, window_size=50):
     calibrated_moistures = []
     for moisture, pr2_coeff in zip(moistures, pr2_a3.values()):
         pr2_coeff = np.mean(pr2_coeff)
-        moisture = moisture / pr2_coeff * 30
-
-        calibrated_moistures.append(moisture)
+        calib_moisture = moisture / pr2_coeff * 0.3
+        calibrated_moistures.append(calib_moisture)
 
     return calibrated_moistures
 
