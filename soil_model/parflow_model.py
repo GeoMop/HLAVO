@@ -114,14 +114,17 @@ class ToyProblem(AbstractModel):
         #-----------------------------------------------------------------------------
         # Permeability
         #-----------------------------------------------------------------------------
-        # self._run.Geom.Perm.Names = "domain"
-        # self._run.Geom.domain.Perm.Type = "Constant"
-        # self._run.Geom.domain.Perm.Value = 0.0737 #30.8 / 100 / 24 #30.8 / 100 / 24 # 1.2833e-2 [cm/d] -> [m/h]
-        # self._run.Perm.TensorType = "TensorByGeom"
-        # self._run.Geom.Perm.TensorByGeom.Names = "domain"
-        # self._run.Geom.domain.Perm.TensorValX = 1.0
-        # self._run.Geom.domain.Perm.TensorValY = 1.0
-        # self._run.Geom.domain.Perm.TensorValZ = 1.0
+        if "Perm" in static_params_dict:
+            self.set_perm(list(static_params_dict["Perm"].keys()), list(static_params_dict["Perm"].values()))
+        else:
+            self._run.Geom.Perm.Names = "domain"
+            self._run.Geom.domain.Perm.Type = "Constant"
+            self._run.Geom.domain.Perm.Value = 0.0737 #30.8 / 100 / 24 #30.8 / 100 / 24 # 1.2833e-2 [cm/d] -> [m/h]
+            self._run.Perm.TensorType = "TensorByGeom"
+            self._run.Geom.Perm.TensorByGeom.Names = "domain"
+            self._run.Geom.domain.Perm.TensorValX = 1.0
+            self._run.Geom.domain.Perm.TensorValY = 1.0
+            self._run.Geom.domain.Perm.TensorValZ = 1.0
 
         #-----------------------------------------------------------------------------
         # Specific Storage
@@ -303,9 +306,6 @@ class ToyProblem(AbstractModel):
         # Exact solution specification for error calculations
         #-----------------------------------------------------------------------------
         self._run.KnownSolution = "NoKnownSolution"
-
-        if "Perm" in static_params_dict:
-            self.set_perm(list(static_params_dict["Perm"].keys()), list(static_params_dict["Perm"].values()))
 
     def set_perm(self, z_coords, perms):
         # set piecewise constant permeability (z_coords assumed to be in descending order)
