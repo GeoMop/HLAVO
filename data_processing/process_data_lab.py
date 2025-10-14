@@ -382,11 +382,15 @@ def read_all_data(cfg):
     # pr2_data = read_pr2_data(base_dir, filter=False)
     teros31_data = read_teros31_data(base_dir)
     odyssey_id = cfg["odyssey_id"]
-    ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
 
-    # SHIFT UTC time to CEST (in Lab)
-    # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
-    ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
+    if cfg["odyssey"]:
+        ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
+
+        # SHIFT UTC time to CEST (in Lab)
+        # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
+        ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
+    else:
+        ods_data = None
 
     return [atm_data, pr2_data, *teros31_data, ods_data, inflow_data]
 
@@ -561,7 +565,12 @@ def select_inputs():
     # full saturation experiment 3
     # time_interval = {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'}
 
-    folder_id = "09"
+    # folder_id = "09"
+    # folder_id = "11"
+    folder_id = "09-11"
+    # folder_id = "12"
+    # folder_id = "13"
+    # folder_id = "14"
     cfg = {
         "base_dir": os.path.join(hlavo_data_dir, f'data_lab/data_lab_{folder_id}'),
         "output_dir": create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', f"lab_results_{folder_id}")),
@@ -571,7 +580,36 @@ def select_inputs():
         # "time_interval": {'start_date': '2025-03-26T12:00:00', 'end_date': '2025-03-28T12:00:00'},
 
         # full saturation experiment 3
-        "time_interval": {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'},
+        # "time_interval": {'start_date': '2025-05-16T11:35:00', 'end_date': '2025-06-13T09:00:00'},
+        # "time_interval": {'start_date': '2025-06-02T08:00:00', 'end_date': '2025-06-03T09:00:00'},
+
+        # full saturation - release experiment 3
+        # "time_interval": {'start_date': '2025-06-13T00:00:00', 'end_date': '2025-06-23T10:00:00'},
+        # "time_interval": {'start_date': '2025-06-13T00:00:00', 'end_date': '2025-06-25T10:00:00'},
+
+        # folder_id = "11"
+        # full saturation - release experiment 4
+        # "time_interval": {'start_date': '2025-06-25T18:00:00', 'end_date': '2025-08-06T11:00:00'},
+        # "time_interval": {'start_date': '2025-06-25T18:00:00', 'end_date': '2025-08-13T15:00:00'},
+
+        # folder_id = "9-11"
+        # full saturation - release experiment 3-4 merged
+        "time_interval": {'start_date': '2025-05-16T0:00:00', 'end_date': '2025-08-15T15:00:00'},
+
+
+        # folder_id = "12"
+        # raining experiment - 8 rain regimes for 48 hours, accidentaly 24h watchdog
+        # "time_interval": {'start_date': '2025-08-14T15:00:00', 'end_date': '2025-08-16T15:00:00'},
+        # "time_interval": {'start_date': '2025-08-14T15:00:00', 'end_date': '2025-08-28T10:00:00'},
+
+        # folder_id = "13"
+        # raining experiment - 8 rain regimes for 48 hours
+        # "time_interval": {'start_date': '2025-08-26T08:00:00', 'end_date': '2025-08-29T10:00:00'},
+
+        # folder_id = "14"
+        # raining experiment - 8 rain regimes for 48 hours
+        # "time_interval": {'start_date': '2025-08-26T08:00:00', 'end_date': '2025-09-17T00:00:00'},
+
 
         "odyssey": True,
         # "odyssey_id": 5,
