@@ -161,14 +161,16 @@ def load_pr2_data(data, window_size=50):
     SoilMoistMin_3 = data_at_time_steps["SoilMoistMin_3"]
     SoilMoistMin_4 = data_at_time_steps["SoilMoistMin_4"]
 
-    SoilMoistMin_0_smooth = SoilMoistMin_0.rolling(window=window_size, min_periods=1).mean()
-    SoilMoistMin_1_smooth = SoilMoistMin_1.rolling(window=window_size, min_periods=1).mean()
-    SoilMoistMin_2_smooth = SoilMoistMin_2.rolling(window=window_size, min_periods=1).mean()
-    SoilMoistMin_3_smooth = SoilMoistMin_3.rolling(window=window_size, min_periods=1).mean()
-    SoilMoistMin_4_smooth = SoilMoistMin_4.rolling(window=window_size, min_periods=1).mean()
+    # SoilMoistMin_0_smooth = SoilMoistMin_0.rolling(window=window_size, min_periods=1).mean()
+    # SoilMoistMin_1_smooth = SoilMoistMin_1.rolling(window=window_size, min_periods=1).mean()
+    # SoilMoistMin_2_smooth = SoilMoistMin_2.rolling(window=window_size, min_periods=1).mean()
+    # SoilMoistMin_3_smooth = SoilMoistMin_3.rolling(window=window_size, min_periods=1).mean()
+    # SoilMoistMin_4_smooth = SoilMoistMin_4.rolling(window=window_size, min_periods=1).mean()
+    #
+    # moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth,
+    #               SoilMoistMin_4_smooth]
 
-    moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth,
-                 SoilMoistMin_4_smooth]
+    moistures = [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
 
     #return [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
 
