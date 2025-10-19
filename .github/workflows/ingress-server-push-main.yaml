@@ -18,7 +18,7 @@ jobs:
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
       s3-store-url: s3://app-databuk-test-service/hlavo.zarr
-      configuration-dir-path: inputs/
+      configuration-dir-path: inputs
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
     secrets: inherit
