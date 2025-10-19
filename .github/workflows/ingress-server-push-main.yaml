@@ -15,4 +15,6 @@ jobs:
       configuration-dir-path: inputs
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
+      extra-helm-args: >-
+        --set image.name="jbrezmorf/hlavo-ingress-server"
     secrets: inherit
