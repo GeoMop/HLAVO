@@ -1,9 +1,8 @@
-name: Ingress server - push tag
+name: Ingress server - push main
 on:
   pull_request: # TODO: change to push with paths
     branches:
       - main
-
 jobs:
   build-and-deploy:
     uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@SM-CI-outside-repository
