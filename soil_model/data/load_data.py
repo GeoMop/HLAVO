@@ -74,8 +74,9 @@ def get_precipitations(df, time_step):
 
     df["Inflow_cm"] = -df["Inflow"]*1000/surface_area
 
-    print(df["Inflow"])
-    print(df["Inflow_cm"])
+    print(df["Inflow"][:100])
+    print(df["Inflow_cm"][:100])
+
 
     # Loop through each non-NaN inflow row
     for date_time_round, row in df[df["Inflow_cm"].notna()].iterrows():
@@ -161,6 +162,12 @@ def load_pr2_data(data, window_size=50):
     SoilMoistMin_3 = data_at_time_steps["SoilMoistMin_3"]
     SoilMoistMin_4 = data_at_time_steps["SoilMoistMin_4"]
 
+    SoilMoistMin_0_smooth = data_at_time_steps["SoilMoistMin_0_smooth"]
+    SoilMoistMin_1_smooth = data_at_time_steps["SoilMoistMin_1_smooth"]
+    SoilMoistMin_2_smooth = data_at_time_steps["SoilMoistMin_2_smooth"]
+    SoilMoistMin_3_smooth = data_at_time_steps["SoilMoistMin_3_smooth"]
+    SoilMoistMin_4_smooth = data_at_time_steps["SoilMoistMin_4_smooth"]
+
     # SoilMoistMin_0_smooth = SoilMoistMin_0.rolling(window=window_size, min_periods=1).mean()
     # SoilMoistMin_1_smooth = SoilMoistMin_1.rolling(window=window_size, min_periods=1).mean()
     # SoilMoistMin_2_smooth = SoilMoistMin_2.rolling(window=window_size, min_periods=1).mean()
@@ -170,7 +177,7 @@ def load_pr2_data(data, window_size=50):
     # moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth,
     #               SoilMoistMin_4_smooth]
 
-    moistures = [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
+    moistures = [SoilMoistMin_0_smooth, SoilMoistMin_1_smooth, SoilMoistMin_2_smooth, SoilMoistMin_3_smooth, SoilMoistMin_4_smooth]
 
     #return [SoilMoistMin_0, SoilMoistMin_1, SoilMoistMin_2, SoilMoistMin_3, SoilMoistMin_4]
 
@@ -259,7 +266,7 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv,  meas
     #data_csv = "/home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_2025_06_12.csv"
     data = pd.read_csv(data_csv)
     min_idx = 0
-    max_idx = 4500  # 7209
+    max_idx = len(data) -1 #4500  # 7209
     mean_window_size = 50
 
     measurements_time_step = measurements_config["model_time_step"] * measurements_config["model_n_time_steps_per_iter"]
@@ -284,5 +291,6 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv,  meas
 
         train_measurements.append(train_measurements_struc.encode(measurement_train))
         test_measurements.append(test_measurements_struc.encode(measurement_test))
+
 
     return train_measurements, test_measurements, precipitations
