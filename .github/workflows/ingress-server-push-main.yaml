@@ -1,13 +1,8 @@
 name: Ingress server - push tag
 on:
-  pull_request: # TODO: remove after testing
+  pull_request: # TODO: change to push with paths
     branches:
       - main
-  push:
-    branches:
-      - main
-    paths:
-      - "inputs/**"
 
 jobs:
   build-and-deploy:
