@@ -24,7 +24,9 @@ def read_pr2_data(base_dir, filter=False):
             # Filter rows where a selected column is between 0 and 1
             data = data[(data[selected_column] > 0.01) & (data[selected_column] <= 1)]
 
-    return data
+    # remove unnecessary columns
+    keep_columns = [c for c in data.columns if not any(b in c for b in ["Voltage", "rawADC"])]
+    return data[keep_columns]
 
 def read_teros31_data(base_dir, filter=False):
     data = []
@@ -370,7 +372,11 @@ def process_flow_data(cfg):
     ax.set_title('Water Flux Over Time')
     fig.savefig(os.path.join(cfg["output_dir"], 'flux_data.pdf'), format='pdf')
 
-    flow_data = flow_data[['Height_Cumulative', 'Height_Spline', 'Flux_Spline']]
+    # add PumpIn, PumpOut columns (for 9-11)
+    # add RainHeight (for 12-)
+
+    keep_columns = [c for c in flow_data.columns if c not in ["Height", "Flux", "TimeIndex", "Height_Smooth"]]
+    flow_data = flow_data[keep_columns]
     return flow_data
 
 
