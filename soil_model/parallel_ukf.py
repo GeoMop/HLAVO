@@ -5,7 +5,6 @@ from multiprocessing import Pool, cpu_count
 
 
 def _fx_wrapper(args):
-    print(f"Processing in PID: {os.getpid()}")
     fx, sigma, dt, fx_args = args
     return fx(sigma, dt, **fx_args)
 

@@ -10,6 +10,12 @@ from plots import plot_richards_output, RichardsSolverOutput, covariance_plot
 
 
 def trans_state(state_var):
+    """
+    Transpose the state variable array if not None.
+
+    :param state_var: Input state variable array or None
+    :return: Transposed array if not None, otherwise None
+    """
     if state_var is None:
         return None
     return np.array(state_var).T
@@ -17,6 +23,17 @@ def trans_state(state_var):
 
 @attrs.define
 class KalmanResults:
+    """
+    Container class for storing and visualizing results from Kalman filtering.
+
+    :param workdir: Directory for saving plots and output data
+    :param data_z: Vertical coordinate (e.g., depth or height)
+    :param state_struc: Structure describing the encoded state representation
+    :param train_measurements_struc: Measurement structure for training data
+    :param test_measurements_struc: Measurement structure for test data
+    :param cfg: Configuration dictionary (e.g., plotting options)
+    """
+
     workdir: Path
     data_z: np.ndarray
     state_struc: StateStructure
@@ -24,31 +41,39 @@ class KalmanResults:
     test_measurements_struc: MeasurementsStructure
     cfg: Dict[str, Any]
 
-    times: List[float] = attrs.field(factory=list)  # List of times
+    times: List[float] = attrs.field(factory=list)
     times_measurements: List[float] = attrs.field(factory=list)
     precipitation_flux_measurements: List[float] = attrs.field(factory=list)
-    ref_states: List[np.ndarray] = attrs.field(factory=list)  # List of states
-    ukf_x: List[np.ndarray] = attrs.field(factory=list)  # List of states
-    ukf_P: List[np.ndarray] = attrs.field(factory=list)  # List of states
+    ref_states: List[np.ndarray] = attrs.field(factory=list)
+    ukf_x: List[np.ndarray] = attrs.field(factory=list)
+    ukf_P: List[np.ndarray] = attrs.field(factory=list)
     train_measuremnts_exact: List[np.ndarray] = attrs.field(factory=list)
     test_measuremnts_exact: List[np.ndarray] = attrs.field(factory=list)
-    measurement_in: List[np.ndarray] = attrs.field(factory=list)  # List of states
-    ref_saturation: List[np.ndarray] = attrs.field(factory=list)  # List of states
-    #mean_saturation: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    ukf_train_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
-    ukf_test_meas: List[np.ndarray]  = attrs.field(factory=list)  # List of states
+    measurement_in: List[np.ndarray] = attrs.field(factory=list)
+    ref_saturation: List[np.ndarray] = attrs.field(factory=list)
+    ukf_train_meas: List[np.ndarray] = attrs.field(factory=list)
+    ukf_test_meas: List[np.ndarray] = attrs.field(factory=list)
+    moistures: List[np.ndarray] = attrs.field(factory=list)
+    velocities: List[np.ndarray] = attrs.field(factory=list)
 
-    # Future, measurements using StateStruc or similar structure
-    #measurements: List[np.ndarray] = attrs.field(default=list)  # List of measurements
     def plot_pressure(self, model, state_data_iter):
-        # for state_vec in state_data_iter:
-        #     print("state vec ", state_vec)
+        """
+        Plot decoded pressure fields from a sequence of state vectors.
+
+        :param model: Model instance providing a `plot_pressure()` method
+        :param state_data_iter: Iterable of state vectors to decode and plot
+        :return: None
+        """
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in state_data_iter]
         pressure = np.array(pressure)
-        #print("PRESSURE shape", pressure.shape)
         model.plot_pressure(pressure, self.times_measurements)
 
     def plot_pressure_ref(self):
+        """
+        Plot reference (true) pressure and saturation fields.
+
+        :return: None
+        """
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in self.ref_states]
         pressure = np.array(pressure)
         sat = np.array(self.ref_saturation)
@@ -56,72 +81,38 @@ class KalmanResults:
         plot_richards_output(output, [], self.workdir / "ref_solution.pdf")
 
     def plot_pressure_mean(self):
+        """
+        Plot mean pressure fields estimated from the UKF.
+
+        :return: None
+        """
         pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for state_vec in self.ukf_x]
         pressure = np.array(pressure)
-        sat = pressure # not available yet, need to improve API of the model to support spatial vG parameters, etc.
+        sat = pressure  # Placeholder for full VG parameter support
         output = RichardsSolverOutput(self.times, pressure, sat, None, None, self.data_z)
         plot_richards_output(output, [], self.workdir / "mean_solution.pdf")
 
     def plot_saturation(self, model):
-        print(len(self.ref_saturation))
-        #pressure = [self.state_struc.decode_state(state_vec)["pressure_field"] for saturation in self.ref_saturation]
+        """
+        Plot reference saturation profiles over time.
+
+        :param model: Model instance providing a `plot_saturation()` method
+        :return: None
+        """
         saturation = np.array(self.ref_saturation)
         print("SATURATION shape", saturation.shape)
         model.plot_saturation(saturation, self.times_measurements)
 
     def plot_results(self):
-        #print("state_loc_measurements ", pred_loc_measurements)
-        #print("noisy_measurements ", noisy_measurements)
+        """
+        Execute full result visualization:
+          - Reference and UKF mean pressure plots
+          - Covariance eigenvalue diagnostics
+          - Model parameter uncertainties
+          - Measurement comparisons (train/test)
 
-        #print("ukf_p_var_iter.shape ", ukf_p_var_iter.shape)
-        #print("pred model params shape ", np.array(pred_model_params).shape)
-
-        model_params_variances = None
-        # pred_loc_measurements_variances = []
-        # test_pred_loc_measurements_variances = []
-        # if ukf_p_var_iter is not None:
-        #     if len(pred_model_params)> 0:
-        #         model_params_variances = ukf_p_var_iter[:, -len(pred_model_params[0]):]
-        #         print("model params variances ", model_params_variances)
-        #
-        #     pred_loc_measurements_variances = ukf_p_var_iter[:, -self.additional_data_len: -self.additional_data_len + len(
-        #         self.kalman_config["mes_locations_train"])]
-        #
-        #     if self.additional_data_len == len(self.kalman_config["mes_locations_train"]) + len(
-        #             self.kalman_config["mes_locations_test"]):
-        #         test_pred_loc_measurements_variances = ukf_p_var_iter[:,
-        #                             -self.additional_data_len + len(self.kalman_config["mes_locations_train"]):]
-        #     else:
-        #         test_pred_loc_measurements_variances = ukf_p_var_iter[:,
-        #                             -self.additional_data_len + len(self.kalman_config["mes_locations_train"]):
-        #                             -self.additional_data_len + len(self.kalman_config["mes_locations_train"])
-        #                             + len(self.kalman_config["mes_locations_test"])]
-        #
-        #     print("pred_loc_measurements_variances shape ", pred_loc_measurements_variances.shape)
-        #     print("test_pred_loc_measurements_variances shape ", test_pred_loc_measurements_variances.shape)
-        #
-
-        #times = np.arange(1, pred_loc_measurements.shape[0] + 1, 1)
-
-        #print("times.shape ", times.shape)
-        #print("xs[:, 0].shape ", pred_loc_measurements[:, 0].shape)
-
-        #np.save(self.work_dir / "times", times)
-        #np.save(self.work_dir / "model_params_variances", model_params_variances)
-        #np.save(self.work_dir / "pred_loc_measurements_variances", pred_loc_measurements_variances)
-        #np.save(self.work_dir / "test_pred_loc_measurements_variances", test_pred_loc_measurements_variances)
-
-        # plt.scatter(times, pred_loc_measurements[:, 0], marker="o", label="predictions")
-        # plt.scatter(times, measurements[:, 0], marker='x',  label="measurements")
-        # plt.scatter(times, noisy_measurements[:, 0], marker='x',  label="noisy measurements")
-        # plt.legend()
-        # plt.show()
-
-        #######
-        # Plot model params data
-        ######
-        #print("pred model params ", pred_model_params)
-        #print("pred_model_params shape ", np.array(pred_model_params).shape)
+        :return: None
+        """
         if len(self.ref_states) > 0:
             self.plot_pressure_ref()
         self.plot_pressure_mean()
@@ -135,82 +126,38 @@ class KalmanResults:
         self._plot_measurements(meas_type="test")
 
     def _plot_heatmap(self, cov_matrix):
-        # Generate a heatmap using seaborn
-        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 10))
+        """
+        Plot correlation heatmap derived from a covariance matrix.
 
-        # print("cov matrix ", cov_matrix)
+        :param cov_matrix: Covariance matrix to analyze
+        :return: None
+        """
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 10))
         eigenvalues = np.linalg.eigvals(cov_matrix)
-        # print("eigenvalues ", eigenvalues)
 
         if np.any(eigenvalues < 0):
             print("Warning: Covariance matrix is not positive semi-definite!")
 
-        # print("np.diag(cov_matrix) ", np.diag(cov_matrix))
-
-        # Step 1: Get the standard deviations from the diagonal of the covariance matrix
         std_devs = np.sqrt(np.diag(cov_matrix))
-
         diag_matrix = np.diag(std_devs)
-
-        # np.linalg.inv(diagonal_matrix) @ cov_matrix @ np.linalg.inv(diagonal_matrix)
-
-        # print("std devs ", std_devs)
-
-        # Step 2: Create a correlation matrix by normalizing the covariance matrix
-        # correlation_matrix = cov_matrix / np.outer(std_devs, std_devs)
-
         correlation_matrix = np.linalg.inv(diag_matrix) @ cov_matrix @ np.linalg.inv(diag_matrix)
-
-        # print("np.outer(std_devs, std_devs) ", np.outer(std_devs, std_devs))
-
-        # off_diagonal_elements = cov_matrix[np.triu_indices_from(cov_matrix, k=1)]
-
-        # Find the maximum off-diagonal value
-        # max_off_diagonal = np.max(np.abs(off_diagonal_elements))
-
         np.fill_diagonal(correlation_matrix, 0)
-
-        # Get the indices where values are greater than 1
-        indices = np.argwhere(correlation_matrix > 1)
-
-        print("\nIndices where values are greater than 1:")
-        for idx in indices:
-            print(f"Row {idx[0]}, Column {idx[1]}: Value = {correlation_matrix[idx[0], idx[1]]}")
-
         correlation_matrix = np.clip(correlation_matrix, -1, 1)
 
-        # sns.heatmap(cov_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
-        # # Add title and labels
-        # axes.set_title('cov_matrix Matrix Heatmap')
-        # axes.set_xlabel('Variables')
-        # axes.set_ylabel('Variables')
-        # fig.savefig("heatmap.pdf")
-        # plt.show()
-        # print("correlation matrix ", correlation_matrix)
-
         sns.heatmap(correlation_matrix, cbar=True, cmap='coolwarm', annot=False, ax=axes)
-
-        # Add title and labels
         axes.set_title('Correlation Matrix Heatmap')
         axes.set_xlabel('Variables')
         axes.set_ylabel('Variables')
-
         fig.savefig("heatmap.pdf")
         plt.show()
 
-        # fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(12, 10))
-        #
-        # sns.clustermap(cov_matrix, cmap='coolwarm')
-        #
-        # # Add title and labels
-        # axes.set_title('Covariance Matrix Heatmap')
-        # axes.set_xlabel('Variables')
-        # axes.set_ylabel('Variables')
-        #
-        # fig.savefig("clustermap.pdf")
-        # plt.show()
-
     def _decode_meas(self, state_array_list):
+        """
+        Decode measurement-related variables from state arrays.
+
+        :param state_array_list: List of encoded state vectors
+        :return: Dictionary of decoded measurement arrays or None
+        """
         state_array = trans_state(state_array_list)
         if state_array is None:
             return None
@@ -219,12 +166,14 @@ class KalmanResults:
         return param_dict
 
     def _plot_measurements(self, meas_type="train"):
-        times = np.array(self.times)
+        """
+        Plot predicted, exact, and noisy measurements over time.
 
-        if meas_type == "train":
-            measurements_struc = self.train_measurements_struc
-        else:
-            measurements_struc = self.test_measurements_struc
+        :param meas_type: Type of dataset ("train" or "test")
+        :return: None
+        """
+        times = np.array(self.times)
+        measurements_struc = self.train_measurements_struc if meas_type == "train" else self.test_measurements_struc
 
         import matplotlib
         from matplotlib import ticker
@@ -232,7 +181,6 @@ class KalmanResults:
         formatter.set_scientific(True)
         matplotlib.rcParams.update({'font.size': 13})
 
-        # #print("n measurements ", n_measurements)
         if meas_type == 'train':
             meas_in_all = measurements_struc.decode(np.array(self.measurement_in).T)
         else:
@@ -244,46 +192,27 @@ class KalmanResults:
         meas_exact_dict = {}
         if len(meas_exact_all) > 0:
             meas_exact_dict = measurements_struc.decode(meas_exact_all.T)
-        #meas_exact_dict = {k: v for k, v in states_dict.items()}
 
         meas_x_all = measurements_struc.decode(np.array(ukf_meas_all).T)
 
-        measurements_dict = {}
         for measurement_name, measure_obj in measurements_struc.items():
-            meas_x = meas_x_all[measurement_name] #measurements_struc.decode(self.ukf_train_meas)   #self._decode_meas(self.ukf_x)[meas_key]
-            meas_exact = None
-            if measurement_name in meas_exact_dict:
-                meas_exact = meas_exact_dict[measurement_name]
-            #P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
-            #meas_var = self._decode_meas(P_diag)[meas_key]
-            #meas_std = np.sqrt(meas_var)
+            meas_x = meas_x_all[measurement_name]
+            meas_exact = meas_exact_dict.get(measurement_name, None)
             n_meas = len(meas_x)
-            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+            fig, ax = plt.subplots(figsize=(20, 10))
             meas_z = measure_obj.z_pos
-
             colors = sns.color_palette("tab10")
+
             for i in range(n_meas):
                 col = colors[i % 10]
-                #mse_vs_exact = np.sqrt(np.mean((meas_exact[i] - meas_x[i]) ** 2))
-                #mse_vs_obs = np.mean((meas_exact[i] - meas_x[i]) ** 2)
-                #mean_std = np.mean(meas_std[i])
-                #print(f"d=(exact - ukf_est) {i}: std(d) {mse_vs_exact}, std(d)/mean(std_est): {mse_vs_exact / mean_std}")
-                #print(f"d=(obs - ukf_est) {i}: std(d) {mse_vs_obs} std(d)/mean(std_est): {mse_vs_exact / mean_std}")
-
-                #print("np.sqrt(pred_loc_measurements_variances[:, i]) ",
-                #fig, axes = plt.subplots(1, 1)
-                #axes.scatter(times, pred_loc_measurements[:, i], marker="o", label="predictions")
-                #ax.errorbar(times, meas_x[i], c=col, ms=5, yerr=meas_std[i], fmt='o', capsize=5, label=f'obs_est(z={meas_z[i]})')
                 if meas_exact is not None:
                     ax.scatter(times, meas_exact[i], c=col, s=30, marker='o', label=f"obs(z={meas_z[i]})")
-
-                #ax.plot(times, meas_exact[i], c=col, linewidth=2, label=f"obs_sim(z={meas_z[i]})")
                 if meas_in_all is not None and measurement_name in meas_in_all:
                     meas_in = meas_in_all[measurement_name]
                     ax.scatter(times, meas_in[i], c=col, s=30, marker='x', label=f"noisy obs(z={meas_z[i]})")
+                ax.plot(times, meas_x[i], c=col, linestyle='--', linewidth=2, label=f"pred(z={meas_z[i]})")
 
-                ax.plot(times, meas_x[i], c=col, linestyle='--', linewidth=2, label=f"obs_sim(z={meas_z[i]})")
-                ax.set_xlabel("time[min]")
+                ax.set_xlabel("time [min]")
                 ax.set_ylabel(f"{meas_type} {measurement_name}")
             fig.legend()
             fig.tight_layout()
@@ -292,12 +221,26 @@ class KalmanResults:
                 plt.show()
 
     def _decode_params(self, state_array_list):
+        """
+        Decode model parameters and calibration coefficients.
+
+        :param state_array_list: List or array of encoded state vectors
+        :return: Dictionary of decoded parameters
+        """
         state_array = np.array(state_array_list).T
         states_dict = self.state_struc.decode_state(state_array)
-        param_dict = {k:v for k, v in states_dict.items() if isinstance(self.state_struc[k], (GVar, CalibrationCoeffs))}
+        param_dict = {k: v for k, v in states_dict.items() if isinstance(self.state_struc[k], (GVar, CalibrationCoeffs))}
         return param_dict
 
     def plot_calibration_coeffs(self, ref_values, values, vars):
+        """
+        Plot evolution of calibration coefficients and uncertainty bounds.
+
+        :param ref_values: Reference calibration coefficient values
+        :param values: Estimated coefficient means
+        :param vars: Estimated coefficient variances
+        :return: None
+        """
         calibration_coeffs_z_positions = np.array(self.state_struc.get_calibration_coeffs_z_positions())
         fig, axes = plt.subplots(nrows=len(calibration_coeffs_z_positions), ncols=1, figsize=(10, 5))
 
@@ -320,27 +263,30 @@ class KalmanResults:
             q05_values = GVar_instance.decode(q05)
             q95_values = GVar_instance.decode(q95)
 
-            # print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-            ax.plot(self.times, calib_ref_value, label="exact_pos: {}".format(z_position))
-            # ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
-            # axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
-            # print("variances[:, idx] ", variances[:, idx])
-            # Compute asymmetric error bars
+            # Asymmetric error bars
             lower_err = median_values - q05_values
             upper_err = q95_values - median_values
 
+            ax.plot(self.times, calib_ref_value, label=f"exact pos: {z_position}")
             ax.errorbar(self.times, median_values, yerr=[lower_err, upper_err], fmt='o', capsize=5,
-                        label="calibration_coeff, pos: {}".format(z_position))  # label='Data with variance')
+                        label=f"calibration_coeff, pos: {z_position}")
+            ax.set_ylabel(f"pos: {z_position}")
 
-            # axes.set_xlabel("param_name")
-            ax.set_ylabel("pos: {}".format(z_position))
         fig.legend()
-        fig.savefig(self.workdir / f"calibration_coeffs.pdf")
+        fig.savefig(self.workdir / "calibration_coeffs.pdf")
         if self.cfg['show']:
             plt.show()
 
 
     def _plot_model_params_quantiles(self, ref_params, x_params, var_params):
+        """
+        Plot model parameter quantiles (5%, 50%, 95%) with uncertainty bounds.
+
+        :param ref_params: Reference (true) parameter values
+        :param x_params: Estimated parameter mean values
+        :param var_params: Estimated parameter variances
+        :return: None
+        """
         median_values = {}
         q05_values = {}
         q95_values = {}
@@ -349,7 +295,6 @@ class KalmanResults:
             encoded_values = self.state_struc[var_key].encode(values)
             encoded_vars = self.state_struc[var_key].encode(var_params[var_key])
 
-            #q05, median, q95 = norm.ppf([0.05, 0.5, 0.95], loc=encoded_values, scale=encoded_vars)
             median = norm.ppf(0.5, loc=encoded_values, scale=encoded_vars)
             q05 = norm.ppf(0.05, loc=encoded_values, scale=encoded_vars)
             q95 = norm.ppf(0.95, loc=encoded_values, scale=encoded_vars)
@@ -366,33 +311,37 @@ class KalmanResults:
             fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
 
             for ax, k in zip(axes, x_params.keys()):
-                #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-
                 if k in ref_params:
                     ax.plot(self.times, ref_params[k], label=f"{k}_exact")
-                #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
-                #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
-                #print("variances[:, idx] ", variances[:, idx])
-                # Compute asymmetric error bars
+
                 lower_err = median_values[k] - q05_values[k]
                 upper_err = q95_values[k] - median_values[k]
 
-                ax.errorbar(self.times, median_values[k], yerr=[lower_err, upper_err], fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
-
-                #axes.set_xlabel("param_name")
+                ax.errorbar(self.times, median_values[k], yerr=[lower_err, upper_err],
+                            fmt='o', capsize=5, label=f"{k}_kalman")
                 ax.set_ylabel(k)
+
             fig.legend()
             fig.savefig(self.workdir / f"model_param_{k}_q_err.pdf")
             if self.cfg['show']:
                 plt.show()
 
     def _plot_model_params(self):
+        """
+        Decode and visualize model parameter evolution over time.
+
+        This includes:
+          - Decoding UKF-estimated parameters and variances
+          - Comparing with reference parameters (if available)
+          - Plotting calibration coefficient uncertainties separately
+
+        :return: None
+        """
         import matplotlib
         from matplotlib import ticker
         formatter = ticker.ScalarFormatter(useMathText=True)
         formatter.set_scientific(True)
         matplotlib.rcParams.update({'font.size': 13})
-
 
         x_params = self._decode_params(self.ukf_x)
         P_diag = np.diagonal(self.ukf_P, axis1=1, axis2=2)
@@ -402,72 +351,42 @@ class KalmanResults:
         if len(self.ref_states):
             ref_params = self._decode_params(self.ref_states)
             if "calibration_coeffs" in ref_params:
-                self.plot_calibration_coeffs(ref_params["calibration_coeffs"], x_params["calibration_coeffs"], var_params["calibration_coeffs"])
+                self.plot_calibration_coeffs(
+                    ref_params["calibration_coeffs"],
+                    x_params["calibration_coeffs"],
+                    var_params["calibration_coeffs"],
+                )
                 del ref_params["calibration_coeffs"]
                 del x_params["calibration_coeffs"]
                 del var_params["calibration_coeffs"]
 
         self._plot_model_params_quantiles(ref_params, x_params, var_params)
 
-        #model_dynamic_params = KalmanFilter.get_nonzero_std_params(model_config["params"])
-        #print("model dynamic params ", model_dynamic_params)
-
-        # n_params = len(x_params)
-        #
-        # if n_params > 0:
-        #     if n_params == 1:
-        #         n_params += 1
-        #     fig, axes = plt.subplots(nrows=n_params, ncols=1, figsize=(10, 5))
-        #
-        #     for ax, k in zip(axes, x_params.keys()):
-        #         #print("pred_model_params[:, {}]shape ".format(idx), pred_model_params[:, idx].shape)
-        #         ax.plot(self.times, ref_params[k], label=f"{k}_exact")
-        #         #ax.hlines(y=mean_value_std[0], xmin=0, xmax=pred_model_params.shape[0], linewidth=2, color='r')
-        #         #axes.scatter(times, pred_model_params[:, idx], marker="o", label="predictions")
-        #         #print("variances[:, idx] ", variances[:, idx])
-        #         ax.errorbar(self.times, x_params[k], yerr=np.sqrt(var_params[k]), fmt='o', capsize=5, label=f"{k}_kalman")# label='Data with variance')
-        #
-        #         #axes.set_xlabel("param_name")
-        #         ax.set_ylabel(k)
-        #     fig.legend()
-        #     fig.savefig(self.workdir / f"model_param_{k}.pdf")
-        #     if self.cfg['show']:
-        #         plt.show()
-
     def postprocess(self):
-        ##############################
-        ### Results postprocessing ###
-        ##############################
-        # KalmanFilter.serialize_kalman_filter(ukf, self.work_dir / "kalman_filter.pkl")
-        # Serialize the Kalman filter object
-        # auxiliary_data = {"additional_data_len": self.additional_data_len}
-        #
-        # with (self.work_dir / "auxiliary_data.json").open('w') as f:
-        #     json.dump(auxiliary_data, f)
-        # with (self.work_dir / "model_config.json").open('w') as f:
-        #     json.dump(self.model_config, f)
-        # with (self.work_dir / "kalman_config.json").open('w') as f:
-        #     json.dump(self.kalman_config, f)
-        #
-        # np.save(self.work_dir / "noisy_measurements", noisy_measurements)
-        # np.save(self.work_dir / "pred_loc_measurements", pred_loc_measurements)
-        # np.save(self.work_dir / "pred_model_params", pred_model_params)
-        # np.save(self.work_dir / "noisy_measurements_to_test", noisy_measurements_to_test)
-        # np.save(self.work_dir / "test_pred_loc_measurements", test_pred_loc_measurements)
-        # np.save(self.work_dir / "pred_state_data_iter", pred_state_data_iter)
-        # np.save(self.work_dir / "ukf_p_var_iter", ukf_p_var_iter)
-        # np.save(self.work_dir / "ukf_last_P", ukf_last_P)
+        """
+        Perform full postprocessing after UKF estimation.
 
+        Steps include:
+          - Generating pressure, covariance, and measurement plots
+          - Plotting parameter uncertainty evolution
+          - Creating correlation heatmaps of the final covariance matrix
+
+        :return: None
+        """
         self.plot_results()
-
         self._plot_heatmap(cov_matrix=self.ukf_P[-1])
 
-        # self.postprocess_data(state_data_iters, pred_state_data_iter)
-
-
     def generate_measurement_plot(self):
-        times = np.arange(1, len(measurements) + 1, 1)
+        """
+        Generate comparison plots for measured and noisy measurement data.
 
+        Note:
+            This method assumes that `measurements`, `noisy_measurements`,
+            and `data_name` variables exist in the current scope or class.
+
+        :return: None
+        """
+        times = np.arange(1, len(measurements) + 1, 1)
         fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
         axes.scatter(times, measurements[:, 0], marker="o", label="measurements")
         axes.scatter(times, noisy_measurements[:, 0], marker='x', label="noisy measurements")
@@ -485,3 +404,4 @@ class KalmanResults:
             axes.set_ylabel(data_name)
             fig.legend()
             plt.show()
+
