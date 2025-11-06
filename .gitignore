@@ -1,3 +1,10 @@
+# secret files
+dvc_secret_config.sh
+
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
