@@ -99,12 +99,13 @@ class KalmanFilter:
             raise NotImplemented("Import desired class")
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
-    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test):
+    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag):
         """
         Align preloaded measurements with precipitation schedule and iteration grouping.
 
         :param noisy_measurements_train: Encoded training measurements list/array
         :param noisy_measurements_test: Encoded testing measurements list/array
+        :param measurement_state_flag: Measurements state flag list/array
         :return: Tuple (noisy_train_measurements, noisy_test_measurements,
             meas_model_iter_time, meas_model_iter_flux)
         """
@@ -114,6 +115,7 @@ class KalmanFilter:
         meas_model_iter_flux = []
         noisy_train_measurements = []
         noisy_test_measurements = []
+        measurement_state_flag_sampled = []
 
         print("len(noisy_measurements_train) ", len(noisy_measurements_train))
         total_index = 0
@@ -141,15 +143,17 @@ class KalmanFilter:
 
                     noisy_train_measurements.append(noisy_measurements_train[total_index])
                     noisy_test_measurements.append(noisy_measurements_test[total_index])
+                    measurement_state_flag_sampled.append(measurement_state_flag[total_index])
                 except IndexError as idxerr:
                     print("idx_error ", idxerr)
                     noisy_train_measurements.append(noisy_measurements_train[total_index - 1])
                     noisy_test_measurements.append(noisy_measurements_test[total_index - 1])
+                    measurement_state_flag_sampled.append(measurement_state_flag[total_index - 1])
 
                 meas_model_iter_time.append(prec_time)
                 meas_model_iter_flux.append(prec_flux)
 
-        return noisy_train_measurements, noisy_test_measurements, meas_model_iter_time, meas_model_iter_flux
+        return noisy_train_measurements, noisy_test_measurements, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux
 
     def run(self):
         """
@@ -175,10 +179,9 @@ class KalmanFilter:
                 precipitation_list.extend([precipitation] * time_prec)
             self.measurements_config["precipitation_list"] = precipitation_list
 
-            noisy_measurements, noisy_measurements_to_test, meas_model_iter_time, meas_model_iter_flux = \
-                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test)
+            noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux = \
+                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag)
 
-            measurements_time_step = self.measurements_config["measurements_time_step"]
             sample_variance = np.nanvar(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
 
@@ -209,7 +212,7 @@ class KalmanFilter:
         #######################################
         ### UKF run: predict / update loop  ###
         #######################################
-        self.run_kalman_filter(ukf, noisy_measurements, measurement_state_flag)
+        self.run_kalman_filter(ukf, noisy_measurements, measurement_state_flag_sampled)
 
         return self.results
 
