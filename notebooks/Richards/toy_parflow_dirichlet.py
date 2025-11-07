@@ -1,12 +1,16 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
+#
+# Reference solution for testing own implementation of Richards solver.
 
 from parflow import Run
 from parflow.tools import settings
 from parflow.tools.io import write_pfb, read_pfb
 import numpy as np
 import os, pathlib
+import matplotlib as mpl
 from matplotlib import pyplot as plt
+import matplotlib.ticker as ticker
 
 class ToyProblem:
     def __init__(self, workdir=None):
@@ -37,15 +41,15 @@ class ToyProblem:
         #-----------------------------------------------------------------------------
         self._run.ComputationalGrid.Lower.X = 0.0
         self._run.ComputationalGrid.Lower.Y = 0.0
-        self._run.ComputationalGrid.Lower.Z = -10.0
+        self._run.ComputationalGrid.Lower.Z = -2.0
 
         self._run.ComputationalGrid.DX = 1.
         self._run.ComputationalGrid.DY = 1.
-        self._run.ComputationalGrid.DZ = 0.5
+        self._run.ComputationalGrid.DZ = 0.01
 
         self._run.ComputationalGrid.NX = 1
         self._run.ComputationalGrid.NY = 1
-        self._run.ComputationalGrid.NZ = 20
+        self._run.ComputationalGrid.NZ = 200
 
         #-----------------------------------------------------------------------------
         # The Names of the GeomInputs
@@ -62,7 +66,7 @@ class ToyProblem:
         #-----------------------------------------------------------------------------
         self._run.Geom.domain.Lower.X = 0.0
         self._run.Geom.domain.Lower.Y = 0.0
-        self._run.Geom.domain.Lower.Z = -10.0
+        self._run.Geom.domain.Lower.Z = -2.0
 
         self._run.Geom.domain.Upper.X = 1.0
         self._run.Geom.domain.Upper.Y = 1.0
@@ -115,13 +119,13 @@ class ToyProblem:
         #-----------------------------------------------------------------------------
         # Setup timing info
         #-----------------------------------------------------------------------------
-        self._run.TimingInfo.BaseUnit = 1.0e-4
+        self._run.TimingInfo.BaseUnit = 1.0e-2
         self._run.TimingInfo.StartCount = 0
         self._run.TimingInfo.StartTime = 0.0
-        self._run.TimingInfo.StopTime = 48.0  # [h]
+        self._run.TimingInfo.StopTime = 24.0  # [h]
         self._run.TimingInfo.DumpInterval = -1
         self._run.TimeStep.Type = "Constant"
-        self._run.TimeStep.Value = 2.5e-2     # [h]
+        self._run.TimeStep.Value = 1e-2     # [h]
 
         #-----------------------------------------------------------------------------
         # Time Cycles
@@ -149,7 +153,7 @@ class ToyProblem:
         self._run.Phase.RelPerm.Type = "VanGenuchten"
         self._run.Phase.RelPerm.GeomNames = "domain"
         self._run.Geom.domain.RelPerm.Alpha = 0.58
-        self._run.Geom.domain.RelPerm.N = 2.4
+        self._run.Geom.domain.RelPerm.N = 3.7
 
         #---------------------------------------------------------
         # Saturation
@@ -170,11 +174,13 @@ class ToyProblem:
         self._run.Patch.bottom.BCPressure.Cycle = "constant"
         self._run.Patch.bottom.BCPressure.RefGeom = "domain"
         self._run.Patch.bottom.BCPressure.RefPatch = "bottom"
-        self._run.Patch.bottom.BCPressure.alltime.Value = -2.0
+        self._run.Patch.bottom.BCPressure.alltime.Value = -100.0
 
-        self._run.Patch.top.BCPressure.Type = "FluxConst"
+        self._run.Patch.top.BCPressure.Type = "DirEquilRefPatch"
         self._run.Patch.top.BCPressure.Cycle = "constant"
-        self._run.Patch.top.BCPressure.alltime.Value = -2e-3
+        self._run.Patch.top.BCPressure.RefGeom = "domain"
+        self._run.Patch.top.BCPressure.RefPatch = "top"
+        self._run.Patch.top.BCPressure.alltime.Value = -1e-2
 
         #---------------------------------------------------------
         # Initial conditions: water pressure
@@ -263,7 +269,7 @@ class ToyProblem:
         # === End Other required and unused parameters ===
 
 
-    def set_init_pressure(self):
+    def set_init_pressure(self, init_func):
         # example of setting custom initial pressure
 
         # create vector of z-coordinates for data vector in ascending order
@@ -274,12 +280,13 @@ class ToyProblem:
 
         # define initial pressure data vector
         init_p = np.zeros((nz,1,1))
-        init_p[:,0,0] = zz-2
+        init_p[:,0,0] = init_func(zz)
 
         filename = "toy_richards.init_pressure.pfb"
         filepath = self._workdir / pathlib.Path(filename)
         write_pfb(str(filepath), init_p)
 
+        self._run.ICPressure.GeomNames = "domain"
         self._run.ICPressure.Type = "PFBFile"
         self._run.Geom.domain.ICPressure.FileName = filename
 
@@ -315,7 +322,7 @@ class ToyProblem:
         self._run = Run.from_definition(yaml_file)
 
 
-    def save_pressure(self, image_file):
+    def save_pressure(self, image_file, avi=False):
         cwd = settings.get_working_directory()
         settings.set_working_directory(self._workdir)
 
@@ -324,7 +331,11 @@ class ToyProblem:
         data.time = 0
 
         ntimes = len(data.times)
+        times = np.linspace(self._run.TimingInfo.StartTime, self._run.TimingInfo.StopTime, num=ntimes+1)
         nz = data.pressure.shape[0]
+        z0 = self._run.ComputationalGrid.Lower.Z
+        zs = np.cumsum(data.dz)
+        zs = np.insert(zs, 0, 0, axis=0) + z0
         pressure = np.zeros((ntimes, nz))
 
         # Iterate through the timesteps of the DataAccessor object
@@ -334,16 +345,69 @@ class ToyProblem:
             data.time += 1
 
         plt.clf()
-        plt.imshow(np.flip(pressure), aspect='auto')
-        nticks = int(ntimes/10)
-        plt.yticks( np.arange(ntimes)[::nticks], np.flip(data.times[::nticks]) )
-        nzticks = int(nz/10)
-        plt.xticks( np.arange(nz)[1::nzticks], np.cumsum(data.dz)[1::nzticks] )
+        cmap = mpl.colormaps["winter"].with_extremes(under="magenta", over="yellow")
+        plt.pcolormesh(zs, times, pressure, shading='auto', cmap=cmap)
+        #plt.gca().yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+        #plt.gca().xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         plt.colorbar()
         plt.title("pressure")
         plt.xlabel("depth [m]")
         plt.ylabel("time [h]")
-        plt.savefig(image_file)
+        plt.savefig(image_file + ".png")
+
+        # save to CSV
+        header = "Time," + ",".join(f"z={z:.2f}" for z in zs)
+        np.savetxt(image_file + ".csv", np.column_stack((times[:-1], pressure)), delimiter=",", header=header, comments="")
+
+        # Generate AVI animation
+        if avi:
+          import cv2
+          # Video settings
+          output_file = image_file + ".avi"
+          fps = 32  # Frames per second
+          width, height = 800, 600  # Video resolution
+          
+          # Create a figure
+          fig, ax = plt.subplots(figsize=(8, 6))
+          
+          # Initialize video writer
+          fourcc = cv2.VideoWriter_fourcc(*'XVID')  # AVI format
+          video = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+          
+          # Generate frames
+          for i in range(ntimes):
+              ax.clear()
+              
+              # Plot pressure as a function of spatial position
+              ax.plot(zs[:-1], pressure[i, :], color='blue', linewidth=2)
+              
+              # Labels and title
+              ax.set_xlabel("Spatial Position (z)")
+              ax.set_ylabel("Pressure")
+              ax.set_title(f"Time Evolution of Pressure (t={times[i]:.2f}d)")
+              
+              # Set axis limits
+              ax.set_xlim(zs.min(), zs.max())
+              ax.set_ylim(pressure.min(), pressure.max())
+
+              # Enable grid
+              ax.grid(True, linestyle='--', alpha=0.7)  # Dashed grid lines with transparency
+          
+              # Convert figure to image
+              fig.canvas.draw()
+              img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+              img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+          
+              # Resize to video resolution and write frame
+              img_resized = cv2.resize(img, (width, height))
+              video.write(cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR))
+          
+          # Release resources
+          video.release()
+          plt.close(fig)
+  
+          print(f"Video saved as {output_file}")
+
 
         settings.set_working_directory(cwd)
 
@@ -381,10 +445,9 @@ class ToyProblem:
         settings.set_working_directory(cwd)
 
 
-toy = ToyProblem(workdir="output-toy")
+toy = ToyProblem(workdir="output-toy-dirichlet")
 toy.setup_config()
-toy.set_init_pressure()
-toy.set_porosity([-10,-5,0], [0.1, 1, 0.5])
-toy.run()
-toy.save_pressure("pressure.png")
-toy.save_porosity("porosity.png")
+toy.set_init_pressure( lambda z:-20+40*z )
+#toy.run()
+toy.save_pressure("pressure-dirichlet", avi=True)
+toy.save_porosity("porosity-dirichlet.png")

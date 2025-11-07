@@ -1,0 +1,5 @@
+MovingAverageAngle	KEYWORD1
+get	KEYWORD2
+add	KEYWORD2
+reset	KEYWORD2
+fill	KEYWORD2
