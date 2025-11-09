@@ -140,7 +140,6 @@ class KalmanFilter:
                 try:
                     print("noisy_measurements_train[total_index])", noisy_measurements_train[total_index])
                     print("noisy_measurements_test[total_index])", noisy_measurements_test[total_index])
-
                     noisy_train_measurements.append(noisy_measurements_train[total_index])
                     noisy_test_measurements.append(noisy_measurements_test[total_index])
                     measurement_state_flag_sampled.append(measurement_state_flag[total_index])
@@ -544,16 +543,17 @@ class KalmanFilter:
         iter_durations = [self.results.times_measurements[0]] + list(
             np.array(self.results.times_measurements[1:]) - np.array(self.results.times_measurements[:-1])
         )
-        print("iter durations ", iter_durations)
-        print("noisy_measurements ", noisy_measurements)
 
+        measurement_state_flag = np.array(measurement_state_flag)
         for i, measurement in enumerate(noisy_measurements):
             ukf.predict(iter_duration=iter_durations[i], precipitation_flux=self.results.precipitation_flux_measurements[i])
             print("i: {}, measurement: {} ".format(i, measurement))
-
             # Skip bad measurements if flagged
             if i < len(measurement_state_flag) and measurement_state_flag[i] != 0:
                 print(f"[UKF] Skipping update at timestep {i} (bad measurements)")
+                # Skip if measurement contains any NaN values
+            elif np.isnan(measurement).any():
+                print(f"[UKF] Skipping update at timestep {i} (contains NaN)")
             else:
                 ukf.update(measurement)
 
