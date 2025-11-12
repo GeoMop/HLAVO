@@ -1,4 +1,0 @@
-endpoints:
-  - name: bukov
-    endpoint: /api/v1/bukov
-    schema_path: schemas/bukov_schema_v1.yaml
