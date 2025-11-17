@@ -3,6 +3,8 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
 jobs:
   build-and-deploy:
     uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@SM-CI-outside-repository
