@@ -16,6 +16,7 @@ jobs:
       configuration-dir-path: data_processing/ingress/inputs
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
+      zarr-fuse-ref: SM-CI-outside-repository
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
     secrets: inherit
