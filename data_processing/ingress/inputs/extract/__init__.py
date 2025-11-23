@@ -1,1 +1,1 @@
-from .hlavo_extract import normalize_surface
+from .hlavo_extract import normalize_yrno_forecast
