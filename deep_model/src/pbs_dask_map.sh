@@ -90,5 +90,6 @@ sleep 5
 
 # 3) Run the Python client that submits the map workload
 echo "Running run_map.py..."
+#python composed_model_mock.py
 python run_map.py
 
