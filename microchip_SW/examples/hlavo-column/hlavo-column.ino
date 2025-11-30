@@ -64,8 +64,9 @@ DateTime dt_now;
 #include "column_flow_data.h"
 #define VALVE_OUT_PIN 15
 
-#include "water_height_sensor.h"  // Water Height sensor S18U
-WaterHeightSensor whs(5, 30, 220, 0.05, 3.13);  // pin, minH, maxH, minV, maxV
+#include "linear_voltage_sensor.h"
+// ultrasonic sensor S18U
+LinearVoltageSensor whs(5, 0.05, 3.13, 220, 30);  // pin, aVolt, bVolt, aVal, bVal
 
 bool start_valve_out = false;
 bool valve_out_open = false;

@@ -88,16 +88,24 @@ void setup() {
   pinMode(PR2_POWER_PIN, OUTPUT);
   setPin(PR2_POWER_PIN, HIGH);  // turn on power for PR2
 
-  // CHANGE ADDRESS
-  // String si = sdi12_comm.requestAndReadData("0A1!", false);  // Command to get sensor info
-  // String si = sdi12_comm.requestAndReadData("1A0!", false);  // Command to get sensor info
-
   delay(1000);  // allow things to settle
   uint8_t nbytes = 0;
+
+  // CHANGE ADDRESS
+  // Serial.println("Change PR2 address...");
+  // // String si = sdi12_comm.requestAndReadData("0A1!", false);
+  // // String si = sdi12_comm.requestAndReadData("1A0!", false);
+  // String si = sdi12_comm.requestAndReadData("1A3!", &nbytes);
+  // Logger::print(si);
+  // delay(1000);  // allow things to settle
+
   for(int i=0; i<n_sdi12_sensors; i++){
     String cmd = String(sdi12_addresses[i]) + "I!";
     Logger::print(sdi12_comm.requestAndReadData(cmd.c_str(), &nbytes));  // Command to get sensor info
   }
+
+  while(1)
+    ;
 
   Serial.flush();
 }

@@ -13,11 +13,13 @@ class PR2Reader{
     SDI12Comm* _sdi12_comm;
 
     static const uint8_t _n_fields = 3;
-    const char* _list_of_commands[_n_fields] = {"C", "C1", "C9"};
+    const char* _list_of_commands[_n_fields] = {"C", "C1", "C7"};
     /**
      * @brief 
      * C1: Soil moisture measurement in Theta (m3.m-3) with Mineral soil type calibration
      * C3: Soil moisture measurement as percentage volumetric (%) with Mineral soil type calibration
+     * C7: mV
+     * C9: rawADC
      */
 
     uint8_t icmd = 0;
@@ -73,7 +75,9 @@ void PR2Reader::TryRead()
       {
         case 0: data.setPermitivity(rec_values, rec_n_values); break;
         case 1: data.setSoilMoisture(rec_values, rec_n_values); break;
-        case 2: if(rec_n_values > 0)
+        // case 2: data.setVoltage(rec_values, rec_n_values); break;
+        case 2: data.setVoltage(rec_values+1, rec_n_values-1); break; // skip zero channel
+        case 3: if(rec_n_values > 0)
                   data.setRaw_ADC(&rec_values[1], rec_n_values-1);
                 break;
       }
