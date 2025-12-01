@@ -1,0 +1,6 @@
+outs:
+- md5: fc091c0d9c343deb7b3d11753d2bcb70.dir
+  size: 662462808
+  nfiles: 2
+  hash: md5
+  path: DMR_subset
