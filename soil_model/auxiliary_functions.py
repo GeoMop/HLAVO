@@ -86,14 +86,21 @@ def set_nested_attr(obj, attr, value):
     pre, _, post = attr.rpartition('.')
     return setattr(get_nested_attr(obj, pre) if pre else obj, post, value)
 
+def set_nested_attrs(obj, dict):
+    """
+    Use all keys of given dict to set nested attributes.
+    """
+    for key, val in dict.items():
+        set_nested_attr(obj, key, val)
 
-def add_noise(data_array, noise_level=0.1, std=None, distr_type="uniform", seed=12345):
+
+def add_noise(data_array, noise_level=0.1, distr_type="uniform", seed=12345):
     if len(data_array) > 0:
 
         if distr_type == "uniform":
-            print("uniform ")
-            print("noise level ", noise_level)
-            print("input data array ", data_array)
+            # print("uniform ")
+            # print("noise level ", noise_level)
+            # print("input data array ", data_array)
 
             lower_bound = -np.abs(noise_level * data_array)
             upper_bound = np.abs(noise_level * data_array)
@@ -115,23 +122,23 @@ def add_noise(data_array, noise_level=0.1, std=None, distr_type="uniform", seed=
             data_array = data_array + noise
 
         elif distr_type == "gaussian":
-            orig_value_sign = np.sign(data_array)
+            #orig_value_sign = np.sign(data_array)
 
-            print("noise level ", noise_level)
-            print("type noise level ", type(noise_level))
-            print("data array ", data_array)
+            # print("noise level ", noise_level)
+            # print("type noise level ", type(noise_level))
+            # print("data array ", data_array)
 
-            if std is None:
-                std = np.abs(data_array * noise_level)
+            #if std is None:
+            #    std = np.abs(data_array * noise_level)
 
-            value_noise = np.random.normal(0, std)
+            value_noise = np.random.normal(0, noise_level)
             print("value: {}, noise: {}, value + noise: {}".format(data_array, value_noise, data_array + value_noise))
 
             data_array = data_array + value_noise
 
-            different_signs_indices = np.where(np.sign(data_array) != orig_value_sign)[0]
-            for idx in different_signs_indices:
-                data_array[idx] *= -1
+            # different_signs_indices = np.where(np.sign(data_array) != orig_value_sign)[0]
+            # for idx in different_signs_indices:
+            #     data_array[idx] *= -1
 
     print("data array ", data_array)
 

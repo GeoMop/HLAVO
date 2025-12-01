@@ -1,3 +1,10 @@
+**/.idea
+surface_model/parflow_reference/parflow
+soil_model/workdir
+projekt
+notebooks/*.pdf
+notebooks/202*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
