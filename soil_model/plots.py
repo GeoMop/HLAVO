@@ -30,7 +30,6 @@ class RichardsSolverOutput:
     nodes_z: np.ndarray
 
 
-
 def plot_richards_output(output, obs_points=None, fname=None, show=False):
     """
     Plot the results from RichardsSolverOutput.
