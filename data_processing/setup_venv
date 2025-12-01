@@ -1,0 +1,33 @@
+#!/bin/bash
+# This would create a development virtual environment
+# - uses requirements.txt
+# - install endorse itself in development mode.
+set -x
+
+echo "Creating python virtual environment."
+
+SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+HLAVO_SRC_ROOT="$SCRIPTPATH/.."
+
+cd ${SCRIPTPATH}
+rm -r venv
+python3 -m venv venv
+#python3 -m venv --system-site-packages venv
+
+venv_pip=${SCRIPTPATH}/venv/bin/pip
+#$venv_pip install wheel
+$venv_pip install --no-cache-dir --upgrade pip
+
+$venv_pip install --no-cache-dir -r requirements.txt
+
+
+#$venv_pip install -e submodules/bgem
+#$venv_pip install -e submodules/bgem
+#$venv_pip install -e submodules/surrDAMH
+#$venv_pip install -e submodules/redis-cache
+
+# TODO simplyfy dependency and submodules
+# attrs somehow was broken after gmsh explicit installation, must force its reinstalation
+
+#$venv_pip install --force-reinstall --upgrade attrs
+#$venv_pip install -e .

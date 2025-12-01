@@ -1,0 +1,22 @@
+{
+  "name": "MovingAverageAngle",
+  "keywords": "moving-average, filter, average, angle, compass, processing",
+  "description": "Arduino & Mbed Library for averaging angles 0-360°",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pilotak/MovingAverageAngle.git"
+  },
+  "authors": {
+    "name": "Pavel Slama",
+    "email": "info@pavelslama.cz",
+    "url": "https://github.com/pilotak"
+  },
+  "dependencies": {
+    "owner": "pilotak",
+    "name": "MovingAverage",
+    "version": "^1.0.3"
+  },
+  "version": "1.1.0",
+  "frameworks": "arduino, mbed",
+  "platforms": "*"
+}

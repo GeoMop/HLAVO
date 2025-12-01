@@ -1,0 +1,10 @@
+matplotlib
+pandas
+
+numpy
+scipy
+
+# web DataFlow grabbing
+python-dotenv
+selenium
+requests
