@@ -6,7 +6,7 @@ active_scrappers:
       - "15 13 * * *"
       - "45 20 * * *"
     url: "https://api.met.no/weatherapi/locationforecast/2.0/complete"
-    schema_path: inputs/schemas/hlavo_surface_schema.yaml
+    schema_path: schemas/hlavo_surface_schema.yaml
     extract_fn: normalize_yrno_forecast
     fn_module: inputs.extract.hlavo_extract
     method: GET
@@ -18,5 +18,5 @@ active_scrappers:
         column_name: dflat
       - param_name: lon
         column_name: dflon
-    dataframe_path: inputs/dataframes/hlavo_surface_dataframe.csv
+    dataframe_path: dataframes/hlavo_surface_dataframe.csv
     dataframe_has_header: true
