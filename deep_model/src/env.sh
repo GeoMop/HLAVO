@@ -1,89 +1,316 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# env.sh — single entrypoint for project environment management (Linux/WSL)
+#
+# Behavior:
+#   - If conda-requirements.yml exists in the repo -> use Miniconda + mamba env
+#   - If not -> use local Python venv at ./venv (no conda required)
 #
 # Usage:
-# ./mamba_env.sh [--force] 
+#   ./env.sh help
+#   ./env.sh update
+#   ./env.sh rebuild
+#   ./env.sh shell
+#   ./env.sh list
+#   ./env.sh run -- <command> [args...]
+#   ./env.sh conda -- <conda args...>     (conda-mode only)
+#   ./env.sh mamba -- <mamba args...>     (conda-mode only; venv-mode gives a friendly error)
 #
-# Install conda environment according to the 'conda-requirements.yml'
-# The YAML config provides: name, source channel (conda-forge), list of installed packages
+# Notes:
+#   - No .bashrc modifications
+#   - No sudo usage (user-space Miniconda install)
+#   - Works from any working directory (uses script location as repo root)
+#
+# Optional:
+#   CONDA_BASE=/custom/path   # override Miniconda install location (default: $HOME/miniconda3)
 
+
+set -euo pipefail
 set -x
 
-SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+REPO_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
-# Environment for running fittings Jupyter notebook.
-# Uses Conda environment
-CONDA_PATH="/opt/miniconda"
+ENV_YAML="$REPO_ROOT/conda-requirements.yml"
+REQ_TXT="$REPO_ROOT/requirements.txt"
+VENV_DIR="$REPO_ROOT/venv"
 
-# Function to install Miniconda
-install_miniconda() {
-    # Update package list and install prerequisites
-    sudo apt update
-    sudo apt install -y wget bzip2
+CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
+CONDA_BIN="$CONDA_BASE/bin/conda"
+MAMBA_BIN="$CONDA_BASE/bin/mamba"
 
-    # Define Miniconda installer URL and download.
-    MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-    INSTALLER=/tmp/${MINICONDA_URL##*/}
-    wget $MINICONDA_URL -O $INSTALLER
-    
-    # Run the installer silently (-b) and specify custom installation path (-p)
-    sudo bash $INSTALLER -b -p $CONDA_PATH
-    
-    # Ensure the installation directory is writable by the current user
-    sudo chown -R $USER:$USER $CONDA_PATH
-    
-    # Initialize conda for bash shell
-    $CONDA_PATH/bin/conda init bash
-        
-    # Refresh the shell
-    source ~/.bashrc
-    
-    echo "Miniconda installed at $CONDA_PATH."
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./env.sh help
+  ./env.sh update
+  ./env.sh rebuild
+  ./env.sh shell
+  ./env.sh list
+  ./env.sh run -- <command> [args...]
+  ./env.sh conda -- <conda args...>     (conda-mode only)
+  ./env.sh mamba -- <mamba args...>     (conda-mode only)
+
+Mode selection:
+  - If conda-requirements.yml exists in the repo: conda/mamba mode
+  - Otherwise: python venv mode at ./venv
+EOF
 }
 
-# Main script execution
-# Check if conda is installed
-if command -v conda &> /dev/null; then
-    echo "Skipping Miniconda installation."
-else
-    install_miniconda
-fi
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
 
+# --- Conda/Mamba bootstrap ----------------------------------------------------
 
+install_miniconda_user() {
+  need_cmd wget
+  need_cmd bzip2
 
-# Ensure conda commands work in this script
-source $CONDA_PATH/etc/profile.d/conda.sh
+  local url="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+  local installer="/tmp/${url##*/}"
 
-# Install mamba in the base environment if not already present
-if ! command -v mamba &> /dev/null; then
-    echo "Installing mamba in the base environment..."
-    conda install -y mamba -n base -c conda-forge
-fi
+  wget "$url" -O "$installer"
+  bash "$installer" -b -p "$CONDA_BASE"
+}
 
-# Extract the environment name from the YAML file
-env_yaml="$SCRIPTPATH/conda-requirements.yml"
-env_name=$(grep '^name:' "$env_yaml" | awk '{print $2}')
+ensure_conda() {
+  if [[ -x "$CONDA_BIN" ]]; then
+    return 0
+  fi
 
-# Use mamba to remove, create, or update the environment
-if [ "$1" == "create" ]; then
-    mamba env remove -n $env_name
-    mamba env create -y --file "$env_yaml" 
-    exit 0
-elif [ "$1" == "update" ]; then
-    mamba env update -y --file "$env_yaml"
-    exit 0
-elif  [ "$1" == "list" ]; then
-    conda info --envs
-elif [ "$1" == "run" ]; then
-    conda activate $env_name
-    shift
-    $@
-elif [ "$1" == "conda" ]; then
-    shift 
-    conda $@
-fi
+  # Best-effort: ensure wget/bzip2 exist (no sudo). If missing, user must install.
+  if ! command -v wget >/dev/null 2>&1; then
+    die "wget not found. Install it (e.g., apt install wget) and re-run."
+  fi
+  if ! command -v bzip2 >/dev/null 2>&1; then
+    die "bzip2 not found. Install it (e.g., apt install bzip2) and re-run."
+  fi
 
+  echo "Miniconda not found at $CONDA_BASE — installing (user-space)..."
+  install_miniconda_user
+  [[ -x "$CONDA_BIN" ]] || die "Miniconda install failed (conda not found at $CONDA_BIN)."
+}
 
+ensure_conda_shell() {
+  # Enables `conda activate` in this non-interactive script without .bashrc.
+  # shellcheck disable=SC1090
+  source "$CONDA_BASE/etc/profile.d/conda.sh"
+}
 
-# Install the IPython kernel for Jupyter
-#ipython kernel install --name "$env_name" --user
+ensure_mamba() {
+  # We use conda only for bootstrapping mamba into base. After that we use mamba.
+  if [[ -x "$MAMBA_BIN" ]]; then
+    return 0
+  fi
 
+  echo "mamba not found — installing into base (conda-forge)..."
+  "$CONDA_BIN" install -y -n base -c conda-forge mamba
+  [[ -x "$MAMBA_BIN" ]] || die "mamba install failed (expected $MAMBA_BIN)."
+}
+
+parse_env_name_from_yaml() {
+  # Robust enough for common cases: name: foo / name: "foo" / name: 'foo'
+  local name
+  name="$(
+    awk -F': *' '
+      /^[[:space:]]*name[[:space:]]*:/ {
+        v=$2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^["'\'']|["'\'']$/, "", v)
+        print v
+        exit
+      }' "$ENV_YAML"
+  )"
+  [[ -n "${name:-}" ]] || die "Could not parse environment name from $ENV_YAML (missing/invalid 'name: ...')."
+  echo "$name"
+}
+
+conda_env_exists() {
+  local env_name="$1"
+  # mamba env list prints names in first column; match whole word.
+  "$MAMBA_BIN" env list | awk '{print $1}' | grep -Fxq "$env_name"
+}
+
+# --- venv backend (mamba "mock") ---------------------------------------------
+
+venv_ensure() {
+  if [[ -x "$VENV_DIR/bin/python" ]]; then
+    return 0
+  fi
+  need_cmd python3
+  python3 -m venv "$VENV_DIR"
+  "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
+}
+
+venv_install_requirements() {
+  if [[ -f "$REQ_TXT" ]]; then
+    conda activate "$env_name"
+    "$VENV_DIR/bin/python" -m pip install -r "$REQ_TXT"
+  else
+    echo "Note: $REQ_TXT not found — skipping pip installs."
+  fi
+}
+
+# venv backend implements "mamba-like" operations via functions to keep one script logic.
+
+backend_update() {
+  if [[ -f "$ENV_YAML" ]]; then
+    echo "Mode: conda/mamba (found conda-requirements.yml)"
+    ensure_conda
+    ensure_mamba
+    ensure_conda_shell
+
+    local env_name
+    env_name="$(parse_env_name_from_yaml)"
+
+    if conda_env_exists "$env_name"; then
+      "$MAMBA_BIN" env update -y --file "$ENV_YAML" --prune
+    else
+      "$MAMBA_BIN" env create -y --file "$ENV_YAML"
+    fi
+
+    # Optional pip layer
+    if [[ -f "$REQ_TXT" ]]; then
+      conda activate "$env_name"
+      python -m pip install -r "$REQ_TXT"
+    else
+      echo "Note: $REQ_TXT not found — skipping pip installs."
+    fi
+  else
+    echo "Mode: python venv (no conda-requirements.yml)"
+    venv_ensure
+    venv_install_requirements
+  fi
+}
+
+backend_rebuild() {
+  if [[ -f "$ENV_YAML" ]]; then
+    echo "Mode: conda/mamba (found conda-requirements.yml)"
+    ensure_conda
+    ensure_mamba
+    ensure_conda_shell
+
+    local env_name
+    env_name="$(parse_env_name_from_yaml)"
+
+    if conda_env_exists "$env_name"; then
+      "$MAMBA_BIN" env remove -y -n "$env_name"
+    fi
+    "$MAMBA_BIN" env create -y --file "$ENV_YAML"
+
+    if [[ -f "$REQ_TXT" ]]; then
+      "$MAMBA_BIN" run -n "$env_name" -- python -m pip install -r "$REQ_TXT"
+      python -m pip install -r "$REQ_TXT"  
+    else
+      echo "Note: $REQ_TXT not found — skipping pip installs."
+    fi
+  else
+    echo "Mode: python venv (no conda-requirements.yml)"
+    rm -rf "$VENV_DIR"
+    venv_ensure
+    venv_install_requirements
+  fi
+}
+
+backend_list() {
+  if [[ -f "$ENV_YAML" ]]; then
+    echo "Mode: conda/mamba (found conda-requirements.yml)"
+    ensure_conda
+    ensure_mamba
+    "$MAMBA_BIN" env list
+  else
+    echo "Mode: python venv (no conda-requirements.yml)"
+    if [[ -x "$VENV_DIR/bin/python" ]]; then
+      "$VENV_DIR/bin/python" -V
+      echo "venv path: $VENV_DIR"
+    else
+      echo "venv not created yet (expected at $VENV_DIR)"
+    fi
+  fi
+}
+
+backend_run() {
+  if [[ -f "$ENV_YAML" ]]; then
+    ensure_conda
+    ensure_mamba
+    ensure_conda_shell
+    env_name="$(parse_env_name_from_yaml)"
+
+    (
+      conda activate "$env_name"
+      "$@"
+    )
+  else
+    venv_ensure
+    (
+      source "$VENV_DIR/bin/activate"
+      "$@"
+    )
+  fi
+}
+
+backend_shell() {
+  if [[ -f "$ENV_YAML" ]]; then
+    ensure_conda
+    ensure_mamba
+    ensure_conda_shell
+    local env_name
+    env_name="$(parse_env_name_from_yaml)"
+    # Spawn an interactive shell with env activated
+    # shellcheck disable=SC1090
+    ( conda activate "$env_name"; exec "${SHELL:-bash}" -i )
+  else
+    venv_ensure
+    ( # shellcheck disable=SC1090
+      source "$VENV_DIR/bin/activate"
+      exec "${SHELL:-bash}" -i
+    )
+  fi
+}
+
+backend_conda_passthrough() {
+  [[ -f "$ENV_YAML" ]] || die "conda passthrough is only available in conda/mamba mode (requires conda-requirements.yml)."
+  ensure_conda
+  "$CONDA_BIN" "$@"
+}
+
+backend_mamba_passthrough() {
+  [[ -f "$ENV_YAML" ]] || die "mamba passthrough is only available in conda/mamba mode (requires conda-requirements.yml)."
+  ensure_conda
+  ensure_mamba
+  "$MAMBA_BIN" "$@"
+}
+
+# --- CLI ---------------------------------------------------------------------
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help) usage ;;
+  update)         backend_update ;;
+  rebuild|create) backend_rebuild ;;
+  list)           backend_list ;;
+  shell)          backend_shell ;;
+  run)
+    [[ "${1:-}" == "--" ]] && shift
+    [[ $# -ge 1 ]] || die "run requires a command. Example: ./env.sh run -- python -V"
+    backend_run "$@"
+    ;;
+  conda)
+    [[ "${1:-}" == "--" ]] && shift
+    [[ $# -ge 1 ]] || die "conda passthrough needs args. Example: ./env.sh conda -- info"
+    backend_conda_passthrough "$@"
+    ;;
+  mamba)
+    [[ "${1:-}" == "--" ]] && shift
+    [[ $# -ge 1 ]] || die "mamba passthrough needs args. Example: ./env.sh mamba -- env list"
+    backend_mamba_passthrough "$@"
+    ;;
+  *)
+    usage
+    die "Unknown command: $cmd"
+    ;;
+esac

@@ -2,6 +2,7 @@ name: hlavo-deep
 channels:
     - conda-forge
 dependencies:
+    - python=3.11
     - modflow6
 
     
