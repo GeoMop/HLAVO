@@ -1,6 +1,9 @@
 # "Temporary" dependencies for developing, 
 # for final dependencies use pyproject.toml
 
-
 dask
 distributed
+numpy
+matplotlib
+modflow_devtools
+flopy

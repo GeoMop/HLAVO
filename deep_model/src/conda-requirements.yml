@@ -1,0 +1,25 @@
+name: hlavo-deep
+channels:
+    - conda-forge
+dependencies:
+    - modflow6
+
+    
+    #- jupyterlab 
+    #- jupyterlab-git
+    #- jupyter-resource-usage
+    #- jupyter-fs
+    #- jupyterlab-css            # there is jupyterlab-css repo, but archived
+    #- jupyterlab-topbar-*      # jupyterlab-top-* is group of extensions not particularly usefull for font problem
+    #- ipykernel 
+    #- pyvista[all, trame]
+    #- mpich
+    #- petsc
+    #- petsc4py
+    #- plotly
+    #- ipympl
+    #- pandas
+    #- polars
+    #- zarr
+    #- dask
+    #- xarray
