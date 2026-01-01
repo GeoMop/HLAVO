@@ -1,0 +1,110 @@
+ATTRS:
+  S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+  grid_min: [50.840000, 14.850000] # unit deg
+  grid_max: [50.8900000, 14.9600000] # unit deg
+  grid_step: [1e-2, 1e-2] # unit deg; about 1000m; approximately resolution of the yr.no service
+
+yr.no:
+  VARS:
+    precipitation_amount:
+      unit: "mm"
+      description: "parcipitation in [mm] per hour (!VERIFY!)"
+      df_col: "precipitation_amount"
+      coords: ["date_time", "lat_lon"]
+
+    air_temperature:
+      unit: "C"
+      description: "Temperature in Kelvin"
+      df_col: "air_temperature"
+      coords: ["date_time", "lat_lon"]
+
+    air_pressure:
+      unit: "Pa"
+      df_col: "air_pressure_at_sea_level"
+      coords: ["date_time", "lat_lon"]
+
+    cloud_fraction:
+      unit: "%"
+      df_col: "cloud_area_fraction"
+      coords: ["date_time", "lat_lon"]
+
+    cloud_fraction_high:
+      unit: "%"
+      df_col: "cloud_area_fraction_high"
+      coords: ["date_time", "lat_lon"]
+
+    cloud_fraction_low:
+      unit: "%"
+      df_col: "cloud_area_fraction_low"
+      coords: ["date_time", "lat_lon"]
+
+    cloud_fraction_medium:
+      unit: "%"
+      df_col: "cloud_area_fraction_medium"
+      coords: ["date_time", "lat_lon"]
+
+    fog_fraction:
+      unit: "%"
+      df_col: "fog_area_fraction"
+      coords: ["date_time", "lat_lon"]
+
+    dew_point_temp:
+      unit: "C"
+      df_col: "dew_point_temperature"
+      coords: ["date_time", "lat_lon"]
+
+    relative_humidity:
+      unit: "C"
+      df_col: "dew_point_temperature"
+      coords: ["date_time", "lat_lon"]
+
+    wind_speed:
+      unit: "m/s"
+      coords: ["date_time", "lat_lon"]
+
+    wind_from_direction:
+      unit: "degrees"
+      coords: ["date_time", "lat_lon"]
+
+    ultraviolet_index_clear_sky:
+      unit: ""
+      coords: ["date_time", "lat_lon"]
+
+    grid_domain:
+      unit: "bool"
+      description: "Is the (longitude, latitude) point part of grid domain or measured points?"
+      coords: "lat_lon"
+
+    longitude:
+      unit: "deg"
+      description: "Signed Earth longitude."
+      coords: "lat_lon"
+
+    latitude:
+      unit: "deg"
+      description: "Signed Earth longitude."
+      coords: "lat_lon"
+
+    date_time:
+      unit: { tick: "h", tz: "UTC" }
+      description: "Time coordinate, UTC time zone, hour resolution"
+      source_unit: { tick: "h", tz: "UTC" }
+
+  COORDS:
+    date_time:
+      chunk_size: 1024
+      merge:
+        step_limits: [1, 1, "h"]
+
+    lat_lon:
+      description: "Example of coordinate indexed uniquely by a tuple of values. The source columns are converted to the 1D list of tuples."
+      composed: ["latitude", "longitude"]
+      chunk_size: 64
+
+  ATTRS:
+    description: "Most recent 6h forcast data from yr.no collected into continuou historical data series."
+    update:
+      FN: yr_no_update
+      module: weather_scrapper
+      url: https://api.met.no/weatherapi/locationforecast/2.0/complete
+      html_cache: False
