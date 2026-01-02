@@ -1,18 +1,24 @@
-# Using Dask to implement distributed map
+## Test Modlow script
 
-setup as: 
+setup conda environment through: 
 
-    bash setup_env
+    bash env.sh create
 
-Only this step uses python system module to setup python venv.
+then run the test `proxy_model.py` by: 
+
+    bash env.sh run python proxy_model.py
     
-run as: 
+      
+    
+## Using Dask to implement distributed map
 
-    bash pbs_run.sh
+TODO: test and update with conda environmnet
+    
+or test distributed calculation by:
 
+    bash env.sh  pbs_run.sh
     
 features:
-
 - dask scheduler called directly from the starting process
 - dask worker called through 'simple_dsh'
   own ssh based implementation of a simplified distributed shell (dsh) 
