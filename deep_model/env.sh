@@ -19,7 +19,7 @@
 # Notes:
 #   - No .bashrc modifications
 #   - No sudo usage (user-space Miniconda install)
-#   - Works from any working directory (uses script location as repo root)
+#   - Works from any working directory (uses script location as rfiepo root)
 #
 # Optional:
 #   CONDA_BASE=/custom/path   # override Miniconda install location (default: $HOME/miniconda3)
@@ -67,13 +67,54 @@ need_cmd() {
 install_miniconda_user() {
   need_cmd wget
   need_cmd bzip2
+  need_cmd uname
+  need_cmd bash
 
-  local url="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-  local installer="/tmp/${url##*/}"
+  local os arch variant base url installer
 
-  wget "$url" -O "$installer"
+  os="$(uname -s)"
+  arch="$(uname -m)"
+
+  # Detect WSL (still uses Linux installers)
+  if [[ "$os" == "Linux" ]] && { [[ -n "${WSL_INTEROP:-}" ]] || grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null; }; then
+    variant="WSL"
+  else
+    variant="$os"
+  fi
+
+  # Map OS to Miniconda naming
+  case "$os" in
+    Linux)  base="Linux" ;;
+    Darwin) base="MacOSX" ;;
+    *)
+      echo "Unsupported OS: $os" >&2
+      return 1
+      ;;
+  esac
+
+  # Map architecture to Miniconda naming
+  case "$arch" in
+    x86_64|amd64)   arch="x86_64" ;;
+    aarch64|arm64)  arch="arm64"
+      # Miniconda uses aarch64 for Linux, arm64 for macOS
+      [[ "$base" == "Linux" ]] && arch="aarch64"
+      ;;
+    *)
+      echo "Unsupported architecture: $arch (OS=$os)" >&2
+      return 1
+      ;;
+  esac
+
+  url="https://repo.anaconda.com/miniconda/Miniconda3-latest-${base}-${arch}.sh"
+  installer="/tmp/${url##*/}"
+
+  echo "Detected: ${variant} (${os}/${arch})"
+  echo "Downloading: $url"
+
+  wget -q "$url" -O "$installer"
   bash "$installer" -b -p "$CONDA_BASE"
 }
+
 
 ensure_conda() {
   if [[ -x "$CONDA_BIN" ]]; then
@@ -201,7 +242,7 @@ backend_rebuild() {
     "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 
     if [[ -f "$REQ_TXT" ]]; then
-      "$MAMBA_BIN" run -n "$env_name" -- python -m pip install -r "$REQ_TXT"
+      conda activate "$env_name"
       python -m pip install -r "$REQ_TXT"  
     else
       echo "Note: $REQ_TXT not found — skipping pip installs."
