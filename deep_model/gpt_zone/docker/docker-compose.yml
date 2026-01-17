@@ -1,0 +1,46 @@
+services:
+  codex_env:
+    # Either build your Dockerfile from /gpt_zone/docker, or point to an image name
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: my-codex-mf6:latest  # use this instead of build if you prebuild
+
+    working_dir: /home/jb/workspace
+
+    volumes:
+      # Workspace Codex can edit
+      - ../src:/home/jb/workspace:rw
+
+      # Workspace Codex can edit
+      - ../model:/home/jb/model:rw
+
+      # GIS data mounted read-only
+      - ../../GIS-copy:/home/jb/GIS:rw
+
+      # Persist Codex auth/config
+      - ../.codex:/home/jb/.codex:rw
+
+    tty: true
+    stdin_open: true
+
+    # Optional but often useful for native extensions / debuggers:
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - seccomp:unconfined
+
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
+    
+    # If you want to pass the API key in via environment (recommended for codex exec / CI):
+    environment:
+      - CODEX_API_KEY=${CODEX_API_KEY:-}
+      - HOME=/home/jb
+      - CODEX_HOME=/home/jb/.codex      
+    
+    # Nice-to-have: keep artifacts/cache in the container filesystem unless you add more mounts
+    # You can also set a user if you don't want root inside container:
+    # user: "${UID:-1000}:${GID:-1000}"
+
+    command: ["bash"]

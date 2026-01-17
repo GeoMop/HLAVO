@@ -1,0 +1,27 @@
+# "Temporary" dependencies for developing, 
+# for final dependencies use pyproject.toml
+
+dask
+distributed
+matplotlib
+plotly
+modflow_devtools
+pyogrio   # or fiona
+# optional:
+rioxarray
+xarray
+lxml
+
+numpy
+pandas
+pyyaml
+attrs
+loguru
+geopandas
+shapely
+rasterio
+fiona
+pyproj
+rioxarray
+flopy
+pytest
