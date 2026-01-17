@@ -26,3 +26,13 @@ features:
 - automatic teardown through the trap mechanism
 - payload python file: 'run_map.py'
   demonstrates 'run_in_subprocess' decorator to execute a function in a subprocess
+
+  
+## 3D model construction
+
+Inputs:
+- model boundary as GIS polygon
+- list of raster TIFF layers, bases of individual geological layers
+- surface relief TIFF
+
+

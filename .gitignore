@@ -1,3 +1,6 @@
+**/.python_packages
+**/.pytest_cache
+
 # secret files
 dvc_secret_config.sh
 
