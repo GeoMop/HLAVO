@@ -85,6 +85,14 @@ class Grid:
         rasters: tuple[RasterLayer, ...],
         meshsteps: tuple[float, float, float],
     ) -> "Grid":
+        grid_xy = Grid.from_boundary_xy(boundary, meshsteps)
+        z_min, z_max = _combined_z_extent(rasters)
+        return Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
+
+    @staticmethod
+    def from_boundary_xy(
+        boundary: BoundaryPolygon, meshsteps: tuple[float, float, float]
+    ) -> "Grid":
         steps = np.asarray(meshsteps, dtype=float)
         assert steps.shape == (3,), "meshsteps must be length 3"
         coords = boundary.coords_local
@@ -94,11 +102,17 @@ class Grid:
         y_start, y_count = Grid._axis_start_and_count(
             float(coords[:, 1].min()), float(coords[:, 1].max()), steps[1]
         )
-        z_min, z_max = _combined_z_extent(rasters)
-        z_start, z_count = Grid._axis_start_and_count(float(z_min), float(z_max), steps[2])
+        origin = np.asarray([x_start, y_start, 0.0], dtype=float)
+        node_dims = np.asarray([x_count, y_count, 2], dtype=int)
+        el_dims = node_dims - 1
+        return Grid(origin=origin, step=steps, el_dims=el_dims)
 
-        origin = np.asarray([x_start, y_start, z_start], dtype=float)
-        node_dims = np.asarray([x_count, y_count, z_count], dtype=int)
+    @staticmethod
+    def from_xy_and_z_extent(grid_xy: "Grid", z_min: float, z_max: float) -> "Grid":
+        steps = np.asarray(grid_xy.step, dtype=float)
+        z_start, z_count = Grid._axis_start_and_count(float(z_min), float(z_max), steps[2])
+        origin = np.asarray([grid_xy.origin[0], grid_xy.origin[1], z_start], dtype=float)
+        node_dims = np.asarray([grid_xy.node_dims[0], grid_xy.node_dims[1], z_count])
         el_dims = node_dims - 1
         return Grid(origin=origin, step=steps, el_dims=el_dims)
 
@@ -155,8 +169,9 @@ class ModelInputs:
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
         )
-        boundary, rasters = reader.read()
-        grid = Grid.from_boundary_and_rasters(boundary, rasters, config.meshsteps)
+        boundary, rasters, grid_xy = reader.read(config.meshsteps)
+        z_min, z_max = _combined_z_extent(rasters)
+        grid = Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
         return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
 
@@ -251,18 +266,21 @@ class QgisProjectReader:
     raster_group_name: str = "HG model layers"
     # Layer tree group containing model rasters.
 
-    def read(self) -> tuple[BoundaryPolygon, tuple[RasterLayer, ...]]:
+    def read(
+        self, meshsteps: tuple[float, float, float]
+    ) -> tuple[BoundaryPolygon, tuple[RasterLayer, ...], Grid]:
         project_path = self.project_path
         assert project_path.exists(), f"Missing QGIS project: {project_path}"
 
         root, project_dir, home_path = _load_project_xml(project_path)
         boundary = self._read_boundary_xml(root, project_dir, home_path)
-        rasters = self._read_rasters_xml(root, project_dir, home_path, boundary)
+        grid_xy = Grid.from_boundary_xy(boundary, meshsteps)
+        rasters = self._read_rasters_xml(root, project_dir, home_path, boundary, grid_xy)
         LOG.debug("Loaded boundary with single ring")
         LOG.debug("Loaded %s raster layers from group %s", len(rasters), self.raster_group_name)
         LOG.debug("Local origin set to %s", boundary.origin)
 
-        return boundary, rasters
+        return boundary, rasters, grid_xy
 
     def _read_boundary_xml(
         self, root: ET.Element, project_dir: Path, home_path: Path | None
@@ -307,8 +325,10 @@ class QgisProjectReader:
         project_dir: Path,
         home_path: Path | None,
         boundary: BoundaryPolygon,
+        grid_xy: Grid,
     ) -> tuple[RasterLayer, ...]:
         import rasterio
+        from rasterio.warp import Resampling, reproject
 
         tree_root = root.find("layer-tree-group")
         assert tree_root is not None, "Missing layer-tree-group in QGIS project"
@@ -334,9 +354,15 @@ class QgisProjectReader:
                 data = dataset.read(1).astype(float)
                 if dataset.nodata != -1000:
                     data[data == dataset.nodata] = -1000.0
-                z_field, extent = _mask_raster_with_boundary(
-                    data, dataset.transform, boundary
+                data, resampled_transform = _resample_raster_to_grid(
+                    data=data,
+                    src_transform=dataset.transform,
+                    src_crs=dataset.crs,
+                    grid_xy=grid_xy,
+                    origin=boundary.origin,
+                    resampling=Resampling.bilinear,
                 )
+                z_field, extent = _mask_raster_with_boundary(data, resampled_transform, boundary)
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
                 extent_local = boundary.to_local(extent)
                 extent_local = _normalize_extent(extent_local)
@@ -347,7 +373,7 @@ class QgisProjectReader:
                         crs_wkt=crs_wkt,
                         extent_local=extent_local,
                         pixel_size=np.asarray(
-                            [dataset.transform.a, dataset.transform.e], dtype=float
+                            [resampled_transform.a, resampled_transform.e], dtype=float
                         ),
                         size=np.asarray([z_field.shape[1], z_field.shape[0]]),
                         z_field=z_field,
@@ -373,6 +399,49 @@ def _normalize_extent(extent: "np.ndarray") -> "np.ndarray":
     x0, y0 = extent[0]
     x1, y1 = extent[1]
     return np.asarray([[min(x0, x1), min(y0, y1)], [max(x0, x1), max(y0, y1)]], dtype=float)
+
+
+def _resample_raster_to_grid(
+    data: "np.ndarray",
+    src_transform: "object",
+    src_crs: "object",
+    grid_xy: Grid,
+    origin: tuple[float, float],
+    resampling: "object",
+) -> tuple["np.ndarray", "object"]:
+    from rasterio.transform import Affine
+    from rasterio.warp import reproject
+
+    width = int(grid_xy.el_dims[0])
+    height = int(grid_xy.el_dims[1])
+    assert width > 0 and height > 0, "Grid must have positive XY dimensions"
+    step_x = float(grid_xy.step[0])
+    step_y = float(grid_xy.step[1])
+    assert step_x > 0 and step_y > 0, "Grid XY steps must be positive"
+
+    x_min_local = float(grid_xy.origin[0])
+    y_min_local = float(grid_xy.origin[1])
+    x_max_local = x_min_local + step_x * width
+    y_max_local = y_min_local + step_y * height
+
+    x_min = x_min_local + origin[0]
+    y_min = y_min_local + origin[1]
+    y_max = y_max_local + origin[1]
+
+    dst_transform = Affine(step_x, 0.0, x_min, 0.0, -step_y, y_max)
+    dst = np.full((height, width), -1000.0, dtype=float)
+    reproject(
+        source=data,
+        destination=dst,
+        src_transform=src_transform,
+        src_crs=src_crs,
+        src_nodata=-1000.0,
+        dst_transform=dst_transform,
+        dst_crs=src_crs,
+        dst_nodata=-1000.0,
+        resampling=resampling,
+    )
+    return dst, dst_transform
 
 
 
