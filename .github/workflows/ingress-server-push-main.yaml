@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
 jobs:
   build-and-deploy:
-    uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@SM-CI-outside-repository
+    uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@SM-ci-outside-repository-clean
     with:
       deploy: true
       tag: generate
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
-      s3-store-url: s3://app-databuk-test-service/hlavo.zarr
+      s3-store-url: s3://app-databuk-test-service/hlavo-testing-moc.zarr
       configuration-dir-path: data_processing/ingress/inputs
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io

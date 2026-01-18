@@ -7,6 +7,7 @@ active_scrappers:
       - "45 20 * * *"
     url: "https://api.met.no/weatherapi/locationforecast/2.0/complete"
     schema_path: schemas/hlavo_surface_schema.yaml
+    dataset_name: "yr.no"
     extract_fn: normalize_yrno_forecast
     fn_module: inputs.extract.hlavo_extract
     method: GET
