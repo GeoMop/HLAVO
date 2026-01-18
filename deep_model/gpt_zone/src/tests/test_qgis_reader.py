@@ -81,7 +81,7 @@ def test_qgis_project_reader():
 
 def test_vtk_surface_export() -> None:
     data = ModelInputs.from_yaml(_config_path())
-    model_dir = ROOT / "model"
+    model_dir = ROOT.parent / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
     for child in model_dir.iterdir():
         if child.is_file():
