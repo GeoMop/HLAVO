@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
+import sys
 
-import pytest
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from qgis_reader import QgisProjectReader
+import numpy as np
+from qgis_reader import ModelInputs
 
-
-def _project_path() -> Path:
-    gis_dir = os.environ.get("GIS_DIR")
-    if not gis_dir:
-        raise AssertionError(
-            "GIS_DIR env var not set. Set GIS_DIR to the read-only GIS directory."
-        )
-
-    project = Path(gis_dir) / "uhelna_all.qgz"
-    assert project.exists(), f"QGIS project not found: {project}"
-    return project
-
+def _config_path() -> Path:
+    config = SCRIPT_DIR.parent / "model_config.yaml"
+    assert config.exists(), f"Config file not found: {config}"
+    return config
 
 def test_qgis_project_reader():
-    project = _project_path()
-    reader = QgisProjectReader(project_path=project)
-    data = reader.read()
+    data = ModelInputs.from_yaml(_config_path())
 
-    assert data.boundary.name == "JB_extended_domain"
-    assert data.boundary.polygon_local.rings
+    assert data.boundary.raw_ring.size > 0
+    assert isinstance(data.boundary.raw_ring, np.ndarray)
+    ring = data.boundary.raw_ring
+    assert ring.ndim == 2 and ring.shape[1] == 2, "Ring must be Nx2 array"
+    mean_xy = ring.mean(axis=0)
+    print(f"ring 1: n_points={ring.shape[0]} mean=({mean_xy[0]:.3f}, {mean_xy[1]:.3f})")
     assert len(data.rasters) > 0
+    for idx, raster in enumerate(data.rasters, start=1):
+        print(f"raster {idx}: {raster.name}")
