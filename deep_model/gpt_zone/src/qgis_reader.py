@@ -15,18 +15,28 @@ LOG = logging.getLogger(__name__)
 
 @attrs.define(frozen=True)
 class RasterLayerInfo:
+    """Raster metadata extracted from the QGIS project and source file."""
+
     name: str
+    # Layer name from the QGIS project.
     source: str
+    # Resolved raster source path.
     crs_wkt: str
-    extent: tuple[float, float, float, float]
-    local_extent: tuple[float, float, float, float]
-    pixel_size: tuple[float, float]
-    size: tuple[int, int]
+    # CRS WKT string, if available.
+    extent: "np.ndarray"
+    # Raster extent as [[xmin, ymin], [xmax, ymax]].
+    pixel_size: "np.ndarray"
+    # Pixel size (x, y) in map units.
+    size: "np.ndarray"
+    # Raster dimensions (width, height).
 
 
 @attrs.define(frozen=True)
 class BoundaryPolygon:
+    """Boundary polygon ring in source CRS coordinates."""
+
     raw_ring: "np.ndarray"
+    # Polygon exterior ring as Nx2 array of XY coordinates.
 
     @property
     def origin(self) -> tuple[float, float]:
@@ -40,8 +50,12 @@ class BoundaryPolygon:
 
 @attrs.define(frozen=True)
 class ModelInputs:
+    """In-memory representation of boundary and raster inputs."""
+
     boundary: BoundaryPolygon
+    # Model boundary polygon.
     rasters: tuple[RasterLayerInfo, ...]
+    # Raster layers in project order.
 
     @staticmethod
     def from_yaml(config_path: Path) -> "ModelInputs":
@@ -56,10 +70,16 @@ class ModelInputs:
 
 @attrs.define(frozen=True)
 class ModelConfig:
+    """Configuration loaded from the model YAML file."""
+
     qgis_project_path: Path
+    # Path to the QGIS project (.qgs/.qgz).
     boundary_layer_name: str
+    # Layer name of the boundary polygon.
     raster_group_name: str
+    # Layer tree group containing model rasters.
     meshsteps: tuple[float, float, float]
+    # Mesh steps (x, y, z) in model units.
 
     @staticmethod
     def from_yaml(path: Path) -> "ModelConfig":
@@ -91,9 +111,14 @@ class ModelConfig:
 
 @attrs.define(frozen=True)
 class QgisProjectReader:
+    """Read boundary and raster metadata directly from a QGIS project file."""
+
     project_path: Path
+    # Path to the QGIS project.
     boundary_layer_name: str = "JB_extended_domain"
+    # Layer name of the boundary polygon.
     raster_group_name: str = "HG model layers"
+    # Layer tree group containing model rasters.
 
     def read(self) -> ModelInputs:
         project_path = self.project_path
@@ -101,7 +126,7 @@ class QgisProjectReader:
 
         root, project_dir, home_path = _load_project_xml(project_path)
         boundary = self._read_boundary_xml(root, project_dir, home_path)
-        rasters = self._read_rasters_xml(root, project_dir, home_path, boundary.origin)
+        rasters = self._read_rasters_xml(root, project_dir, home_path)
         LOG.debug("Loaded boundary with single ring")
         LOG.debug("Loaded %s raster layers from group %s", len(rasters), self.raster_group_name)
         LOG.debug("Local origin set to %s", boundary.origin)
@@ -150,7 +175,6 @@ class QgisProjectReader:
         root: ET.Element,
         project_dir: Path,
         home_path: Path | None,
-        origin: tuple[float, float],
     ) -> tuple[RasterLayerInfo, ...]:
         import rasterio
 
@@ -174,8 +198,9 @@ class QgisProjectReader:
 
             with rasterio.open(resolved_source) as dataset:
                 bounds = dataset.bounds
-                extent = (bounds.left, bounds.right, bounds.bottom, bounds.top)
-                local_extent = _extent_to_local(extent, origin)
+                extent = np.array(
+                    [[bounds.left, bounds.bottom], [bounds.right, bounds.top]]
+                )
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
                 raster_layers.append(
                     RasterLayerInfo(
@@ -183,9 +208,8 @@ class QgisProjectReader:
                         source=str(resolved_source),
                         crs_wkt=crs_wkt,
                         extent=extent,
-                        local_extent=local_extent,
-                        pixel_size=(float(dataset.res[0]), float(dataset.res[1])),
-                        size=(int(dataset.width), int(dataset.height)),
+                        pixel_size=np.asarray([dataset.res[0], dataset.res[1]]),
+                        size=np.asarray([dataset.width, dataset.height]),
                     )
                 )
 
@@ -193,34 +217,8 @@ class QgisProjectReader:
         return tuple(raster_layers)
 
 
-def describe_inputs(data: ModelInputs) -> str:
-    lines = [
-        f"Local origin: {data.boundary.origin}",
-        "Boundary rings: 1",
-        f"Rasters: {len(data.rasters)}",
-    ]
-    for raster in data.rasters:
-        lines.append(
-            (
-                f"- {raster.name} size={raster.size} pixel={raster.pixel_size} "
-                f"extent={raster.extent} local_extent={raster.local_extent}"
-            )
-        )
-    return "\n".join(lines)
-
-
 def _round_to_km(value: float) -> float:
     return round(value / 1000.0) * 1000.0
-
-
-def _extent_to_local(extent: tuple[float, float, float, float], origin: tuple[float, float]) -> tuple[float, float, float, float]:
-    x0, y0 = origin
-    return (
-        extent[0] - x0,
-        extent[1] - x0,
-        extent[2] - y0,
-        extent[3] - y0,
-    )
 
 
 

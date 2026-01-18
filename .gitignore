@@ -1,4 +1,6 @@
-**/.python_packages
+**/.codex
+**/GIS-copy
+**/.python-packages
 **/.pytest_cache
 
 # secret files
