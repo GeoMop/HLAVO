@@ -14,8 +14,8 @@ LOG = logging.getLogger(__name__)
 
 
 @attrs.define(frozen=True)
-class RasterLayerInfo:
-    """Raster metadata extracted from the QGIS project and source file."""
+class RasterLayer:
+    """Raster data masked to the boundary polygon."""
 
     name: str
     # Layer name from the QGIS project.
@@ -23,12 +23,19 @@ class RasterLayerInfo:
     # Resolved raster source path.
     crs_wkt: str
     # CRS WKT string, if available.
-    extent: "np.ndarray"
-    # Raster extent as [[xmin, ymin], [xmax, ymax]].
+    extent_local: "np.ndarray"
+    # Local extent as [[xmin, ymin], [xmax, ymax]].
     pixel_size: "np.ndarray"
     # Pixel size (x, y) in map units.
     size: "np.ndarray"
     # Raster dimensions (width, height).
+    z_field: "np.ma.MaskedArray"
+    # Raster values masked to the boundary polygon with nodata masked out.
+
+    @cached_property
+    def z_extent(self) -> "np.ndarray":
+        data = self.z_field
+        return np.asarray([data.min(), data.max()])
 
 
 @attrs.define(frozen=True)
@@ -54,7 +61,7 @@ class ModelInputs:
 
     boundary: BoundaryPolygon
     # Model boundary polygon.
-    rasters: tuple[RasterLayerInfo, ...]
+    rasters: tuple[RasterLayer, ...]
     # Raster layers in project order.
 
     @staticmethod
@@ -126,7 +133,7 @@ class QgisProjectReader:
 
         root, project_dir, home_path = _load_project_xml(project_path)
         boundary = self._read_boundary_xml(root, project_dir, home_path)
-        rasters = self._read_rasters_xml(root, project_dir, home_path)
+        rasters = self._read_rasters_xml(root, project_dir, home_path, boundary)
         LOG.debug("Loaded boundary with single ring")
         LOG.debug("Loaded %s raster layers from group %s", len(rasters), self.raster_group_name)
         LOG.debug("Local origin set to %s", boundary.origin)
@@ -175,7 +182,8 @@ class QgisProjectReader:
         root: ET.Element,
         project_dir: Path,
         home_path: Path | None,
-    ) -> tuple[RasterLayerInfo, ...]:
+        boundary: BoundaryPolygon,
+    ) -> tuple[RasterLayer, ...]:
         import rasterio
 
         tree_root = root.find("layer-tree-group")
@@ -184,7 +192,7 @@ class QgisProjectReader:
         assert group is not None, f"Raster group not found: {self.raster_group_name}"
 
         maplayers = _maplayers_by_id(root)
-        raster_layers: list[RasterLayerInfo] = []
+        raster_layers: list[RasterLayer] = []
         for layer_id, layer_name in _iter_layer_tree_layers(group):
             maplayer = maplayers.get(layer_id)
             assert maplayer is not None, f"Raster maplayer not found for id {layer_id}"
@@ -197,19 +205,27 @@ class QgisProjectReader:
             assert resolved_source, f"Raster source path missing for layer {layer_name}"
 
             with rasterio.open(resolved_source) as dataset:
+                _assert_krovak_crs(dataset.crs)
                 bounds = dataset.bounds
                 extent = np.array(
                     [[bounds.left, bounds.bottom], [bounds.right, bounds.top]]
                 )
+                assert dataset.nodata is not None, "Raster nodata value is missing"
+                data = dataset.read(1).astype(float)
+                if dataset.nodata != -1000:
+                    data[data == dataset.nodata] = -1000.0
+                z_field = _mask_raster_with_boundary(data, dataset.transform, boundary)
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
+                extent_local = extent - boundary.origin
                 raster_layers.append(
-                    RasterLayerInfo(
+                    RasterLayer(
                         name=layer_name or _require_text(maplayer, "layername"),
                         source=str(resolved_source),
                         crs_wkt=crs_wkt,
-                        extent=extent,
+                        extent_local=extent_local,
                         pixel_size=np.asarray([dataset.res[0], dataset.res[1]]),
                         size=np.asarray([dataset.width, dataset.height]),
+                        z_field=z_field,
                     )
                 )
 
@@ -348,3 +364,37 @@ def _resolve_source_path(path_str: str, project_dir: Path, home_path: Path | Non
 
     assert project_candidate.exists(), f"Missing data source: {project_candidate}"
     return str(project_candidate)
+
+
+def _mask_raster_with_boundary(
+    data: "np.ndarray", transform: "object", boundary: BoundaryPolygon
+) -> "np.ma.MaskedArray":
+    from shapely.geometry import Polygon, mapping
+    from rasterio.features import geometry_mask
+
+    polygon = Polygon(boundary.raw_ring)
+    assert polygon.is_valid, "Boundary polygon is invalid"
+    inside = geometry_mask(
+        [mapping(polygon)],
+        invert=True,
+        out_shape=data.shape,
+        transform=transform,
+        all_touched=True,
+    )
+    mask = ~inside | (data == -1000.0)
+    return np.ma.array(data, mask=mask)
+
+
+def _assert_krovak_crs(crs: "object") -> None:
+    assert crs is not None, "Raster CRS is missing"
+    epsg = crs.to_epsg() if hasattr(crs, "to_epsg") else None
+    if epsg == 5514:
+        return
+    crs_text = ""
+    if hasattr(crs, "to_wkt"):
+        crs_text = crs.to_wkt()
+    elif hasattr(crs, "to_string"):
+        crs_text = crs.to_string()
+    assert "EPSG\",\"5514" in crs_text or "EPSG:5514" in crs_text, (
+        f"Expected Krovak EPSG:5514, got {epsg or crs_text}"
+    )
