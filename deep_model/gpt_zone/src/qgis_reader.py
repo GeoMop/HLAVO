@@ -154,6 +154,41 @@ class ModelInputs:
         return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
 
+def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
+    """Write each raster layer as a deformed surface into a VTK multiblock file."""
+    import pyvista as pv
+
+    assert model_inputs.rasters, "No rasters available for VTK export"
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    blocks = pv.MultiBlock()
+    grid = model_inputs.grid
+    grid_block = pv.RectilinearGrid(grid.x_nodes, grid.y_nodes, grid.z_nodes)
+    grid_block.field_data["block_name"] = np.array(["grid"], dtype=object)
+    blocks["grid"] = grid_block
+    for idx, raster in enumerate(model_inputs.rasters, start=1):
+        z_values = np.ma.filled(raster.z_field, np.nan).astype(float)
+        height, width = z_values.shape
+        assert height > 1 and width > 1, f"Raster {raster.name} must be at least 2x2"
+
+        x_min, y_min = raster.extent_local[0]
+        step_x, step_y = raster.pixel_size
+        x_coords = x_min + np.arange(width, dtype=float) * step_x
+        y_coords = y_min + np.arange(height, dtype=float) * step_y
+        x_grid, y_grid = np.meshgrid(x_coords, y_coords)
+
+        surface = pv.StructuredGrid(x_grid, y_grid, z_values)
+        surface.point_data["layer_id"] = np.full(z_values.size, idx, dtype=int)
+        surface.field_data["layer_name"] = np.array([raster.name], dtype=object)
+        blocks[f"layer_{idx}_{raster.name}"] = surface
+        LOG.debug("Added VTK surface for %s with size %s", raster.name, z_values.shape)
+
+    blocks.save(str(output_path))
+    assert output_path.exists(), f"VTK export failed: {output_path}"
+    return output_path
+
+
 @attrs.define(frozen=True)
 class ModelConfig:
     """Configuration loaded from the model YAML file."""

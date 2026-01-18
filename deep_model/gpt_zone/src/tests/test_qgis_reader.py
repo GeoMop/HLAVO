@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import numpy as np
-from qgis_reader import ModelInputs
+from qgis_reader import ModelInputs, write_vtk_surfaces
 
 def _config_path() -> Path:
     config = SCRIPT_DIR.parent / "model_config.yaml"
@@ -46,3 +46,13 @@ def test_qgis_project_reader():
     assert np.allclose(np.diff(grid.x_nodes), np.diff(grid.x_nodes)[0])
     assert np.allclose(np.diff(grid.y_nodes), np.diff(grid.y_nodes)[0])
     assert np.allclose(np.diff(grid.z_nodes), np.diff(grid.z_nodes)[0])
+
+
+def test_vtk_surface_export() -> None:
+    data = ModelInputs.from_yaml(_config_path())
+    model_dir = ROOT / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    vtk_path = model_dir / "surfaces.vtm"
+    result = write_vtk_surfaces(data, vtk_path)
+    assert result.exists()
+    assert result.stat().st_size > 0
