@@ -1,0 +1,11 @@
+# Model configuration
+# Update paths to match your environment.
+
+qgis_project_path: "/home/jb/GIS/uhelna_all.qgz"  # example: /data/gis/uhelna_all.qgz
+boundary_layer_name: "JB_extended_domain"     # example: JB_extended_domain
+raster_group_name: "HG model layers"          # example: HG model layers
+
+meshsteps:
+  x: 25.0  # example: 25.0
+  y: 25.0  # example: 25.0
+  z: 1.0   # example: 1.0

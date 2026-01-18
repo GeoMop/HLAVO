@@ -54,30 +54,30 @@ RUN set -eux; \
     mf6 -h >/dev/null || true
 
 # QGIS install
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-      ca-certificates \
-      curl \
-      unzip \
-      git \
-      gnupg \
-      build-essential \
-      pkg-config \
-      libgomp1 \
-      \
-      # ---- Add these for QGIS/PyQGIS ----
-      python3 \
-      python3-pip \
-      qgis \
-      python3-qgis \
-    ; \
-    rm -rf /var/lib/apt/lists/*
-    
-ENV QGIS_PREFIX_PATH=/usr \
-    PYTHONPATH=/usr/share/qgis/python:/usr/lib/python3/dist-packages
-# Optional but often helpful in headless containers:
-ENV QT_QPA_PLATFORM=offscreen
+# RUN set -eux; \
+#     apt-get update; \
+#     apt-get install -y --no-install-recommends \
+#       ca-certificates \
+#       curl \
+#       unzip \
+#       git \
+#       gnupg \
+#       build-essential \
+#       pkg-config \
+#       libgomp1 \
+#       \
+#       # ---- Add these for QGIS/PyQGIS ----
+#       python3 \
+#       python3-pip \
+#       qgis \
+#       python3-qgis \
+#     ; \
+#     rm -rf /var/lib/apt/lists/*
+#     
+# ENV QGIS_PREFIX_PATH=/usr \
+#     PYTHONPATH=/usr/share/qgis/python:/usr/lib/python3/dist-packages
+# # Optional but often helpful in headless containers:
+# ENV QT_QPA_PLATFORM=offscreen
     
 # ---- Python dependencies ----
 WORKDIR /workspace

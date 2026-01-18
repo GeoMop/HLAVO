@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PYTHONUNBUFFERED=1
+
+# If using QGIS/Qt in headless container:
+export QT_QPA_PLATFORM=offscreen
+
+# Make output deterministic for capture:
+pytest -q 2>&1 | tee ./pytest.log
