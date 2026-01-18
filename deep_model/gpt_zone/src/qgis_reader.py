@@ -337,6 +337,7 @@ class QgisProjectReader:
 
         maplayers = _maplayers_by_id(root)
         raster_layers: list[RasterLayer] = []
+        relief_field: np.ma.MaskedArray | None = None
         for layer_id, layer_name in _iter_layer_tree_layers(group):
             maplayer = maplayers.get(layer_id)
             assert maplayer is not None, f"Raster maplayer not found for id {layer_id}"
@@ -362,7 +363,12 @@ class QgisProjectReader:
                     origin=boundary.origin,
                     resampling=Resampling.bilinear,
                 )
-                z_field, extent = _mask_raster_with_boundary(data, resampled_transform, boundary)
+                masked_full = _mask_raster_full(data, resampled_transform, boundary)
+                if relief_field is None:
+                    relief_field = masked_full
+                else:
+                    masked_full = np.ma.minimum(masked_full, relief_field)
+                z_field, extent = _crop_masked_raster(masked_full, resampled_transform)
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
                 extent_local = boundary.to_local(extent)
                 extent_local = _normalize_extent(extent_local)
@@ -573,12 +579,11 @@ def _resolve_source_path(path_str: str, project_dir: Path, home_path: Path | Non
     return str(project_candidate)
 
 
-def _mask_raster_with_boundary(
+def _mask_raster_full(
     data: "np.ndarray", transform: "object", boundary: BoundaryPolygon
-) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
+) -> "np.ma.MaskedArray":
     from shapely.geometry import Polygon, mapping
     from rasterio.features import geometry_mask
-    from rasterio.transform import xy
 
     polygon = Polygon(boundary.raw_ring)
     assert polygon.is_valid, "Boundary polygon is invalid"
@@ -590,7 +595,14 @@ def _mask_raster_with_boundary(
         all_touched=True,
     )
     mask = ~inside | (data == -1000.0)
-    masked = np.ma.array(data, mask=mask)
+    return np.ma.array(data, mask=mask)
+
+
+def _crop_masked_raster(
+    masked: "np.ma.MaskedArray", transform: "object"
+) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
+    from rasterio.transform import xy
+
     valid_rows = np.any(~masked.mask, axis=1)
     valid_cols = np.any(~masked.mask, axis=0)
     assert np.any(valid_rows) and np.any(valid_cols), "Masked raster has no valid data"
