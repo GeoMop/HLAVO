@@ -64,3 +64,4 @@ rounded to 1000m.
 - create a modelrun script that first call the model creation and then calls modflow for result.
 - test by the run script
 - fix until both model construcion and model run works
+- ALWAYS run `tests/run` at the end of changes

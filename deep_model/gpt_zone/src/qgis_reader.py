@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import logging
-import os
 from pathlib import Path
-import sys
 import zipfile
 import xml.etree.ElementTree as ET
 from functools import cached_property
@@ -14,29 +11,6 @@ import numpy as np
 import yaml
 
 LOG = logging.getLogger(__name__)
-
-
-def _ensure_pyqgis(qgis_prefix: Path | None) -> None:
-    if importlib.util.find_spec("qgis") is not None:
-        return
-
-    if qgis_prefix is None:
-        qgis_prefix = Path(os.environ.get("QGIS_PREFIX_PATH", "/usr"))
-
-    candidate_paths = [
-        qgis_prefix / "share" / "qgis" / "python",
-        Path("/usr/lib/python3/dist-packages"),
-    ]
-
-    os.environ.setdefault("QGIS_PREFIX_PATH", str(qgis_prefix))
-    for path in candidate_paths:
-        if path.exists() and str(path) not in sys.path:
-            sys.path.append(str(path))
-
-    if importlib.util.find_spec("qgis") is None:
-        raise RuntimeError(
-            "PyQGIS not found. Set QGIS_PREFIX_PATH or PYTHONPATH to include QGIS Python modules."
-        )
 
 
 @attrs.define(frozen=True)
@@ -76,7 +50,6 @@ class ModelInputs:
             project_path=config.qgis_project_path,
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
-            qgis_prefix=config.qgis_prefix,
         )
         return reader.read()
 
@@ -86,7 +59,6 @@ class ModelConfig:
     qgis_project_path: Path
     boundary_layer_name: str
     raster_group_name: str
-    qgis_prefix: Path | None
     meshsteps: tuple[float, float, float]
 
     @staticmethod
@@ -96,52 +68,25 @@ class ModelConfig:
             raw = yaml.safe_load(handle)
 
         assert isinstance(raw, dict), "Config YAML must be a mapping"
-        qgis_project_path = Path(_require_key(raw, "qgis_project_path"))
+        assert "qgis_project_path" in raw, "Missing required config key: qgis_project_path"
+        qgis_project_path = Path(raw["qgis_project_path"])
         boundary_layer_name = str(raw.get("boundary_layer_name", "JB_extended_domain"))
         raster_group_name = str(raw.get("raster_group_name", "HG model layers"))
-        qgis_prefix_value = raw.get("qgis_prefix")
-        qgis_prefix = Path(qgis_prefix_value) if qgis_prefix_value else None
-
-        meshsteps_raw = _require_key(raw, "meshsteps")
+        assert "meshsteps" in raw, "Missing required config key: meshsteps"
+        meshsteps_raw = raw["meshsteps"]
         assert isinstance(meshsteps_raw, dict), "meshsteps must be a mapping with x, y, z"
         meshsteps = (
-            float(_require_key(meshsteps_raw, "x")),
-            float(_require_key(meshsteps_raw, "y")),
-            float(_require_key(meshsteps_raw, "z")),
+            float(meshsteps_raw["x"]),
+            float(meshsteps_raw["y"]),
+            float(meshsteps_raw["z"]),
         )
 
         return ModelConfig(
             qgis_project_path=qgis_project_path,
             boundary_layer_name=boundary_layer_name,
             raster_group_name=raster_group_name,
-            qgis_prefix=qgis_prefix,
             meshsteps=meshsteps,
         )
-
-
-@attrs.define(frozen=True)
-class QgisSession:
-    qgis_prefix: Path | None = None
-    _app: object | None = attrs.field(init=False, default=None, repr=False)
-
-    def __enter__(self) -> "QgisSession":
-        _ensure_pyqgis(self.qgis_prefix)
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from qgis.core import QgsApplication
-
-        prefix = str(self.qgis_prefix or Path(os.environ.get("QGIS_PREFIX_PATH", "/usr")))
-        QgsApplication.setPrefixPath(prefix, True)
-        app = QgsApplication([], False)
-        app.initQgis()
-        object.__setattr__(self, "_app", app)
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        from qgis.core import QgsApplication
-
-        if hasattr(self, "_app"):
-            QgsApplication.exitQgis()
-        return False
 
 
 @attrs.define(frozen=True)
@@ -149,7 +94,6 @@ class QgisProjectReader:
     project_path: Path
     boundary_layer_name: str = "JB_extended_domain"
     raster_group_name: str = "HG model layers"
-    qgis_prefix: Path | None = None
 
     def read(self) -> ModelInputs:
         project_path = self.project_path
@@ -279,12 +223,6 @@ def _extent_to_local(extent: tuple[float, float, float, float], origin: tuple[fl
     )
 
 
-
-
-def _require_key(data: dict, key: str) -> object:
-    if key not in data:
-        raise AssertionError(f"Missing required config key: {key}")
-    return data[key]
 
 
 def _load_project_xml(project_path: Path) -> tuple[ET.Element, Path, Path | None]:
