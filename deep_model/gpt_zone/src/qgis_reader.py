@@ -56,6 +56,81 @@ class BoundaryPolygon:
 
 
 @attrs.define(frozen=True)
+class Grid:
+    """Rectangular grid node coordinates in local XY and elevation Z."""
+
+    origin: "np.ndarray"
+    # Local coordinates of the node (0, 0, 0).
+    step: "np.ndarray"
+    # Mesh steps for x, y, z axes.
+    el_dims: "np.ndarray"
+    # Number of elements along each axis.
+
+    def __attrs_post_init__(self) -> None:
+        assert self.origin.shape == (3,), "origin must be shape (3,)"
+        assert self.step.shape == (3,), "step must be shape (3,)"
+        assert self.el_dims.shape == (3,), "el_dims must be shape (3,)"
+        assert np.all(self.step > 0), "step values must be positive"
+        assert np.all(self.el_dims > 0), "el_dims must be positive"
+
+    @staticmethod
+    def from_boundary_and_rasters(
+        boundary: BoundaryPolygon,
+        rasters: tuple[RasterLayer, ...],
+        meshsteps: tuple[float, float, float],
+    ) -> "Grid":
+        steps = np.asarray(meshsteps, dtype=float)
+        assert steps.shape == (3,), "meshsteps must be length 3"
+        coords = boundary.coords_local
+        x_start, x_count = Grid._axis_start_and_count(
+            float(coords[:, 0].min()), float(coords[:, 0].max()), steps[0]
+        )
+        y_start, y_count = Grid._axis_start_and_count(
+            float(coords[:, 1].min()), float(coords[:, 1].max()), steps[1]
+        )
+        z_min, z_max = _combined_z_extent(rasters)
+        z_start, z_count = Grid._axis_start_and_count(float(z_min), float(z_max), steps[2])
+
+        origin = np.asarray([x_start, y_start, z_start], dtype=float)
+        node_dims = np.asarray([x_count, y_count, z_count], dtype=int)
+        el_dims = node_dims - 1
+        return Grid(origin=origin, step=steps, el_dims=el_dims)
+
+    @property
+    def node_dims(self) -> "np.ndarray":
+        return self.el_dims + 1
+
+    @cached_property
+    def x_nodes(self) -> "np.ndarray":
+        return self._axis_nodes(0)
+
+    @cached_property
+    def y_nodes(self) -> "np.ndarray":
+        return self._axis_nodes(1)
+
+    @cached_property
+    def z_nodes(self) -> "np.ndarray":
+        return self._axis_nodes(2)
+
+    def _axis_nodes(self, axis_index: int) -> "np.ndarray":
+        count = int(self.node_dims[axis_index])
+        start = float(self.origin[axis_index])
+        step = float(self.step[axis_index])
+        return start + np.arange(count, dtype=float) * step
+
+    @staticmethod
+    def _axis_start_and_count(
+        min_value: float, max_value: float, step: float
+    ) -> tuple[float, int]:
+        start = np.floor(min_value / step) * step
+        end = np.ceil(max_value / step) * step
+        count = int(round((end - start) / step)) + 1
+        assert count > 1, "Axis must have at least two nodes"
+        return float(start), count
+
+
+
+@attrs.define(frozen=True)
 class ModelInputs:
     """In-memory representation of boundary and raster inputs."""
 
@@ -63,6 +138,8 @@ class ModelInputs:
     # Model boundary polygon.
     rasters: tuple[RasterLayer, ...]
     # Raster layers in project order.
+    grid: Grid
+    # Rectangular grid covering the domain.
 
     @staticmethod
     def from_yaml(config_path: Path) -> "ModelInputs":
@@ -72,7 +149,9 @@ class ModelInputs:
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
         )
-        return reader.read()
+        boundary, rasters = reader.read()
+        grid = Grid.from_boundary_and_rasters(boundary, rasters, config.meshsteps)
+        return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
 
 @attrs.define(frozen=True)
@@ -127,7 +206,7 @@ class QgisProjectReader:
     raster_group_name: str = "HG model layers"
     # Layer tree group containing model rasters.
 
-    def read(self) -> ModelInputs:
+    def read(self) -> tuple[BoundaryPolygon, tuple[RasterLayer, ...]]:
         project_path = self.project_path
         assert project_path.exists(), f"Missing QGIS project: {project_path}"
 
@@ -138,7 +217,7 @@ class QgisProjectReader:
         LOG.debug("Loaded %s raster layers from group %s", len(rasters), self.raster_group_name)
         LOG.debug("Local origin set to %s", boundary.origin)
 
-        return ModelInputs(boundary=boundary, rasters=rasters)
+        return boundary, rasters
 
     def _read_boundary_xml(
         self, root: ET.Element, project_dir: Path, home_path: Path | None
@@ -235,6 +314,12 @@ class QgisProjectReader:
 
 def _round_to_km(value: float) -> float:
     return round(value / 1000.0) * 1000.0
+
+
+def _combined_z_extent(rasters: tuple[RasterLayer, ...]) -> tuple[float, float]:
+    mins = [float(raster.z_extent[0]) for raster in rasters]
+    maxs = [float(raster.z_extent[1]) for raster in rasters]
+    return (min(mins), max(maxs))
 
 
 

@@ -11,6 +11,7 @@ pyogrio   # or fiona
 rioxarray
 xarray
 lxml
+pyvista
 
 numpy
 pandas

@@ -39,3 +39,10 @@ def test_qgis_project_reader():
         assert any(value is np.ma.masked for value in corners), (
             f"Raster {raster.name} missing -1000 nodata in corners"
         )
+    grid = data.grid
+    assert grid.x_nodes.size > 1
+    assert grid.y_nodes.size > 1
+    assert grid.z_nodes.size > 1
+    assert np.allclose(np.diff(grid.x_nodes), np.diff(grid.x_nodes)[0])
+    assert np.allclose(np.diff(grid.y_nodes), np.diff(grid.y_nodes)[0])
+    assert np.allclose(np.diff(grid.z_nodes), np.diff(grid.z_nodes)[0])
