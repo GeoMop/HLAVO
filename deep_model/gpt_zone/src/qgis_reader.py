@@ -26,7 +26,7 @@ class RasterLayer:
     extent_local: "np.ndarray"
     # Local extent as [[xmin, ymin], [xmax, ymax]].
     pixel_size: "np.ndarray"
-    # Pixel size (x, y) in map units.
+    # Pixel size (x, y) in map units, preserving sign from raster transform.
     size: "np.ndarray"
     # Raster dimensions (width, height).
     z_field: "np.ma.MaskedArray"
@@ -50,9 +50,15 @@ class BoundaryPolygon:
         first_point = self.raw_ring[0]
         return (_round_to_km(first_point[0]), _round_to_km(first_point[1]))
 
+    def to_local(self, coords: "np.ndarray") -> "np.ndarray":
+        coords_arr = np.asarray(coords, dtype=float)
+        assert coords_arr.shape[-1] == 2, "coords must be Nx2"
+        origin = np.asarray(self.origin, dtype=float)
+        return coords_arr - origin
+
     @cached_property
     def coords_local(self) -> "np.ndarray":
-        return self.raw_ring - self.origin
+        return self.to_local(self.raw_ring)
 
 
 @attrs.define(frozen=True)
@@ -165,7 +171,6 @@ def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
     blocks = pv.MultiBlock()
     grid = model_inputs.grid
     grid_block = pv.RectilinearGrid(grid.x_nodes, grid.y_nodes, grid.z_nodes)
-    grid_block.field_data["block_name"] = np.array(["grid"], dtype=object)
     blocks["grid"] = grid_block
     for idx, raster in enumerate(model_inputs.rasters, start=1):
         z_values = np.ma.filled(raster.z_field, np.nan).astype(float)
@@ -173,14 +178,19 @@ def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
         assert height > 1 and width > 1, f"Raster {raster.name} must be at least 2x2"
 
         x_min, y_min = raster.extent_local[0]
+        x_max, y_max = raster.extent_local[1]
         step_x, step_y = raster.pixel_size
-        x_coords = x_min + np.arange(width, dtype=float) * step_x
-        y_coords = y_min + np.arange(height, dtype=float) * step_y
+        step_x = float(step_x)
+        step_y = float(step_y)
+        assert step_x != 0.0 and step_y != 0.0, "Raster pixel size cannot be zero"
+        x_start = x_min if step_x > 0 else x_max
+        y_start = y_max if step_y < 0 else y_min
+        x_coords = x_start + (np.arange(width, dtype=float) + 0.5) * step_x
+        y_coords = y_start + (np.arange(height, dtype=float) + 0.5) * step_y
         x_grid, y_grid = np.meshgrid(x_coords, y_coords)
 
         surface = pv.StructuredGrid(x_grid, y_grid, z_values)
         surface.point_data["layer_id"] = np.full(z_values.size, idx, dtype=int)
-        surface.field_data["layer_name"] = np.array([raster.name], dtype=object)
         blocks[f"layer_{idx}_{raster.name}"] = surface
         LOG.debug("Added VTK surface for %s with size %s", raster.name, z_values.shape)
 
@@ -320,25 +330,26 @@ class QgisProjectReader:
 
             with rasterio.open(resolved_source) as dataset:
                 _assert_krovak_crs(dataset.crs)
-                bounds = dataset.bounds
-                extent = np.array(
-                    [[bounds.left, bounds.bottom], [bounds.right, bounds.top]]
-                )
                 assert dataset.nodata is not None, "Raster nodata value is missing"
                 data = dataset.read(1).astype(float)
                 if dataset.nodata != -1000:
                     data[data == dataset.nodata] = -1000.0
-                z_field = _mask_raster_with_boundary(data, dataset.transform, boundary)
+                z_field, extent = _mask_raster_with_boundary(
+                    data, dataset.transform, boundary
+                )
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
-                extent_local = extent - boundary.origin
+                extent_local = boundary.to_local(extent)
+                extent_local = _normalize_extent(extent_local)
                 raster_layers.append(
                     RasterLayer(
                         name=layer_name or _require_text(maplayer, "layername"),
                         source=str(resolved_source),
                         crs_wkt=crs_wkt,
                         extent_local=extent_local,
-                        pixel_size=np.asarray([dataset.res[0], dataset.res[1]]),
-                        size=np.asarray([dataset.width, dataset.height]),
+                        pixel_size=np.asarray(
+                            [dataset.transform.a, dataset.transform.e], dtype=float
+                        ),
+                        size=np.asarray([z_field.shape[1], z_field.shape[0]]),
                         z_field=z_field,
                     )
                 )
@@ -355,6 +366,13 @@ def _combined_z_extent(rasters: tuple[RasterLayer, ...]) -> tuple[float, float]:
     mins = [float(raster.z_extent[0]) for raster in rasters]
     maxs = [float(raster.z_extent[1]) for raster in rasters]
     return (min(mins), max(maxs))
+
+
+def _normalize_extent(extent: "np.ndarray") -> "np.ndarray":
+    assert extent.shape == (2, 2), "extent must be shape (2, 2)"
+    x0, y0 = extent[0]
+    x1, y1 = extent[1]
+    return np.asarray([[min(x0, x1), min(y0, y1)], [max(x0, x1), max(y0, y1)]], dtype=float)
 
 
 
@@ -488,9 +506,10 @@ def _resolve_source_path(path_str: str, project_dir: Path, home_path: Path | Non
 
 def _mask_raster_with_boundary(
     data: "np.ndarray", transform: "object", boundary: BoundaryPolygon
-) -> "np.ma.MaskedArray":
+) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
     from shapely.geometry import Polygon, mapping
     from rasterio.features import geometry_mask
+    from rasterio.transform import xy
 
     polygon = Polygon(boundary.raw_ring)
     assert polygon.is_valid, "Boundary polygon is invalid"
@@ -502,7 +521,19 @@ def _mask_raster_with_boundary(
         all_touched=True,
     )
     mask = ~inside | (data == -1000.0)
-    return np.ma.array(data, mask=mask)
+    masked = np.ma.array(data, mask=mask)
+    valid_rows = np.any(~masked.mask, axis=1)
+    valid_cols = np.any(~masked.mask, axis=0)
+    assert np.any(valid_rows) and np.any(valid_cols), "Masked raster has no valid data"
+    row_min = int(np.argmax(valid_rows))
+    row_max = int(len(valid_rows) - 1 - np.argmax(valid_rows[::-1]))
+    col_min = int(np.argmax(valid_cols))
+    col_max = int(len(valid_cols) - 1 - np.argmax(valid_cols[::-1]))
+    cropped = masked[row_min : row_max + 1, col_min : col_max + 1]
+    x_min, y_max = xy(transform, row_min, col_min, offset="ul")
+    x_max, y_min = xy(transform, row_max, col_max, offset="lr")
+    extent = np.array([[x_min, y_min], [x_max, y_max]], dtype=float)
+    return cropped, extent
 
 
 def _assert_krovak_crs(crs: "object") -> None:
