@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import numpy as np
-from qgis_reader import ModelInputs, write_vtk_surfaces
+from qgis_reader import ModelInputs, write_vtk_surfaces, _mask_above_relief, _update_cap_field
 
 def _config_path() -> Path:
     config = SCRIPT_DIR.parent / "model_config.yaml"
@@ -117,3 +117,33 @@ def test_vtk_surface_export() -> None:
         assert np.isclose(bounds[1], expected_x_max)
         assert np.isclose(bounds[2], expected_y_min)
         assert np.isclose(bounds[3], expected_y_max)
+
+
+def test_mask_above_relief() -> None:
+    layer = np.ma.array(
+        [[100.0, 90.0], [80.0, 70.0]],
+        mask=[[False, False], [False, True]],
+    )
+    relief = np.ma.array(
+        [[95.0, 95.0], [85.0, 85.0]],
+        mask=[[False, False], [True, False]],
+    )
+    masked = _mask_above_relief(layer, relief)
+    expected_mask = np.array([[True, False], [True, True]])
+    assert np.array_equal(np.ma.getmaskarray(masked), expected_mask)
+
+
+def test_update_cap_field() -> None:
+    cap_field = np.ma.array(
+        [[100.0, 90.0], [80.0, 70.0]],
+        mask=[[False, False], [True, False]],
+    )
+    layer = np.ma.array(
+        [[95.0, 85.0], [75.0, 60.0]],
+        mask=[[False, True], [False, False]],
+    )
+    updated = _update_cap_field(cap_field, layer)
+    expected_data = np.array([[95.0, 90.0], [75.0, 60.0]])
+    expected_mask = np.array([[False, False], [False, False]])
+    assert np.array_equal(updated.data, expected_data)
+    assert np.array_equal(np.ma.getmaskarray(updated), expected_mask)

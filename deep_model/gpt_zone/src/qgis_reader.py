@@ -337,7 +337,7 @@ class QgisProjectReader:
 
         maplayers = _maplayers_by_id(root)
         raster_layers: list[RasterLayer] = []
-        relief_field: np.ma.MaskedArray | None = None
+        cap_field: np.ma.MaskedArray | None = None
         for layer_id, layer_name in _iter_layer_tree_layers(group):
             maplayer = maplayers.get(layer_id)
             assert maplayer is not None, f"Raster maplayer not found for id {layer_id}"
@@ -364,10 +364,11 @@ class QgisProjectReader:
                     resampling=Resampling.bilinear,
                 )
                 masked_full = _mask_raster_full(data, resampled_transform, boundary)
-                if relief_field is None:
-                    relief_field = masked_full
+                if cap_field is None:
+                    cap_field = masked_full
                 else:
-                    masked_full = np.ma.minimum(masked_full, relief_field)
+                    masked_full = _mask_above_relief(masked_full, cap_field)
+                    cap_field = _update_cap_field(cap_field, masked_full)
                 z_field, extent = _crop_masked_raster(masked_full, resampled_transform)
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
                 extent_local = boundary.to_local(extent)
@@ -595,6 +596,32 @@ def _mask_raster_full(
         all_touched=True,
     )
     mask = ~inside | (data == -1000.0)
+    return np.ma.array(data, mask=mask)
+
+
+def _mask_above_relief(
+    layer: "np.ma.MaskedArray", relief: "np.ma.MaskedArray"
+) -> "np.ma.MaskedArray":
+    assert layer.shape == relief.shape, "Layer and relief must have matching shapes"
+    layer_mask = np.ma.getmaskarray(layer)
+    relief_mask = np.ma.getmaskarray(relief)
+    above_relief = layer.data > relief.data
+    mask = layer_mask | relief_mask | above_relief
+    return np.ma.array(layer.data, mask=mask)
+
+
+def _update_cap_field(
+    cap_field: "np.ma.MaskedArray", layer: "np.ma.MaskedArray"
+) -> "np.ma.MaskedArray":
+    assert cap_field.shape == layer.shape, "Cap field and layer must have matching shapes"
+    cap_mask = np.ma.getmaskarray(cap_field)
+    layer_mask = np.ma.getmaskarray(layer)
+    data = cap_field.data.copy()
+    both_valid = ~cap_mask & ~layer_mask
+    data[both_valid] = np.minimum(cap_field.data[both_valid], layer.data[both_valid])
+    only_layer_valid = cap_mask & ~layer_mask
+    data[only_layer_valid] = layer.data[only_layer_valid]
+    mask = cap_mask & layer_mask
     return np.ma.array(data, mask=mask)
 
 
