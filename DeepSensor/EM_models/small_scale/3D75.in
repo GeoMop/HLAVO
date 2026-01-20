@@ -1,0 +1,16 @@
+#title: Vizualizace šíření vlny, 3D sat 75%
+#domain: 0.2 0.2 0.2
+#dx_dy_dz: 0.001 0.001 0.001
+#time_window: 1e-7
+
+#soil_peplinski: 1 0 2.0 2.66 0.75 0.76 my_soil 
+#fractal_box: 0 0 0 0.2 0.2 0.2 1.5 1 1 1 10 my_soil my_fractal_box
+#waveform: gaussiandot 5 1e8 my_gauss
+#transmission_line: z 0.115 0.1 0.075 50 my_gauss
+
+#cylinder: 0.1 0.1 0.0 0.1 0.1 0.2 0.017 free_space
+#cylinder: 0.1 0.1 0.075 0.1 0.1 0.125 0.015 pec
+#cylinder: 0.1 0.1 0.075 0.1 0.1 0.125 0.014 free_space
+#cylinder: 0.1 0.1 0.085 0.1 0.1 0.115 0.015 free_space
+
+#geometry_view: 0 0 0 0.2 0.2 0.2 0.001 0.001 0.001 peplinski_sat75 n
