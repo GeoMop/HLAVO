@@ -1,0 +1,6 @@
+outs:
+- md5: 15a6fdf74a7d5ff477cbddd5aab44693.dir
+  size: 3885768281
+  nfiles: 1
+  hash: md5
+  path: DMR_efficient

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# dsh_impl - simple dsh replacement using plain ssh
+# Usage: ./dsh_impl <host_file> <command> [args...]
+
+if [[ $# -lt 2 ]]; then
+  echo "Usage: $0 <host_file> <command> [args...]" >&2
+  exit 1
+fi
+
+HOSTFILE="$1"; shift
+CMD=( "$@" )
+
+[[ -f "$HOSTFILE" ]] || { echo "Host file '$HOSTFILE' not found" >&2; exit 1; }
+
+# IMPORTANT: process substitution keeps the while loop in the current shell
+while read -r host; do
+  (
+    echo ">>> [$host] ${CMD[*]}"
+    # plain ssh; detach from stdin so the loop input isn't consumed
+    ssh "$host" "${CMD[@]}" </dev/null | sed "s/^/[$host] /"
+  ) &
+done < <(grep -vE '^\s*($|#)' "$HOSTFILE")
+
+wait
