@@ -15,8 +15,10 @@ Every timer_L2(5000); // fine timer - humidity, temperature, ...
 
 
 /*********************************************** WATER HEIGHT ***********************************************/
-#include "water_height_sensor.h"
-WaterHeightSensor whs(5, 30, 220, 0.05, 3.13);  // pin, minH, maxH, minV, maxV
+#include "linear_voltage_sensor.h"
+
+// ultrasonic sensor S18U
+LinearVoltageSensor whs(5, 0.05, 3.13, 220, 30);  // pin, aVolt, bVolt, aVal, bVal
 
 #define RELAY_PIN 15
 

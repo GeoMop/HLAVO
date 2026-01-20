@@ -1,0 +1,16 @@
+r - resistivity of conductor
+eps - absolute permitivity of conductor = eps_0 * eps_r
+eps_0 = 8.85e-12 F/m
+
+copper, eps = inf
+
+skin_depth = sqrt(2*r/omega/mu) sqrt(sqrt(1+(r*omega*eps)**2) + r *omega * eps)
+
+===
+# coax properties https://www.jensign.com/RG58U/
+
+shunt (parallel) capacitance and conductance:
+C = 2*pi*eps_0 * Re(eps_r) / ln(r_0 / r_i)
+G = 2*pi*omega*eps_0 * Im(Re(eps_r) / ln(r_0 / r_i)
+
+

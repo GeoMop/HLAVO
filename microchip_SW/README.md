@@ -5,8 +5,10 @@ This repository is structured so that it could be used both wit ArduinoIDE and P
 
 The directory `examples` includes all main scripts (`.ino` files).
 The main scripts are
+
 - `hlavo-station` for meteo station,
 - `hlavo-column` for column experiment.
+
 All other scripts are tests and intermediate steps towards final solutions.
 
 The directory `libraries` includes all used external libraries.
@@ -21,20 +23,22 @@ Then select (uncomment) prefered `src_dir` and build the selected application.
 Once connected to a microchip module; monitor, build and upload the application using Platformio toolbar.
 
 Own code in `libraries/Hlavo` mostly includes some wrapping functionality:
-- `common.h` - common Hlavo constants and functions
+
+- `bme280_data.h` - data structure for collecting data from BME280 humidity sensor to CSV
 - `clock.h` - wrapper for RTC (real time clock)
-- `file_info.h` - wrapper for file handling on SD card filesystem
-- `Logger.h` - Logger prototype for writing loggin messages to a SD card
+- `column_flow_data.h` - data structure for collecting water height and flow data in column experiment
+- `common.h` - common Hlavo constants and functions
 - `CSV_handler.h` - wrapper for CSV handling
 - `data_base.h` - base class for CSV data
-  - `bme280_data.h` - data structure for collecting data from BME280 humidity sensor to CSV
-  - `meteo_data.h` - data structure for collecting meteo data from meteostation sensor to CSV
-  - `pr2_data.h` - data structure for collecting data from PR2 sensor to CSV
-  - `teros31_data.h` - data structure for collecting data from PR2 sensor to CSV
-  - `column_flow_data.h` - data structure for collecting water height and flow data in column experiment
-
-- `sdi12_comm.h` - wrapper for SDI12 library regarding Hlavo usage (PR2/Teros31 sensors)
+- `file_info.h` - wrapper for file handling on SD card filesystem
+- `Logger_keep_open.h`
+- `Logger.h` - Logger prototype for writing loggin messages to a SD card
+- `meteo_data.h` - data structure for collecting meteo data from meteostation sensor to CSV
+- `pr2_data.h` - data structure for collecting data from PR2 sensor to CSV
 - `pr2_reader.h` - wrapper for SDI12 to communicate with PR2 sensors
+- `sdi12_comm_static.h` 
+- `sdi12_comm.h` - wrapper for SDI12 library regarding Hlavo usage (PR2/Teros31 sensors)
+- `teros31_data.h` - data structure for collecting data from PR2 sensor to CSV
 - `teros31_reader.h` - wrapper for SDI12 to communicate with Teros31 sensors
 - `water_height_sensor.h` - ultra sound measurement of water height (uses analog reader and converts [V]->[mm])
 - `weather_station.h` - wrapper for weather_meters library
