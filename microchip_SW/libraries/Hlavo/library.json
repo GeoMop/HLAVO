@@ -1,0 +1,59 @@
+{
+  "name": "Hlavo",
+  "keywords": "soil moisture, PR2, weather, meters",
+  "description": "Hlavo project meteo station with multiple sensors (wind, rain, soil moisture, light, temperature, humidity)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Paulie14/hlavo-station.git"
+  },
+  "authors": {
+    "name": "Pavel Exner, Martin Štěpán, Jan Březina",
+    "email": "pavel.exner@tul.cz",
+    "url": "https://github.com/Paulie14"
+  },
+  "dependencies": [
+    {
+      "owner": "pilotak",
+      "name": "WeatherMeters",
+      "version": "^2.0.2"
+    },
+    {
+      "owner": "Adafruit",
+      "name": "Adafruit SHT4x Library",
+      "version": "^1.0.4"
+    },
+    {
+      "owner": "Adafruit",
+      "name": "RTClib",
+      "version": "^2.1.4"
+    },
+    {
+      "owner": "Adafruit",
+      "name": "Adafruit_Unified_Sensor",
+      "version": "^1.1.14"
+    },
+    {
+      "owner": "Christopher Law",
+      "name": "BH1750",
+      "version": "^1.3.0"
+    },
+    {
+      "owner": "Alan Grover",
+      "name": "Every",
+      "version": "^3.0.0"
+    },
+    {
+      "owner": "Arduino",
+      "name": "SD",
+      "version": "^2.0.0"
+    },
+    {
+      "owner": "Sara Damiano",
+      "name": "SDI-12",
+      "version": "^2.1.4"
+    }
+  ],
+  "version": "1.0.0",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
