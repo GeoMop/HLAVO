@@ -30,7 +30,8 @@ class RasterLayer:
     size: "np.ndarray"
     # Raster dimensions (width, height).
     z_field: "np.ma.MaskedArray"
-    # Raster values masked to the boundary polygon with nodata masked out.
+    # shape (Grid.el_dim[0], Grid.el_dim[1])
+    # Elevation of layer base surface. Z Raster values masked to the boundary polygon with nodata masked out.
 
     @cached_property
     def z_extent(self) -> "np.ndarray":
@@ -58,6 +59,7 @@ class BoundaryPolygon:
 
     @cached_property
     def coords_local(self) -> "np.ndarray":
+        # shape (N, 2); N bodů , (X,Y)
         return self.to_local(self.raw_ring)
 
 

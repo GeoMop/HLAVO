@@ -23,10 +23,12 @@ Ignore anything other.
 
 - for given meshsteps create rectangular grid covering the domain (XY plane) and vertical range of layer surfaces (Z coord)
 - XY dependent mask of active columns = inside or intersected by the boundary polygon
-- for layer_name, L in layer bases in bottom up order:
-   - where L[x,y] > last_top[x,y] : 
-       - set material layer_name for cells: last_top[x,y] <= cell_z < L[x,y] 
+- for i_layer, L in enumerate(layer bases in bottom up order):
+   - where L[x,y] > last_top[x,y] :       
+       - set material layer_name for cells: round(last_top[x,y]/z_step) <= cell_z < L[x,y] ; set to last_id[x,y]
        - last_top[x,y] = L[x,y]
+       - last_id[x,y] = i_layer
+       -
 - refinement of cell Z coords to match the layer boundaries, adjust also interior layer cells for even Z steps over the single layr on single X,Y column
        
 Use layers from the `HG model layers` group, the first is the top `relief` raster.
