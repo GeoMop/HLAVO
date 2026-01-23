@@ -5,6 +5,10 @@ projekt
 notebooks/*.pdf
 notebooks/202*
 
+DeepSensor/EM_models/**/*.png
+DeepSensor/EM_models/**/*.zip
+
+
 # secret files
 dvc_secret_config.sh
 
@@ -20,6 +24,8 @@ __pycache__/
 # PyCharm
 .idea
 venv
+
+_project
 
 # C extensions
 *.so
@@ -134,8 +140,6 @@ __pypackages__/
 celerybeat-schedule
 celerybeat.pid
 
-# SageMath parsed files
-*.sage.py
 
 # Environments
 .env
