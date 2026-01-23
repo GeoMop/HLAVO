@@ -31,6 +31,8 @@ sites in the Bohemian Cretaceous Basin (česká křídová pánev) region.
 - `prediction and calibration engine`
 - `visualization dashboard`
 
+![HLAVO_schema](HLAVO_schema.svg)
+
 
 ## Application to the Uhelná locality
 
