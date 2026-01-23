@@ -1,0 +1,9 @@
+1. make a lib part of processing and virtual environment, move to workspace
+2. separate notebooks for processing of different measurements with interpretation
+
+- linear phase shift not correct since we does not cover whole signal periods 
+- we should rather fit function 
+  a + b*f + c*sin(d*f) 
+- better model of impact of the connection line, seems that we can do calibration on VNA for the V11 setup
+  but definitely not for V12, where we struggle to properly compensate the source signal
+  

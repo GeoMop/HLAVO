@@ -1,0 +1,4 @@
+numpy
+sympy
+py-pde
+matplotlib
