@@ -3,7 +3,7 @@ import attrs
 from scipy import special, stats, linalg
 import numpy as np
 from scipy.sparse import csr_matrix
-from auxiliary_functions import add_noise
+from soil_model.auxiliary_functions import add_noise
 
 """
 Representation of Kalman state and associated variables.

@@ -10,8 +10,8 @@ from parflow.tools.io import write_pfb, read_pfb
 import numpy as np
 import os, pathlib
 from matplotlib import pyplot as plt
-from abstract_model import AbstractModel
-from auxiliary_functions import sqrt_func, set_nested_attr, get_nested_attr, add_noise, set_nested_attrs
+from soil_model.abstract_model import AbstractModel
+from soil_model.auxiliary_functions import sqrt_func, set_nested_attr, get_nested_attr, add_noise, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 

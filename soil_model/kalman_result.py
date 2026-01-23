@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from typing import List, Dict, Any
-from kalman_state import StateStructure, GVar, Measure, MeasurementsStructure, CalibrationCoeffs
-from plots import plot_richards_output, RichardsSolverOutput, covariance_plot
+from soil_model.kalman_state import StateStructure, GVar, Measure, MeasurementsStructure, CalibrationCoeffs
+from soil_model.plots import plot_richards_output, RichardsSolverOutput, covariance_plot
 
 
 def trans_state(state_var):

@@ -10,17 +10,16 @@ import numpy as np
 from itertools import groupby
 # from joblib import Memory
 # memory = Memory(location='cache_dir', verbose=10)
-from kalman_result import KalmanResults
-from parflow_model import ToyProblem
+from soil_model.kalman_result import KalmanResults
+from soil_model.parflow_model import ToyProblem
 from filterpy.kalman import UnscentedKalmanFilter
 from filterpy.kalman import JulierSigmaPoints, MerweScaledSigmaPoints
 # from soil_model.evapotranspiration_fce import ET0
-from auxiliary_functions import sqrt_func, add_noise
-from data.load_data import load_data
-from kalman_state import StateStructure, MeasurementsStructure
-from parallel_ukf import ParallelUKF
-from multiprocessing import Manager, Lock
-import cloudpickle
+from soil_model.auxiliary_functions import sqrt_func, add_noise
+from soil_model.data.load_data import load_data
+from soil_model.kalman_state import StateStructure, MeasurementsStructure
+from soil_model.parallel_ukf import ParallelUKF
+import threading
 
 ######
 # Unscented Kalman Filter for Parflow model
@@ -69,11 +68,11 @@ class KalmanFilter:
         self.train_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["train_measurements"])
         self.test_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["test_measurements"])
 
-        # Shared state for multiprocessing UKF
-        manager = Manager()
-        self.state_measurements = manager.dict()  # (train_meas_dict, test_meas_dict) keyed by encoded state
-        self.state_model_velocity_moisture = manager.dict()  # (velocity, moisture) keyed by encoded state
-        self.lock = manager.Lock()
+        # Thread-safe (not process-safe) shared state
+        # This is correct because each KalmanFilter lives entirely within one Dask worker.
+        self.state_measurements = {}  # (train_meas_dict, test_meas_dict) keyed by encoded state
+        self.state_model_velocity_moisture = {}  # (velocity, moisture) keyed by encoded state
+        self.lock = threading.Lock()
 
         # Expand rainfall schedule into a per-timestep list
         precipitation_list = []
@@ -371,7 +370,7 @@ class KalmanFilter:
         :return: Encoded next state vector
         """
         print("dt: ", dt, "iter duration time: ", iter_duration)
-        pid = os.getpid()
+        print("process PID:", os.getpid(), "thread:", threading.get_ident())
         timestamp = int(time.time())
 
         if os.environ.get("SCRATCHDIR"):
