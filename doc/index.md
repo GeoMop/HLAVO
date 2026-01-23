@@ -7,7 +7,6 @@
 
 project_overview
 datasets
-data_collection
-data_dashboard
-computation_engine
+et_model
+simulation_engine
 
