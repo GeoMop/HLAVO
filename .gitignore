@@ -1,3 +1,5 @@
+**/.python_packages
+**/.pytest_cache
 **/.idea
 surface_model/parflow_reference/parflow
 soil_model/workdir
@@ -5,6 +7,11 @@ projekt
 notebooks/*.pdf
 notebooks/202*
 
+
+DeepSensor/3Dprint_models/**/*.stl
+DeepSensor/EM_models/**/*.out
+DeepSensor/EM_models/**/*.pdf
+DeepSensor/EM_models/**/*.vti
 DeepSensor/EM_models/**/*.png
 DeepSensor/EM_models/**/*.zip
 
