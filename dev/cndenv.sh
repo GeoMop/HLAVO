@@ -40,6 +40,25 @@ MAMBA_BIN="$CONDA_BASE/bin/mamba"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+parse_env_name_from_yaml() {
+  # Robust enough for common cases: name: foo / name: "foo" / name: 'foo'
+  local name
+  name="$(
+    awk -F': *' '
+      /^[[:space:]]*name[[:space:]]*:/ {
+        v=$2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^["'\'']|["'\'']$/, "", v)
+        print v
+        exit
+      }' "$ENV_YAML"
+  )"
+  [[ -n "${name:-}" ]] || die "Could not parse environment name from $ENV_YAML (missing/invalid 'name: ...')."
+  echo "$name"
+}
+
+ENV_NAME="$(parse_env_name_from_yaml)"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -151,23 +170,6 @@ ensure_mamba() {
   [[ -x "$MAMBA_BIN" ]] || die "mamba install failed (expected $MAMBA_BIN)."
 }
 
-parse_env_name_from_yaml() {
-  # Robust enough for common cases: name: foo / name: "foo" / name: 'foo'
-  local name
-  name="$(
-    awk -F': *' '
-      /^[[:space:]]*name[[:space:]]*:/ {
-        v=$2
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-        gsub(/^["'\'']|["'\'']$/, "", v)
-        print v
-        exit
-      }' "$ENV_YAML"
-  )"
-  [[ -n "${name:-}" ]] || die "Could not parse environment name from $ENV_YAML (missing/invalid 'name: ...')."
-  echo "$name"
-}
-
 conda_env_exists() {
   local env_name="$1"
   # mamba env list prints names in first column; match whole word.
@@ -176,22 +178,28 @@ conda_env_exists() {
 
 # --- venv backend (mamba "mock") ---------------------------------------------
 
-# TODO: venv functions reimplement
 venv_ensure() {
   if [[ -x "$VENV_DIR/bin/python" ]]; then
     return 0
   fi
-  need_cmd python3
-  python3 -m venv "$VENV_DIR"
+
+  "$CONDA_BIN" run -n "$ENV_NAME" python -m venv "$VENV_DIR"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
 }
 
 venv_install() {
+  venv_ensure
   if [[ -f "$REQ_TXT" ]]; then
-    conda activate "$env_name"
     "$VENV_DIR/bin/python" -m pip install -r "$REQ_TXT"
+  fi
+
+  local project_root pyproject
+  project_root="$REPO_ROOT/.."
+  pyproject="$project_root/pyproject.toml"
+  if [[ -f "$pyproject" ]]; then
+    "$VENV_DIR/bin/python" -m pip install -e "$project_root"
   else
-    echo "Note: $REQ_TXT not found — skipping pip installs."
+    echo "Note: $pyproject not found — skipping editable install."
   fi
 }
 
@@ -203,10 +211,7 @@ backend_update() {
     ensure_mamba
     ensure_conda_shell
 
-    local env_name
-    env_name="$(parse_env_name_from_yaml)"
-
-    if conda_env_exists "$env_name"; then
+    if conda_env_exists "$ENV_NAME"; then
       "$MAMBA_BIN" env update -y --file "$ENV_YAML" --prune
     else
       "$MAMBA_BIN" env create -y --file "$ENV_YAML"
@@ -221,11 +226,8 @@ backend_rebuild() {
     ensure_mamba
     ensure_conda_shell
 
-    local env_name
-    env_name="$(parse_env_name_from_yaml)"
-
-    if conda_env_exists "$env_name"; then
-      "$MAMBA_BIN" env remove -y -n "$env_name"
+    if conda_env_exists "$ENV_NAME"; then
+      "$MAMBA_BIN" env remove -y -n "$ENV_NAME"
     fi
     "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 
@@ -243,11 +245,10 @@ backend_run() {
     ensure_conda
     ensure_mamba
     ensure_conda_shell
-    env_name="$(parse_env_name_from_yaml)"
 
     (
-      conda activate "$env_name"
-      #$VENV/bin/activate
+      conda activate "$ENV_NAME"
+      $VENV/bin/activate
       "$@"
     )
 }
@@ -299,11 +300,8 @@ case "$cmd" in
     ;;
 
   # following two, installs venv first
-  shell)          backend_run exec "${SHELL:-bash}" -i ;;
-  run)
-    [[ "${1:-}" == "--" ]] && shift
-    [[ $# -ge 1 ]] || die "run requires a command. Example: ./env.sh run -- python -V"
-    backend_run "$@"
+  shell)
+    backend_run exec "${SHELL:-bash}" -i
     ;;
   run)
     [[ "${1:-}" == "--" ]] && shift
