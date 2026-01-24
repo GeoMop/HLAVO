@@ -183,7 +183,7 @@ venv_ensure() {
     return 0
   fi
 
-  "$CONDA_BIN" run -n "$ENV_NAME" python -m venv "$VENV_DIR"
+  "$CONDA_BIN" run -n "$ENV_NAME" python -m venv --system-site-packages "$VENV_DIR"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
 }
 
@@ -245,10 +245,12 @@ backend_run() {
     ensure_conda
     ensure_mamba
     ensure_conda_shell
+    venv_ensure
 
     (
       conda activate "$ENV_NAME"
-      $VENV/bin/activate
+      # shellcheck disable=SC1090
+      source "$VENV_DIR/bin/activate"
       "$@"
     )
 }
