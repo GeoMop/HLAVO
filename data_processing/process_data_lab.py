@@ -78,6 +78,24 @@ def read_flow_data(base_dir):
     data = read_data(filename_pattern)
     return data
 
+def read_inflow_data(base_dir):
+    filename_pattern = os.path.join(base_dir, 'inflow.csv')
+    data = read_data(filename_pattern)
+    return data
+
+def add_inflow_times(df, ax):
+    # Filter to only the rows where 'Inflow' is not NaN (i.e., matched sparse points)
+    sparse_points = df[df['Inflow'].notna()]
+
+    # Add blue dotted vertical lines and optional labels
+    for timestamp, row in sparse_points.iterrows():
+        inflow_val = row['Inflow']
+        ax.axvline(x=timestamp, color='blue', linestyle='dotted', linewidth=1)
+
+        # Optional: annotate inflow value at the top of the line
+        ymax = ax.get_ylim()[1]
+        ax.text(timestamp, ymax, f"{inflow_val:.2f}", color='blue',
+                ha='center', va='bottom', fontsize=8, rotation=90)
 
 # Plot some columns using matplotlib
 def plot_atm_data(ax, df, title):
@@ -358,8 +376,10 @@ def process_flow_data(cfg):
 
 def read_all_data(cfg):
     base_dir = cfg["base_dir"]
+    inflow_data = read_inflow_data(base_dir)
     atm_data = read_atmospheric_data(base_dir)
-    pr2_data = read_pr2_data(base_dir)
+    pr2_data = read_pr2_data(base_dir, filter=True)
+    # pr2_data = read_pr2_data(base_dir, filter=False)
     teros31_data = read_teros31_data(base_dir)
     odyssey_id = cfg["odyssey_id"]
     ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
@@ -368,7 +388,7 @@ def read_all_data(cfg):
     # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
     ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
 
-    return [atm_data, pr2_data, *teros31_data, ods_data]
+    return [atm_data, pr2_data, *teros31_data, ods_data, inflow_data]
 
 
 def merge_all_dfs(dfs):
@@ -395,6 +415,45 @@ def merge_flow_data(dfs, flow_data):
     merged_df.set_index('DateTime', inplace=True)
     return merged_df
 
+def merge_inflow_data(cfg, dfs, inflow_data):
+
+    # Ensure sorted and integer indexed
+    dfs = dfs.reset_index().sort_values('DateTime').reset_index(drop=True)
+    inflow_data = inflow_data.reset_index().sort_values('DateTime').reset_index(drop=True)
+
+    # Create a new column in fine data to hold the matched sparse values
+    dfs['Inflow'] = np.nan
+    # Define your max allowed time difference
+    max_diff = pd.Timedelta('10min')
+    # Track which fine timestamps have already been used
+    used_indices = set()
+
+    for i, row in inflow_data.iterrows():
+        sparse_time = row['DateTime']
+        inflow_value = row['Inflow']
+
+        # Calculate absolute time difference to each fine timestamp
+        time_diffs = (dfs['DateTime'] - sparse_time).abs()
+
+        # Mask already used fine indices and apply tolerance
+        mask = (time_diffs <= max_diff) & (~dfs.index.isin(used_indices))
+        if mask.any():
+            nearest_idx = time_diffs[mask].idxmin()
+            dfs.at[nearest_idx, 'Inflow'] = inflow_value
+            used_indices.add(nearest_idx)
+        else:
+            print(f"Warning: No match found for sparse timestamp {sparse_time}")
+
+    # # check inflow merge - compute total inflow over time
+    # # inflow_data_selected = select_time_interval(inflow_data, **cfg["time_interval"])
+    # total_inflow = inflow_data["Inflow"].sum(numeric_only=True)
+    # total_inflow_merged = dfs["Inflow"].sum(numeric_only=True)
+    # assert total_inflow == total_inflow_merged
+    # print('total_inflow: ', total_inflow)
+
+    dfs.set_index('DateTime', inplace=True)
+    return dfs
+
 
 def main():
     setup_plt_fontsizes()
@@ -406,12 +465,20 @@ def main():
 
     # all_dfs = [atm_data, pr2_data, *teros31_data, odyssey_data]
     all_dfs = read_all_data(cfg)
-    merged_all = merge_all_dfs(all_dfs)
+    merged_all = merge_all_dfs(all_dfs[:-1])
+    merged_all = merge_inflow_data(cfg, merged_all, all_dfs[-1])
     merged_all = merge_flow_data(merged_all, flow_data)
 
     data = select_time_interval(merged_all, **cfg["time_interval"])
     # data.to_parquet("hlavo_lab_merged_data_2025_03-05.parquet")
     data.to_csv(os.path.join(cfg["output_dir"], "hlavo_lab_merged_data.csv"))
+
+    # check inflow merge - compute total inflow over time
+    inflow_data = select_time_interval(all_dfs[-1], **cfg["time_interval"])
+    total_inflow = inflow_data["Inflow"].sum(numeric_only=True)
+    total_inflow_merged = data["Inflow"].sum(numeric_only=True)
+    print('total_inflow: ', total_inflow)
+    assert total_inflow == total_inflow_merged
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_atm_data(ax, data, "Atmospheric data")
@@ -419,29 +486,23 @@ def main():
     fig.tight_layout()
     fig.savefig(os.path.join(cfg["output_dir"], 'atm_data.pdf'), format='pdf')
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    plot_odyssey(ax, data)
-    plot_pr2_data(ax, data, "PR2 vs Odyssey")
-    legend = ax.get_legend()
-    legend.set_bbox_to_anchor((1, 1))  # Move legend to top-right outside plot
-    legend.set_loc('upper left')  # Anchor inside the box
-    fig.tight_layout()
-    fig.savefig(os.path.join(cfg["output_dir"], 'pr2_vs_odyssey.pdf'), format='pdf')
-
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_pr2_data(ax, data, "Humidity vs Soil Moisture")
+    add_inflow_times(data, ax)
     ax.set_title('PR2 - Soil Moisture Mineral')
     fig.tight_layout()
     fig.savefig(os.path.join(cfg["output_dir"], 'pr2_data.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_teros31_data(ax, data, "Teros 31", diff=False)
+    add_inflow_times(data, ax)
     ax.set_title('Teros31 - Total Potential')
     fig.tight_layout()
     fig.savefig(os.path.join(cfg["output_dir"], 'teros31_data_abs.pdf'), format='pdf')
 
     fig, ax = plt.subplots(figsize=(10, 7))
     plot_teros31_data(ax, data, "Teros 31", diff=True)
+    add_inflow_times(data, ax)
     ax.set_title('Teros31 - Matric Potential')
     fig.tight_layout()
     fig.savefig(os.path.join(cfg["output_dir"], 'teros31_data_diff.pdf'), format='pdf')
@@ -450,8 +511,19 @@ def main():
         fig, ax = plt.subplots(figsize=(10, 6))
         # plot_columns(ax, odyssey_data, columns=[f"odyssey_{i}" for i in range(4)], ylabel="", startofdays=True)
         plot_odyssey(ax, data)
+        add_inflow_times(data, ax)
         fig.savefig(os.path.join(cfg["output_dir"], "odyssey_data.pdf"), format='pdf')
         # data.to_csv(os.path.join(cfg["output_dir"], 'odyssey_data_filtered.csv'), index=True)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        plot_odyssey(ax, data)
+        plot_pr2_data(ax, data, "PR2 vs Odyssey")
+        add_inflow_times(data, ax)
+        legend = ax.get_legend()
+        legend.set_bbox_to_anchor((1, 1))  # Move legend to top-right outside plot
+        legend.set_loc('upper left')  # Anchor inside the box
+        fig.tight_layout()
+        fig.savefig(os.path.join(cfg["output_dir"], 'pr2_vs_odyssey.pdf'), format='pdf')
 
 
 def select_inputs():

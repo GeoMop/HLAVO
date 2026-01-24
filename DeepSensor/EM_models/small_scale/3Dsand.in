@@ -1,0 +1,16 @@
+#title: Vizualizace šíření vlny, 3D sand
+#domain: 0.2 0.2 0.2
+#dx_dy_dz: 0.001 0.001 0.001
+#time_window: 1e-7
+
+#material: 3 0.01 1 0 my_sand_dry
+#box: 0 0 0 0.2 0.2 0.2 my_sand_dry
+#waveform: gaussiandot 5 1e8 my_gauss
+#transmission_line: z 0.115 0.1 0.075 50 my_gauss
+
+#cylinder: 0.1 0.1 0.0 0.1 0.1 0.2 0.017 free_space
+#cylinder: 0.1 0.1 0.075 0.1 0.1 0.125 0.015 pec
+#cylinder: 0.1 0.1 0.075 0.1 0.1 0.125 0.014 free_space
+#cylinder: 0.1 0.1 0.085 0.1 0.1 0.115 0.015 free_space
+
+#geometry_view: 0 0 0 0.2 0.2 0.2 0.001 0.001 0.001 sand n

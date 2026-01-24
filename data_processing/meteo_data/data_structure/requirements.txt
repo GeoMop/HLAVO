@@ -1,0 +1,5 @@
+# "Temporary" dependencies for developing, 
+# for final dependencies use pyproject.toml
+
+requests
+bs4
