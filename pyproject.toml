@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hlavo"
+version = "0.1.0"
+description = "HLAVO project."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "BSD-3-Clause" }
+authors = [
+  { name = "Jan Brezina", email = "jan.brezina@tul.cz" }
+]
+urls = { Homepage = "https://github.com/geomop/hlavo" }
+
+dependencies = [
+    # Soil model + Kalman
+    "attrs",
+    "PyYAML",
+    "numpy",
+    "scipy",
+    "filterpy",
+    "pftools[all]",
+    "matplotlib",
+    "xarray",
+    "dask",
+    "distributed",
+    "zarr_fuse @ git+https://github.com/GeoMop/zarr_fuse.git@main",
+
+    
+    # Deep model
+    "modflow_devtools",
+    "flopy",
+
+    # Ingress
+    "requests",
+    "cfgrib"
+
+    #polars
+    #pandas
+    #seaborn
+    #joblib
+    #plotly
+    #cdsapi      # era5 weather data
+
+    
+    #reportlab
+    #weasyprint
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hlavo", "hlavo.*"]

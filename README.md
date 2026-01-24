@@ -1,6 +1,12 @@
 # HLAVO
-Software part of the HLAVO project.
+System for numerical prediction of water table using continuously collected meteorological and 
+soil mosture profile data.
 
+
+
+
+---
+# Developers corner
 
 ## Kalman
 # Local run
@@ -11,7 +17,7 @@ docker run --rm -it -v HLAVO_repository:/HLAVO martinspetlik/kalman_parflow:v1.0
 ```
 
 
-# Charon cluster run
+## Charon cluster run
 First singularity image has to be created:
 ```bash
 export SINGULARITY_CACHEDIR="user home dir"
