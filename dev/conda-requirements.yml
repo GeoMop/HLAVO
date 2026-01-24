@@ -1,26 +1,42 @@
 name: hlavo-deep
 channels:
-    - conda-forge
+  - conda-forge
 dependencies:
-    - python=3.11
-    - modflow6
+  - python=3.11
 
-    
-    #- jupyterlab 
-    #- jupyterlab-git
-    #- jupyter-resource-usage
-    #- jupyter-fs
-    #- jupyterlab-css            # there is jupyterlab-css repo, but archived
-    #- jupyterlab-topbar-*      # jupyterlab-top-* is group of extensions not particularly usefull for font problem
-    #- ipykernel 
-    #- pyvista[all, trame]
-    #- mpich
-    #- petsc
-    #- petsc4py
-    #- plotly
-    #- ipympl
-    #- pandas
-    #- polars
-    #- zarr
-    #- dask
-    #- xarray
+  # MODFLOW
+  - modflow6
+
+  # Heavy scientific stack (compiled)
+  - numpy
+  - scipy
+  - matplotlib
+
+  # Data / parallel
+  - xarray
+  - dask
+  - distributed
+  - zarr
+
+  # IO / ingress
+  - pyyaml
+  - attrs
+  - requests
+  - cfgrib
+  - eccodes   # makes cfgrib happier / more explicit
+
+  # MODFLOW ecosystem
+  - flopy
+
+  # Small pure-python (fine in conda; keeps pip layer smaller)
+  - filterpy
+  - modflow-devtools
+
+  # Allow pip installs (for git deps + ParFlow python tooling)
+  - pip
+  - pip:
+      # ParFlow Python tooling (does NOT install ParFlow solver binary)
+      - "pftools[all]"
+
+      # Your git dependency
+      - "zarr_fuse @ git+https://github.com/GeoMop/zarr_fuse.git@main"

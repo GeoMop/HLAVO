@@ -176,6 +176,7 @@ conda_env_exists() {
 
 # --- venv backend (mamba "mock") ---------------------------------------------
 
+# TODO: venv functions reimplement
 venv_ensure() {
   if [[ -x "$VENV_DIR/bin/python" ]]; then
     return 0
@@ -185,7 +186,7 @@ venv_ensure() {
   "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
 }
 
-venv_install_requirements() {
+venv_install() {
   if [[ -f "$REQ_TXT" ]]; then
     conda activate "$env_name"
     "$VENV_DIR/bin/python" -m pip install -r "$REQ_TXT"
@@ -197,7 +198,6 @@ venv_install_requirements() {
 # venv backend implements "mamba-like" operations via functions to keep one script logic.
 
 backend_update() {
-  if [[ -f "$ENV_YAML" ]]; then
     echo "Mode: conda/mamba (found conda-requirements.yml)"
     ensure_conda
     ensure_mamba
@@ -212,22 +212,10 @@ backend_update() {
       "$MAMBA_BIN" env create -y --file "$ENV_YAML"
     fi
 
-    # Optional pip layer
-    if [[ -f "$REQ_TXT" ]]; then
-      conda activate "$env_name"
-      python -m pip install -r "$REQ_TXT"
-    else
-      echo "Note: $REQ_TXT not found — skipping pip installs."
-    fi
-  else
-    echo "Mode: python venv (no conda-requirements.yml)"
-    venv_ensure
-    venv_install_requirements
-  fi
+    venv_install
 }
 
 backend_rebuild() {
-  if [[ -f "$ENV_YAML" ]]; then
     echo "Mode: conda/mamba (found conda-requirements.yml)"
     ensure_conda
     ensure_mamba
@@ -241,35 +229,14 @@ backend_rebuild() {
     fi
     "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 
-    if [[ -f "$REQ_TXT" ]]; then
-      conda activate "$env_name"
-      python -m pip install -r "$REQ_TXT"  
-    else
-      echo "Note: $REQ_TXT not found — skipping pip installs."
-    fi
-  else
-    echo "Mode: python venv (no conda-requirements.yml)"
-    rm -rf "$VENV_DIR"
-    venv_ensure
-    venv_install_requirements
-  fi
+    venv_install
 }
 
 backend_list() {
-  if [[ -f "$ENV_YAML" ]]; then
     echo "Mode: conda/mamba (found conda-requirements.yml)"
     ensure_conda
     ensure_mamba
     "$MAMBA_BIN" env list
-  else
-    echo "Mode: python venv (no conda-requirements.yml)"
-    if [[ -x "$VENV_DIR/bin/python" ]]; then
-      "$VENV_DIR/bin/python" -V
-      echo "venv path: $VENV_DIR"
-    else
-      echo "venv not created yet (expected at $VENV_DIR)"
-    fi
-  fi
 }
 
 backend_run() {
@@ -280,7 +247,7 @@ backend_run() {
 
     (
       conda activate "$env_name"
-      $VENV/bin/activate
+      #$VENV/bin/activate
       "$@"
     )
 }
