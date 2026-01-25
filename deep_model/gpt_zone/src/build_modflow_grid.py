@@ -8,7 +8,7 @@ import attrs
 import numpy as np
 import yaml
 
-from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+from qgis_reader import Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
@@ -33,31 +33,32 @@ class BuildConfig:
         return BuildConfig(config_path=config_path, output_path=output_path)
 
 
-def compute_active_mask(boundary: BoundaryPolygon, grid: Grid) -> np.ndarray:
-    from shapely.geometry import Polygon, mapping
-    from rasterio.features import geometry_mask
-    from rasterio.transform import Affine
-
-    polygon = Polygon(boundary.coords_local)
-    assert polygon.is_valid, "Boundary polygon is invalid"
-
-    step_x = float(grid.step[0])
-    step_y = float(grid.step[1])
-    nx = int(grid.el_dims[0])
-    ny = int(grid.el_dims[1])
-    x_min = float(grid.origin[0])
-    y_min = float(grid.origin[1])
-    y_max = y_min + step_y * ny
-
-    transform = Affine(step_x, 0.0, x_min, 0.0, -step_y, y_max)
-    mask = geometry_mask(
-        [mapping(polygon)],
-        out_shape=(ny, nx),
-        transform=transform,
-        all_touched=True,
-        invert=True,
-    )
-    return mask
+def active_mask_from_rasters(
+    rasters: tuple[RasterLayer, ...], grid: Grid
+) -> np.ndarray:
+    assert rasters, "Rasters are required to build active mask"
+    mask = None
+    reference_mask = None
+    for raster in rasters:
+        full = raster_to_full_grid(raster, grid)
+        raster_mask = np.ma.getmaskarray(full)
+        if reference_mask is None:
+            reference_mask = raster_mask
+        else:
+            if not np.array_equal(raster_mask, reference_mask):
+                diff = np.logical_xor(raster_mask, reference_mask)
+                diff_count = int(diff.sum())
+                LOG.warning(
+                    "Raster mask mismatch for %s: %s cells differ",
+                    raster.name,
+                    diff_count,
+                )
+        if mask is None:
+            mask = raster_mask.copy()
+        else:
+            mask = mask & raster_mask
+    assert mask is not None, "Active mask could not be derived from rasters"
+    return ~mask
 
 
 def raster_to_full_grid(raster: RasterLayer, grid: Grid) -> np.ma.MaskedArray:
@@ -146,7 +147,7 @@ def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     model_inputs = ModelInputs.from_yaml(config_path)
     grid = model_inputs.grid
 
-    active_mask = compute_active_mask(model_inputs.boundary, grid)
+    active_mask = active_mask_from_rasters(model_inputs.rasters, grid)
     rasters_bottom_up = tuple(reversed(model_inputs.rasters))
 
     materials = assign_materials(rasters_bottom_up, grid, active_mask)
