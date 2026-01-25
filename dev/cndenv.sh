@@ -31,8 +31,6 @@ set -x
 REPO_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 ENV_YAML="$REPO_ROOT/conda-requirements.yml"
-REQ_TXT="$REPO_ROOT/requirements.txt"
-VENV_DIR="$REPO_ROOT/venv"
 
 CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
 CONDA_BIN="$CONDA_BASE/bin/conda"
@@ -165,8 +163,13 @@ ensure_mamba() {
     return 0
   fi
 
+  # Avoid Anaconda default channels to prevent TOS prompts in non-interactive runs.
+  "$CONDA_BIN" config --remove channels defaults || true
+  "$CONDA_BIN" config --add channels conda-forge
+  "$CONDA_BIN" config --set channel_priority strict
+
   echo "mamba not found — installing into base (conda-forge)..."
-  "$CONDA_BIN" install -y -n base -c conda-forge mamba
+  "$CONDA_BIN" install -y -n base -c conda-forge --override-channels mamba
   [[ -x "$MAMBA_BIN" ]] || die "mamba install failed (expected $MAMBA_BIN)."
 }
 
@@ -175,35 +178,6 @@ conda_env_exists() {
   # mamba env list prints names in first column; match whole word.
   "$MAMBA_BIN" env list | awk '{print $1}' | grep -Fxq "$env_name"
 }
-
-# --- venv backend (mamba "mock") ---------------------------------------------
-
-venv_ensure() {
-  if [[ -x "$VENV_DIR/bin/python" ]]; then
-    return 0
-  fi
-
-  "$CONDA_BIN" run -n "$ENV_NAME" python -m venv --system-site-packages "$VENV_DIR"
-  "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
-}
-
-venv_install() {
-  venv_ensure
-  if [[ -f "$REQ_TXT" ]]; then
-    "$VENV_DIR/bin/python" -m pip install -r "$REQ_TXT"
-  fi
-
-  local project_root pyproject
-  project_root="$REPO_ROOT/.."
-  pyproject="$project_root/pyproject.toml"
-  if [[ -f "$pyproject" ]]; then
-    "$VENV_DIR/bin/python" -m pip install -e "$project_root"
-  else
-    echo "Note: $pyproject not found — skipping editable install."
-  fi
-}
-
-# venv backend implements "mamba-like" operations via functions to keep one script logic.
 
 backend_update() {
     echo "Mode: conda/mamba (found conda-requirements.yml)"
@@ -217,7 +191,6 @@ backend_update() {
       "$MAMBA_BIN" env create -y --file "$ENV_YAML"
     fi
 
-    venv_install
 }
 
 backend_rebuild() {
@@ -231,7 +204,6 @@ backend_rebuild() {
     fi
     "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 
-    venv_install
 }
 
 backend_list() {
@@ -245,12 +217,9 @@ backend_run() {
     ensure_conda
     ensure_mamba
     ensure_conda_shell
-    venv_ensure
 
     (
       conda activate "$ENV_NAME"
-      # shellcheck disable=SC1090
-      source "$VENV_DIR/bin/activate"
       "$@"
     )
 }

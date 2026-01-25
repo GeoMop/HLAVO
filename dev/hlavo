@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+ENV_YAML="$REPO_ROOT/conda-requirements.yml"
+REQ_TXT="$REPO_ROOT/requirements.txt"
+VENV_DIR="$REPO_ROOT/venv"
+PROJECT_ROOT="$REPO_ROOT/.."
+PYPROJECT="$PROJECT_ROOT/pyproject.toml"
+WORKSPACE="/home/hlavo/workspace"
+IMAGE_NAME="${IMAGE_NAME:-hlavo}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE_REF="${IMAGE_REF:-${IMAGE_NAME}:${IMAGE_TAG}}"
+
+CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
+CONDA_BIN="$CONDA_BASE/bin/conda"
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./hlavo <command> [args...]
+  ./hlavo -d <command> [args...]
+EOF
+}
+
+parse_env_name_from_yaml() {
+  local name
+  name="$(
+    awk -F': *' '
+      /^[[:space:]]*name[[:space:]]*:/ {
+        v=$2
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^["'\'']|["'\'']$/, "", v)
+        print v
+        exit
+      }' "$ENV_YAML"
+  )"
+  [[ -n "${name:-}" ]] || die "Could not parse environment name from $ENV_YAML (missing/invalid 'name: ...')."
+  echo "$name"
+}
+
+ensure_conda_shell() {
+  # shellcheck disable=SC1090
+  source "$CONDA_BASE/etc/profile.d/conda.sh"
+}
+
+venv_ensure() {
+  if [[ -x "$VENV_DIR/bin/python" ]]; then
+    return 0
+  fi
+  "$CONDA_BIN" run -n "$ENV_NAME" python -m venv --system-site-packages "$VENV_DIR"
+  "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
+}
+
+venv_install_overlay() {
+  if [[ -f "$REQ_TXT" ]]; then
+    "$VENV_DIR/bin/python" -m pip install -r "$REQ_TXT"
+  fi
+
+  if [[ -f "$PYPROJECT" ]]; then
+    "$VENV_DIR/bin/python" -m pip install -e "$PROJECT_ROOT"
+  else
+    echo "Note: $PYPROJECT not found — skipping editable install."
+  fi
+}
+
+[[ -x "$CONDA_BIN" ]] || die "conda not found at $CONDA_BIN"
+[[ -f "$ENV_YAML" ]] || die "Missing $ENV_YAML"
+
+ENV_NAME="$(parse_env_name_from_yaml)"
+
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+if [[ "${1:-}" == "-d" ]]; then
+  shift
+  [[ $# -ge 1 ]] || die "Missing command for docker run."
+  command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+  docker run --rm \
+    -e HLAVO_UID="$(id -u)" \
+    -e HLAVO_GID="$(id -g)" \
+    -v "$REPO_ROOT:$WORKSPACE" \
+    -w "$WORKSPACE" \
+    "$IMAGE_REF" \
+    /home/hlavo/workspace/hlavo "$@"
+  exit $?
+fi
+
+ensure_conda_shell
+venv_ensure
+venv_install_overlay
+
+(
+  conda activate "$ENV_NAME"
+  # shellcheck disable=SC1090
+  source "$VENV_DIR/bin/activate"
+  "$@"
+)

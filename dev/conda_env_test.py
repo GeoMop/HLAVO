@@ -11,6 +11,7 @@ Checks:
 from __future__ import annotations
 
 import importlib
+import inspect
 import os
 import shutil
 import subprocess
@@ -61,6 +62,109 @@ def check_mf6() -> CheckResult:
     if res_plain.ok:
         return CheckResult("mf6", True, f"found at {mf6_path}\n{res_plain.detail}")
     return CheckResult("mf6", False, f"found at {mf6_path} but could not run successfully\n\n-h:\n{res_h.detail}\n\nplain:\n{res_plain.detail}")
+
+
+def check_parflow_runtime() -> CheckResult:
+    try:
+        from parflow import Run  # type: ignore
+    except Exception as e:
+        return CheckResult("parflow", False, f"Failed to import Run: {type(e).__name__}: {e}")
+
+    try:
+        r = Run("smoke")
+
+        # Minimal 1D domain setup
+        r.FileVersion = 4
+        r.Process.Topology.P = 1
+        r.Process.Topology.Q = 1
+        r.Process.Topology.R = 1
+
+        r.ComputationalGrid.Lower.X = 0.0
+        r.ComputationalGrid.Lower.Y = 0.0
+        r.ComputationalGrid.Lower.Z = 0.0
+        r.ComputationalGrid.DX = 1.0
+        r.ComputationalGrid.DY = 1.0
+        r.ComputationalGrid.DZ = 1.0
+        r.ComputationalGrid.NX = 10
+        r.ComputationalGrid.NY = 1
+        r.ComputationalGrid.NZ = 1
+
+        r.GeomInput.Names = "domain_input"
+        r.GeomInput.domain_input.InputType = "Box"
+        r.GeomInput.domain_input.GeomName = "domain"
+        r.Geom.domain.Lower.X = 0.0
+        r.Geom.domain.Lower.Y = 0.0
+        r.Geom.domain.Lower.Z = 0.0
+        r.Geom.domain.Upper.X = 10.0
+        r.Geom.domain.Upper.Y = 1.0
+        r.Geom.domain.Upper.Z = 1.0
+        r.Geom.domain.Patches = "x_lower x_upper y_lower y_upper z_lower z_upper"
+
+        r.Geom.domain.Perm.Type = "Constant"
+        r.Geom.domain.Perm.Value = 1.0
+        r.Geom.domain.Porosity.Type = "Constant"
+        r.Geom.domain.Porosity.Value = 0.3
+        r.Geom.domain.SpecificStorage.Value = 1.0e-6
+
+        r.Phase.Names = "water"
+        r.Phase.water.Density.Type = "Constant"
+        r.Phase.water.Density.Value = 1.0
+        r.Phase.water.Viscosity.Type = "Constant"
+        r.Phase.water.Viscosity.Value = 1.0
+
+        r.Gravity = 1.0
+
+        r.TimeStep.Type = "Constant"
+        r.TimeStep.Value = 1.0
+        r.TimingInfo.BaseUnit = 1.0
+        r.TimingInfo.StartCount = 0
+        r.TimingInfo.StartTime = 0.0
+        r.TimingInfo.StopTime = 1.0
+        r.TimingInfo.DumpInterval = 1.0
+
+        r.Cycle.Names = "constant"
+        r.Cycle.constant.Names = "alltime"
+        r.Cycle.constant.alltime.Length = 1
+        r.Cycle.constant.Repeat = -1
+
+        r.BCPressure.PatchNames = "x_lower x_upper y_lower y_upper z_lower z_upper"
+        r.Patch.Names = r.Geom.domain.Patches
+        for patch in ["x_lower", "x_upper", "y_lower", "y_upper", "z_lower", "z_upper"]:
+            bc = r.Patch[patch].BCPressure
+            bc.Type = "FluxConst"
+            bc.Cycle = "constant"
+            bc.alltime.Value = 0.0
+
+        r.ICPressure.Type = "Constant"
+        r.ICPressure.GeomNames = "domain"
+        r.ICPressure.Value = 0.0
+
+        r.Phase.RelPerm.Type = "VanGenuchten"
+        r.Phase.RelPerm.Alpha = 1.0
+        r.Phase.RelPerm.N = 2.0
+        r.Phase.Saturation.Type = "VanGenuchten"
+        r.Phase.Saturation.Alpha = 1.0
+        r.Phase.Saturation.N = 2.0
+        r.Phase.Saturation.SRes = 0.1
+        r.Phase.Saturation.SSat = 1.0
+
+        r.Solver = "Richards"
+        r.Solver.MaxIter = 1
+        r.Solver.Nonlinear.MaxIter = 3
+        r.Solver.Nonlinear.ResidualTol = 1.0e-6
+
+        run_root = os.environ.get("HLAVO_WORKSPACE", "/home/hlavo/workspace")
+        run_dir = os.path.join(run_root, "_parflow_smoke")
+        os.makedirs(run_dir, exist_ok=True)
+
+        sig = inspect.signature(r.run)
+        kwargs: dict[str, object] = {}
+        if "working_directory" in sig.parameters:
+            kwargs["working_directory"] = run_dir
+        r.run(**kwargs)
+        return CheckResult("parflow", True, f"Run.run executed in {run_dir}")
+    except Exception as e:
+        return CheckResult("parflow", False, f"{type(e).__name__}: {e}")
 
 
 def check_import(module_name: str, attr_version: Optional[str] = None) -> CheckResult:
@@ -166,9 +270,13 @@ def main() -> int:
         "modflow_devtools",
         "requests",
         "cfgrib",
+        "parflow",
     ]
     for m in imports:
         checks.append(check_import(m))
+
+    # ParFlow runtime check
+    checks.append(check_parflow_runtime())
 
     # cfgrib deep test
     checks.append(check_cfgrib_roundtrip())

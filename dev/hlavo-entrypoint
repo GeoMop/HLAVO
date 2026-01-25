@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+USER_NAME="${HLAVO_USER:-hlavo}"
+TARGET_UID="${HLAVO_UID:-}"
+TARGET_GID="${HLAVO_GID:-}"
+
+if [[ $# -eq 0 ]]; then
+  set -- bash
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  exec "$@"
+fi
+
+if [[ -n "$TARGET_GID" ]] && command -v groupmod >/dev/null 2>&1; then
+  if getent group "$USER_NAME" >/dev/null 2>&1; then
+    groupmod -g "$TARGET_GID" "$USER_NAME" || true
+  else
+    groupadd -g "$TARGET_GID" "$USER_NAME" || true
+  fi
+fi
+
+if [[ -n "$TARGET_UID" ]] && command -v usermod >/dev/null 2>&1; then
+  usermod -u "$TARGET_UID" "$USER_NAME" || true
+fi
+if [[ -n "$TARGET_GID" ]] && command -v usermod >/dev/null 2>&1; then
+  usermod -g "$TARGET_GID" "$USER_NAME" || true
+fi
+
+exec su -s /bin/bash "$USER_NAME" -c "$(printf '%q ' "$@")"

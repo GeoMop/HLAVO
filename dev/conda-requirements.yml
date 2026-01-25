@@ -1,4 +1,4 @@
-name: hlavo-deep
+name: hlavo
 channels:
   - conda-forge
 dependencies:

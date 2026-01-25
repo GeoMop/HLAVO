@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+
+IMAGE_NAME="${IMAGE_NAME:-hlavo}"
+WORKSPACE="/home/hlavo/workspace"
+DOCKERFILE="${DOCKERFILE:-$REPO_ROOT/hlavo_dockerfile}"
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./hlavo-build image
+  ./hlavo-build make-sif
+
+Env vars:
+  IMAGE_NAME=hlavo
+  IMAGE_TAG=latest
+  IMAGE_REF=hlavo:latest
+  DOCKERFILE=./hlavo_dockerfile
+  SIF_NAME=hlavo.sif
+EOF
+}
+
+build_image() {
+  docker build -f "$DOCKERFILE" -t "$IMAGE_REF" "$REPO_ROOT"
+}
+
+run_smoke_test() {
+  local host_workdir
+  host_workdir="${REPO_ROOT}/_parflow_smoke"
+  mkdir -p "$host_workdir"
+  docker run --rm \
+    -e HLAVO_WORKSPACE="${WORKSPACE}" \
+    -v "$REPO_ROOT:${WORKSPACE}" \
+    -v "$host_workdir:${WORKSPACE}/_parflow_smoke" \
+    -w "${WORKSPACE}" \
+    "$IMAGE_REF" \
+    sh -lc "${WORKSPACE}/cndenv.sh run -- python ${WORKSPACE}/conda_env_test.py"
+}
+
+push_image() {
+  docker push "$IMAGE_REF"
+}
+
+make_sif() {
+  if ! command -v singularity >/dev/null 2>&1; then
+    die "singularity not found on PATH."
+  fi
+
+  local sif_name
+  sif_name="${SIF_NAME:-hlavo.sif}"
+  singularity pull --name "$sif_name" "docker://$IMAGE_REF"
+}
+
+cmd="${1:-}"
+shift || true
+IMAGE_TAG="${1:-${IMAGE_TAG:-latest}}"
+IMAGE_REF="${IMAGE_REF:-${IMAGE_NAME}:${IMAGE_TAG}}"
+case "$cmd" in
+  image)
+    build_image
+    run_smoke_test
+    ;;
+  test)
+    run_smoke_test
+    ;;
+  make-sif)
+    make_sif
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

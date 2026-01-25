@@ -1,0 +1,89 @@
+# syntax=docker/dockerfile:1.6
+FROM python:3.11-slim-bookworm AS parflow-build
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      build-essential \
+      gfortran \
+      cmake \
+      tcl \
+      tcl-dev \
+      openmpi-bin \
+      libopenmpi-dev \
+      git \
+      wget \
+    ; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+RUN git clone --branch master https://github.com/parflow/parflow.git
+
+WORKDIR /opt/parflow
+RUN set -eux; \
+    mkdir build; \
+    cd build; \
+    cmake .. \
+      -DCMAKE_INSTALL_PREFIX=/opt/parflow_install \
+      -DPARFLOW_AMPS_LAYER=mpi1 \
+      -DPARFLOW_HAVE_CLM=TRUE; \
+    make -j"$(nproc)"; \
+    make install
+
+COPY parflow-ldd.sh /usr/local/bin/parflow-ldd.sh
+RUN set -eux; \
+    bash /usr/local/bin/parflow-ldd.sh /opt/parflow_install
+
+FROM python:3.11-slim-bookworm
+
+# ---- Base OS deps ----
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      bzip2 \
+      git \
+      gnupg \
+      libopenmpi3 \
+      openmpi-bin \
+      wget \
+    ; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=parflow-build /opt/parflow_install /opt/parflow
+ENV PARFLOW_DIR=/opt/parflow
+ENV PATH=/opt/parflow/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/parflow/lib/ldd:$LD_LIBRARY_PATH
+
+# ---- Create a non-root user for safer downstream usage ----
+ARG UID=1000
+ARG GID=1000
+RUN set -eux; \
+    groupadd -g "${GID}" "hlavo"; \
+    useradd -m -u "${UID}" -g "${GID}" -s /bin/bash "hlavo"; \
+    mkdir -p "/home/hlavo/workspace"; \
+    chown -R "hlavo:hlavo" "/home/hlavo/workspace"
+
+# ---- Conda environment ----
+WORKDIR /home/hlavo/workspace
+COPY cndenv.sh /home/hlavo/workspace/cndenv.sh
+COPY conda-requirements.yml /home/hlavo/workspace/conda-requirements.yml
+COPY conda_env_test.py /home/hlavo/workspace/conda_env_test.py
+ENV CONDA_BASE=/home/hlavo/miniconda3
+ENV HLAVO_USER=hlavo
+USER hlavo
+RUN set -eux; \
+    bash /home/hlavo/workspace/cndenv.sh rebuild
+
+USER root
+COPY --chmod=755 hlavo-entrypoint /usr/local/bin/hlavo-entrypoint
+ENTRYPOINT ["/usr/local/bin/hlavo-entrypoint"]
+
+CMD ["bash"]

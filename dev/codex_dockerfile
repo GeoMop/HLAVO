@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.6
+FROM hlavo:last
+
+# ---- Configurable versions ----
+ARG NODE_MAJOR=22
+
+USER root
+
+# ---- Install Node.js (for npm) + Codex CLI ----
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl gnupg; \
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    npm i -g @openai/codex; \
+    rm -rf /var/lib/apt/lists/*
+
+# ---- Codex config dir ----
+# (base image already has user jb; create config with correct ownership)
+RUN set -eux; \
+    mkdir -p /home/jb/.codex; \
+    chown -R jb:jb /home/jb/.codex; \
+    chmod 0775 /home/jb; \
+    chmod 0775 /home/jb/.codex
+
+USER jb
+WORKDIR /workspace
+CMD ["bash"]
