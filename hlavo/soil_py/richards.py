@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
-from scipy.integrate import solve_ivp
+from scipy import integrate, sparse
 from soil import VanGenuchtenParams, SoilMaterialManager
 import attrs
 
@@ -215,6 +215,41 @@ class RichardsEquationSolver:
 
         return jacobian
 
+    def compute_jac(self, t, H):
+        """
+        Return the Jacobian d(dH/dt)/dH as a sparse (N x N) matrix.
+        """
+        # 1) M_lump and derivative
+        M_lump, dM_lump_dH = self.dM(H)
+        # 2) Residual R and partial derivatives
+        R, dR_lower, dR_main, dR_upper = self.dR(t, H)
+
+        # 3) We want J = diag(1/M_lump)*dR/dH - diag( R*dM_lump_dH / M_lump^2 ).
+        #
+        # The second term modifies only the main diagonal.  The first term
+        # row-scales (dR_lower, dR_main, dR_upper) by 1/M_lump[row].
+
+        N = len(H)
+        invM = 1.0 / M_lump  # shape (N,)
+        invM2 = invM * invM  # shape (N,)
+
+        # row i is scaled by invM[i]:
+        J_lower = dR_lower * invM[1:]  # subdiag => row i+1
+        J_main = dR_main * invM  # main diag => row i
+        J_upper = dR_upper * invM[:-1]  # superdiag => row i
+
+        # Subtract the diagonal correction:
+        #    for row i:  - ( R[i]*dM_lump_dH[i] / M_lump[i]^2 )
+        # That is simply elementwise sub from J_main[i].
+        J_main -= R * dM_lump_dH * invM2
+
+        # Build the sparse tridiagonal
+        offsets = [-1, 0, 1]
+        data = [J_lower, J_main, J_upper]
+        J = sparse.diags(data, offsets=offsets, shape=(N, N), format='csr')
+
+        return J
+
     # def richards_solver(self, h_initial, t_span, t_out, method='LSODA'):
     #     """
     #     Solve Richards' equation using `solve_ivp` and save results at specified output times.
@@ -285,7 +320,7 @@ class RichardsEquationSolver:
             raise ValueError("t_out must be a float or a list of times.")
 
         # Solve using solve_ivp
-        solution = solve_ivp(
+        solution = integrate.solve_ivp(
             fun=self.compute_rhs,
             t_span=t_span,
             y0=h_initial,
