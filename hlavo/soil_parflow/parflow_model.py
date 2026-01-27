@@ -1,17 +1,15 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
-import logging
-import shutil
 
 from parflow import Run
 from parflow.tools import settings
-from parflow.tools.io import write_pfb, read_pfb
+from parflow.tools.io import write_pfb
 #from soil_model import evapotranspiration_fce
 import numpy as np
 import os, pathlib
 from matplotlib import pyplot as plt
-from soil_model.abstract_model import AbstractModel
-from soil_model.auxiliary_functions import sqrt_func, set_nested_attr, get_nested_attr, add_noise, set_nested_attrs
+from hlavo.soil_parflow.abstract_model import AbstractModel
+from hlavo.kalman.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 

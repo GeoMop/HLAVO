@@ -1,9 +1,9 @@
-from typing import Any, Dict, Tuple, Union, List, Callable
+from typing import Any, Dict, Tuple, Callable
 import attrs
 from scipy import special, stats, linalg
 import numpy as np
 from scipy.sparse import csr_matrix
-from soil_model.auxiliary_functions import add_noise
+from hlavo.kalman.auxiliary_functions import add_noise
 
 """
 Representation of Kalman state and associated variables.

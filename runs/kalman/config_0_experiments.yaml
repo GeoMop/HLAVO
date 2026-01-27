@@ -36,7 +36,7 @@ model_config:
       - 0.35
       - 6
 measurements_config:
-  measurements_file: /home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_2025_06_12.csv
+  measurements_file: ../runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
   measurements_time_step: 5
   probe: "pr2"
   model_time_step: 0.025 #2.5e-2

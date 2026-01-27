@@ -10,15 +10,14 @@ import numpy as np
 from itertools import groupby
 # from joblib import Memory
 # memory = Memory(location='cache_dir', verbose=10)
-from soil_model.kalman_result import KalmanResults
-from soil_model.parflow_model import ToyProblem
-from filterpy.kalman import UnscentedKalmanFilter
-from filterpy.kalman import JulierSigmaPoints, MerweScaledSigmaPoints
+from hlavo.kalman.kalman_result import KalmanResults
+from hlavo.soil_parflow.parflow_model import ToyProblem
+from filterpy.kalman import MerweScaledSigmaPoints
 # from soil_model.evapotranspiration_fce import ET0
-from soil_model.auxiliary_functions import sqrt_func, add_noise
-from soil_model.data.load_data import load_data
-from soil_model.kalman_state import StateStructure, MeasurementsStructure
-from soil_model.parallel_ukf import ParallelUKF
+from hlavo.kalman.auxiliary_functions import sqrt_func, add_noise
+from data_processing.load_data import load_data
+from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
+from hlavo.kalman.parallel_ukf import ParallelUKF
 import threading
 
 ######

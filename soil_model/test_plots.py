@@ -1,7 +1,6 @@
 import numpy as np
-import pytest
 import matplotlib.pyplot as plt
-from plots import covariance_plot
+from hlavo.kalman.visualization.plots import covariance_plot
 
 def generate_random_cov_matrix(dim, seed=42):
     """

@@ -4,7 +4,7 @@ import yaml
 import argparse
 import numpy as np
 from hlavo.soil_parflow.parflow_model import ToyProblem
-from soil_model.plots import RichardsSolverOutput, plot_richards_output
+from hlavo.kalman.visualization.plots import RichardsSolverOutput, plot_richards_output
 
 if __name__ == "__main__":
     # An argument parser to handle command-line inputs

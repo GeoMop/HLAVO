@@ -21,14 +21,13 @@ The times should be passed as the np.datetime64[ms] objects in order to
 keep relation to the date time series of the measurements.
 
 """
-import time
 import sys
 import argparse
 import numpy as np
 from pathlib import Path
 from dask.distributed import Client, LocalCluster, get_client, Queue
-from soil_model.kalman import KalmanFilter, run_kalman
-from soil_model.data.load_data import load_data
+from hlavo.kalman.kalman import KalmanFilter
+from data_processing.load_data import load_data
 
 
 # ---------------------------------------------------------------------------
