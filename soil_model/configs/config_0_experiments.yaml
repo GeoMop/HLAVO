@@ -7,6 +7,10 @@ model_config:
       "Lower.Z": -135
       "DZ": 9 #0.2
       "NZ": 15  #, 0] # Number of grid cells in z-direction
+    BCPressure_bottom: 0
+    #Perm:
+    #  0: 0.0737
+    #  -120: 1.0
   params:
       vG_K_s: "Geom.domain.Perm.Value"
       vG_n:  ["Geom.domain.Saturation.N", "Geom.domain.RelPerm.N"]
@@ -36,18 +40,20 @@ model_config:
       - 0.35
       - 6
 measurements_config:
-  measurements_file: /home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_2025_06_12.csv
+  #measurements_file: /home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data.csv #/home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_2025_06_12.csv
+  measurements_file: /home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_state_smoothed_subset.csv #/home/martin/Documents/HLAVO/kolona/hlavo_lab_merged_data_2025_06_12.csv
   measurements_time_step: 5
   probe: "pr2"
+  #probe: "odyssey"
   model_time_step: 0.025 #2.5e-2
-  model_n_time_steps_per_iter: 1200 #40
+  model_n_time_steps_per_iter: 1200 #600 #1200 #40
   rain_periods:
      #- [2, 0]
      - [284, -0.09523809523809525] 
      #- [284, -0.01667]
-     - [40, 0]
-     - [8, -0.01667]
-     - [4, 0]
+     #- [40, 0]
+     #- [8, -0.01667]
+     #- [4, 0]
 kalman_config:
   model_time_step: 2.5e-2
   #model_n_time_steps_per_iter: 40
@@ -126,6 +132,7 @@ kalman_config:
         z_pos: [-10, -20, -60]  #[-10, -20, -30, -40, -50, -60, -70, -80, -90, -100, 110, -120, -130, -140, -150] ##[-0.5, -2.5]
         noise_level: 0.01
         noise_distr_type: gaussian
+        #transform: saturation_to_moisture
       #pressure:
       #  z_pos: [-15]
       #  noise_level: 0.1
@@ -139,6 +146,7 @@ kalman_config:
         z_pos: [-40]
         noise_level: 0.01
         noise_distr_type: gaussian
+        #transform: saturation_to_moisture
       #saturation:
       #  z_pos: [-10, -20, -40]
       #  noise_level: 0.01
