@@ -1,0 +1,173 @@
+seed: 123456
+model_config:
+  model_class_name: "ToyProblem"
+  init_pressure: [-40, -100] #[-0.1, -4]   # bottom, top ; [temporary solution]
+  static_params:
+    ComputationalGrid:
+      "Lower.Z": -135
+      "DZ": 9 #0.2
+      "NZ": 15  #, 0] # Number of grid cells in z-direction
+  params:
+      vG_K_s: "Geom.domain.Perm.Value"
+      vG_n:  ["Geom.domain.Saturation.N", "Geom.domain.RelPerm.N"]
+      vG_Th_s: "Geom.domain.Saturation.SSat"
+      vG_Th_r: "Geom.domain.Saturation.SRes"
+      vG_alpha: ["Geom.domain.Saturation.Alpha", "Geom.domain.RelPerm.Alpha"]
+  #    "Geom.domain":
+  #      :
+  #      "Saturation.N": [3.7, 0.1]
+  evapotranspiration_params:
+    names:
+      - "n"
+      - "T"
+      - "u2"
+      - "Tmax"
+      - "Tmin"
+      - "RHmax"
+      - "RHmin"
+      - "month"
+    values:
+      - 14
+      - 20
+      - 10
+      - 27
+      - 12
+      - 0.55
+      - 0.35
+      - 6
+measurements_config:
+  measurements_file: ../runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
+  measurements_time_step: 5
+  probe: "pr2"
+  model_time_step: 0.025 #2.5e-2
+  model_n_time_steps_per_iter: 1200 #40
+  rain_periods:
+     #- [2, 0]
+     - [284, -0.09523809523809525] 
+     #- [284, -0.01667]
+     - [40, 0]
+     - [8, -0.01667]
+     - [4, 0]
+kalman_config:
+  model_time_step: 2.5e-2
+  #model_n_time_steps_per_iter: 40
+  state_params:
+      pressure_field:
+        mean_linear:
+          top: -40
+          bottom: -100  # top, bottom
+        cov_exponential:
+          std: 2.0
+        rel_std_Q: 0.007
+        ref: 
+        # ref: TODO: make ref accept mean clases
+        # correlation_length: 0.5
+      vG_K_s:
+        ref: 0.0737
+         #mean_std: [12.833, 0.01]
+        mean_std: [-2.60775248, 0.01] #[0.0737, 0.001] # transformed mean: 
+        rel_std_Q: 0.00028 #0.01
+        transform: lognormal             # transform to normal distribution
+        #conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #vG_n:
+      #  ref: 1.89
+        #mean_std: [1.89, 0.05]
+      #  mean_std: [-0.116533816, 0.005]
+      #  rel_std_Q: 0.081 #0.005 #0.007273926
+      #  transform: log_minus_one           # transform to normal distribution
+        #conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #vG_Th_s:
+      #  ref: 0.41
+      #  mean_std: [-0.363, 0.01] #[0.41, 0.01]
+      #  rel_std_Q: 0.001 #0.000243902
+      #  transform: logit
+      #vG_Th_r:
+      #  ref: 0.065
+      #  mean_std: [-2.667, 0.01] #[0.065, 0.01]
+      #  rel_std_Q: 0.0001 #0.001538462
+      #  transform: logit
+      #vG_alpha:
+      #  ref: 0.75
+      #  mean_std: [-0.287682072, 0.001]
+      #  rel_std_Q: 0.0026 # 0.001 #0.000133333
+      #  transform: lognormal           # transform to normal distribution
+        #conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #Th_s:
+        # transform: none
+        #
+      #  conf_interval: [0.35, 0.41, 0.9]  # explicit 0.9 confidence interval
+      #calibration_coeffs: 
+      #  - z_pos: -10
+      #    ref: 1
+      #    mean_std: [1, 0.01] #[0.065, 0.01]
+      #    rel_std_Q: 0.0001 #0.001538462
+        #- z_pos: -15
+        #  ref: 1
+        #  mean_std: [1, 0.01] #[0.065, 0.01]
+        #  rel_std_Q: 0.0001 #0.001538462
+      #  - z_pos: -20
+      #    ref: 1
+      #    mean_std: [1, 0.01] #[0.065, 0.01]
+      #    rel_std_Q: 0.0001 #0.001538462
+      #  - z_pos: -40
+      #    ref: 1
+      #    mean_std: [1, 0.01] #[0.065, 0.01]
+      #    rel_std_Q: 0.0001 #0.001538462
+      #  - z_pos: -60
+      #    ref: 1
+      #    mean_std: [1, 0.01] #[0.065, 0.01]
+      #    rel_std_Q: 0.0001 #0.001538462
+      #  - z_pos: -100
+      #    ref: 1
+      #    mean_std: [1, 0.01] #[0.065, 0.01]
+      #    rel_std_Q: 0.0001 #0.001538462
+  train_measurements:
+      moisture:
+        z_pos: [-10, -20, -60]  #[-10, -20, -30, -40, -50, -60, -70, -80, -90, -100, 110, -120, -130, -140, -150] ##[-0.5, -2.5]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+      #pressure:
+      #  z_pos: [-15]
+      #  noise_level: 0.1
+      #  noise_distr_type: uniform
+      #velocity:
+      #  z_pos: [0.75]
+      #  noise_level: 0.1
+      #  noise_distr_type: uniform
+  test_measurements:
+      moisture:
+        z_pos: [-40]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+      #saturation:
+      #  z_pos: [-10, -20, -40]
+      #  noise_level: 0.01
+      #  noise_distr_type: gaussian
+      #pressure:
+      #  z_pos: [1.6, 3.0]
+      #  noise_level: 0.1
+      #  noise_distr_type: uniform
+
+
+  #measurements_data_name: "saturation"  # Possible values: "saturation" or "pressure"
+  #mes_locations_train:
+  #  - 0.5
+  #  - 1.4
+    #- 2.5
+    #- 3.5
+  #mes_locations_test:
+  #  - 0.2
+  #  - 0.8
+  #  - 1.6
+  #  - 3.0
+  #measurements_noise_level: 0.01
+  noise_distr_type: gaussian #gaussian
+  # model_params_noise_level: 0.1
+  pressure_saturation_data_noise_level: 0.01   # init state noise
+  init_cov_P_multiplicator: 1
+  #pressure_saturation_data_std: 3.2
+  #Q_var: 5.0e-5
+  #Q_model_params_var: 1e-8
+  sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}
+postprocess:
+  show: True
