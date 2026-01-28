@@ -263,7 +263,8 @@ class QgisProjectReader:
 
     project_path: Path
     # Path to the QGIS project.
-    boundary_layer_name: str = "JB_extended_domain"
+    #boundary_layer_name: str = "JB_extended_domain"
+    boundary_layer_name: str = "JB_extended_domain_Turow"
     # Layer name of the boundary polygon.
     raster_group_name: str = "HG model layers"
     # Layer tree group containing model rasters.
