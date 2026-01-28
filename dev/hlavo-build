@@ -3,10 +3,22 @@ set -xeuo pipefail
 
 SCRIPT_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
-if [[ "${1:-}" == "-c" ]]; then
-  HLAVO_MODE="conda"
-  shift
-fi
+force_flag=""
+while [[ "${1:-}" == -* ]]; do
+  case "$1" in
+    -c)
+      HLAVO_MODE="conda"
+      shift
+      ;;
+    -f)
+      force_flag="-f"
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 # shellcheck disable=SC1090
 source "$SCRIPT_ROOT/hlavo_common.sh"
@@ -17,8 +29,9 @@ usage() {
   cat <<'EOF'
 Usage:
   ./hlavo-build image
+  ./hlavo-build build [-f]
+  ./hlavo-build base [-f]
   ./hlavo-build make-sif
-  ./hlavo-build base
 
 Env vars:
   IMAGE_TAG=latest
@@ -28,17 +41,10 @@ EOF
 }
 
 run_smoke_test() {
-  set_image_vars
   local host_workdir
-  host_workdir="${REPO_ROOT}/_parflow_smoke"
+  host_workdir="${REPO_ROOT}/dev/_parflow_smoke"
   mkdir -p "$host_workdir"
-  docker run --rm \
-    -e HLAVO_WORKSPACE="${WORKSPACE}" \
-    -v "$REPO_ROOT:${WORKSPACE}" \
-    -v "$host_workdir:${WORKSPACE}/_parflow_smoke" \
-    -w "${WORKSPACE}" \
-    "$IMAGE_REF" \
-    sh -lc "${WORKSPACE}/cndenv.sh run -- python ${WORKSPACE}/conda_env_test.py"
+  run_cmd python "$ENV_REPO_ROOT/dev/test_env.py"
 }
 
 push_image() {
@@ -56,18 +62,14 @@ make_sif() {
   singularity pull --name "$sif_name" "docker://$IMAGE_REF"
 }
 
-
 cmd="${1:-}"
 shift || true
 case "$cmd" in
   base)
-    base_build
+    base_build $force_flag
     ;;
-  update)
-    env_build
-    ;;
-  rebuild)
-    env_build -f
+  build)
+    env_build $force_flag
     ;;
   test)
     run_smoke_test

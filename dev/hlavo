@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -xeuo pipefail
 
 SCRIPT_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
-if [[ "${1:-}" == "-c" ]]; then
-  HLAVO_MODE="conda"
-  shift
-fi
+while [[ "${1:-}" == -* ]]; do
+  case "$1" in
+    -c)
+      HLAVO_MODE="conda"
+      shift
+      ;;
+    -t)
+      tty_arg="-it"
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 source "$SCRIPT_ROOT/hlavo_common.sh"
 
@@ -16,6 +27,8 @@ Usage:
   ./hlavo run <command> [args...]
   ./hlavo shell
   ./hlavo venv [-f]
+  ./hlavo -t run <command> [args...]
+  ./hlavo -t shell
 EOF
 }
 
@@ -24,10 +37,6 @@ subcmd="$1"
 shift || true
 
 case "$subcmd" in
-  venv)
-    venv_ensure "${1:-}"
-    venv_overlay
-    ;;
   shell)
     run_cmd "${SHELL:-bash}" -i
     ;;

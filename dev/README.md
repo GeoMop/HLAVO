@@ -1,31 +1,36 @@
-# HLAVO dev environments
+# HLAVO dev environment
 
 This directory provides configurations and scripts to setup and run hlavo environment.
-- core environment is based on conda
-- docker wrapper image is provided for better portability and isolation
+- core environment is based on conda (modflow6 + python packages), parflow must be installed extra
+- docker wrapper image is provided for better portability and isolation ( contains conda + parflow)
 - image building script also enable conversion to SIF file for running on the (charon) cluster
 - codex image provides sandboxing of the whole environmnet and codex support
 
-## Create the conda environment (via cndenv.sh)
+## 1) Docker: build and run
 
-The script builds the conda environment according to  `conda-requirements.yml`.
-It will install Miniconda and mamba in user space if needed.
+Build or update the docker (or conda [-c]) environment. Optionally, remove [-f] and start from scratch:
 
-  ./cndenv.sh rebuild
+```bash
+./hlavo-build [-c] [-f] build
+```
 
-To run a command inside the environment:
+Run a command inside the environment. Use `-t` to enforce interactive terminal:
 
-  ./cndenv.sh run python -v
+```bash
+./hlavo [-t] run <cmd>
+```
 
-Run the smoke test
+Notes:
+- `-t` sets `TERM=-it` so Docker allocates a TTY.
+- UID/GID are passed into the container to match host ownership.
 
-  ./cndenv.sh run python conda_env_test.py
 
-  
-## Files overview
+## 3) Key files
 
-- cndenv.sh: single entrypoint script for conda/mamba or venv setup.
-- conda_env_test.py: environment smoke test (mf6 check, imports, cfgrib/eccodes).
-- conda-requirements.yml: conda environment definition (name, channels, deps).
-- hlavo_dockerfile: base image with Python 3.11, MF6, and requirements.
-- codex_dockerfile: extends the base image with Node.js and Codex CLI.
+- `hlavo_common.sh`: core logic; defines base build/run and venv overlay behavior.
+- `hlavo`: run wrapper; parses subcommands and delegates to `hlavo_common.sh`.
+- `hlavo-build`: build wrapper; calls base build + venv overlay.
+- `hlavo_dockerfile`: Docker image definition (ParFlow + conda env).
+- `hlavo-entrypoint`: entrypoint to align container UID/GID with host.
+- `conda-requirements.yml`: conda environment spec.
+- `test_env.py`: smoke test for environment sanity.

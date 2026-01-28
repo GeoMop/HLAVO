@@ -12,24 +12,14 @@ RUN set -eux; \
       tcl-dev \
       openmpi-bin \
       libopenmpi-dev \
-      git \
       wget \
     ; \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt
-RUN git clone --branch master https://github.com/parflow/parflow.git
-
-WORKDIR /opt/parflow
+ENV PARFLOW_PREFIX=/opt/parflow_install
+COPY parflow_install.sh /usr/local/bin/parflow_install.sh
 RUN set -eux; \
-    mkdir build; \
-    cd build; \
-    cmake .. \
-      -DCMAKE_INSTALL_PREFIX=/opt/parflow_install \
-      -DPARFLOW_AMPS_LAYER=mpi1 \
-      -DPARFLOW_HAVE_CLM=TRUE; \
-    make -j"$(nproc)"; \
-    make install
+    bash /usr/local/bin/parflow_install.sh
 
 COPY parflow-ldd.sh /usr/local/bin/parflow-ldd.sh
 RUN set -eux; \
@@ -72,16 +62,19 @@ RUN set -eux; \
     chown -R "hlavo:hlavo" "/home/hlavo/workspace"
 
 # ---- Conda environment ----
-WORKDIR /home/hlavo/workspace
-COPY hlavo_common.sh /home/hlavo/workspace/hlavo_common.sh
-COPY hlavo-build /home/hlavo/workspace/hlavo-build
-COPY conda-requirements.yml /home/hlavo/workspace/conda-requirements.yml
-COPY conda_env_test.py /home/hlavo/workspace/conda_env_test.py
+ENV ENV_REPO_ROOT=/home/hlavo/workspace
+WORKDIR $ENV_REPO_ROOT
+COPY hlavo_common.sh $ENV_REPO_ROOT/dev/hlavo_common.sh
+COPY hlavo-build $ENV_REPO_ROOT/dev/hlavo-build
+COPY conda-requirements.yml $ENV_REPO_ROOT/dev/conda-requirements.yml
+#COPY test_env.py $ENV_REPO_ROOT/dev/test_env.py
 ENV CONDA_BASE=/home/hlavo/miniconda3
 ENV HLAVO_USER=hlavo
+RUN set -eux; \
+    chown -R hlavo:hlavo $ENV_REPO_ROOT
 USER hlavo
 RUN set -eux; \
-    bash /home/hlavo/workspace/hlavo-build -c base
+    bash $ENV_REPO_ROOT/dev/hlavo-build -c base
 
 USER root
 COPY --chmod=755 hlavo-entrypoint /usr/local/bin/hlavo-entrypoint
