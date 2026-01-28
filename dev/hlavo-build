@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -xeuo pipefail
 
-REPO_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+SCRIPT_ROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
-IMAGE_NAME="${IMAGE_NAME:-hlavo}"
+if [[ "${1:-}" == "-c" ]]; then
+  HLAVO_MODE="conda"
+  shift
+fi
+
+# shellcheck disable=SC1090
+source "$SCRIPT_ROOT/hlavo_common.sh"
+
 WORKSPACE="/home/hlavo/workspace"
-DOCKERFILE="${DOCKERFILE:-$REPO_ROOT/hlavo_dockerfile}"
-
-die() { echo "ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
 Usage:
   ./hlavo-build image
   ./hlavo-build make-sif
+  ./hlavo-build base
 
 Env vars:
-  IMAGE_NAME=hlavo
   IMAGE_TAG=latest
   IMAGE_REF=hlavo:latest
-  DOCKERFILE=./hlavo_dockerfile
   SIF_NAME=hlavo.sif
 EOF
 }
 
-build_image() {
-  docker build -f "$DOCKERFILE" -t "$IMAGE_REF" "$REPO_ROOT"
-}
-
 run_smoke_test() {
+  set_image_vars
   local host_workdir
   host_workdir="${REPO_ROOT}/_parflow_smoke"
   mkdir -p "$host_workdir"
@@ -50,19 +50,24 @@ make_sif() {
     die "singularity not found on PATH."
   fi
 
+  set_image_vars
   local sif_name
   sif_name="${SIF_NAME:-hlavo.sif}"
   singularity pull --name "$sif_name" "docker://$IMAGE_REF"
 }
 
+
 cmd="${1:-}"
 shift || true
-IMAGE_TAG="${1:-${IMAGE_TAG:-latest}}"
-IMAGE_REF="${IMAGE_REF:-${IMAGE_NAME}:${IMAGE_TAG}}"
 case "$cmd" in
-  image)
-    build_image
-    run_smoke_test
+  base)
+    base_build
+    ;;
+  update)
+    env_build
+    ;;
+  rebuild)
+    env_build -f
     ;;
   test)
     run_smoke_test

@@ -73,14 +73,15 @@ RUN set -eux; \
 
 # ---- Conda environment ----
 WORKDIR /home/hlavo/workspace
-COPY cndenv.sh /home/hlavo/workspace/cndenv.sh
+COPY hlavo_common.sh /home/hlavo/workspace/hlavo_common.sh
+COPY hlavo-build /home/hlavo/workspace/hlavo-build
 COPY conda-requirements.yml /home/hlavo/workspace/conda-requirements.yml
 COPY conda_env_test.py /home/hlavo/workspace/conda_env_test.py
 ENV CONDA_BASE=/home/hlavo/miniconda3
 ENV HLAVO_USER=hlavo
 USER hlavo
 RUN set -eux; \
-    bash /home/hlavo/workspace/cndenv.sh rebuild
+    bash /home/hlavo/workspace/hlavo-build -c base
 
 USER root
 COPY --chmod=755 hlavo-entrypoint /usr/local/bin/hlavo-entrypoint
