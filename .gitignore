@@ -1,4 +1,6 @@
+_*/*
 
+dev/parflow_install
 dev/venv-*
 **/.codex
 **/GIS-copy
@@ -37,7 +39,6 @@ __pycache__/
 venv
 
 doc/_build
-_projekt/
 
 # C extensions
 *.so

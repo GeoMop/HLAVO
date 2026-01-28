@@ -1,0 +1,113 @@
+seed: 12345
+model_config:
+  static_params:
+      "ComputationalGrid.Lower.X": 0.0
+      "ComputationalGrid.Lower.Y": 0.0
+      "ComputationalGrid.Lower.Z": -1.2
+      "ComputationalGrid.DX": 0.2
+      "ComputationalGrid.DY": 0.2
+      "ComputationalGrid.DZ": 0.05
+      "ComputationalGrid.NX": 1 # Number of grid cells in x-direction
+      "ComputationalGrid.NY": 1 # Number of grid cells in y-direction
+      "ComputationalGrid.NZ": 24 # Number of grid cells in z-direction
+      "Geom.domain.Lower.X": 0.0
+      "Geom.domain.Lower.Y": 0.0
+      "Geom.domain.Lower.Z": -1.2
+      "Geom.domain.Upper.X": 0.25
+      "Geom.domain.Upper.Y": 0.25
+      "Geom.domain.Upper.Z": 0.0
+  #params:
+  #  names:
+      ###- "Geom.domain.RelPerm.Alpha"
+      ###- "Geom.domain.Saturation.Alpha"
+      #- "Geom.domain.RelPerm.N"
+      ###- "Geom.domain.Saturation.N"
+      #- "Geom.domain.Saturation.SRes"
+      #- "Geom.domain.Saturation.SSat"
+      ###- "Patch.top.BCPressure.alltime.Value"
+      #- "Geom.domain.Perm.Value"
+  #  values: 
+      ###- 0.58
+      ###- 0.58
+      ###- 3.7
+      #- 3.7
+      #- 0.06
+      #- 0.47
+      ###- -0.02
+      #- 0.00012833 #0.012833 #0.012833  # [m/hr]
+  #  std: 
+    #  - 0.001
+    #  - 0.0001
+    #  - 0.03
+    #  - 0.003
+    #  - 0.0001
+    #  - 0.0004
+    #  - 0.0001
+    #std: 
+      ###- 0.001
+      ###- 0.01
+      ###- 0.03
+      #- 0.1
+      #- 0.001
+      #- 0.01
+      ###- 0.001
+      #- 0.00001
+  rain_periods: 
+    #- [28, -0.02]    # hours of rain with precipitation
+    - [2, 0]    
+    #- [24, -0.02]
+    #- [4, -0.02] 
+  #flux_eps: [0, 0]
+    
+  #rain_periods: 
+  #  - [8, -0.02]    # hours of rain with precipitation
+  #  - [4, 0]    
+  #  - [8, -0.02] 
+  evapotranspiration_params:
+    names:
+      - "n"
+      - "T"
+      - "u2"
+      - "Tmax"
+      - "Tmin"
+      - "RHmax"
+      - "RHmin"
+      - "month"
+    values:
+      - 14
+      - 20
+      - 10
+      - 27
+      - 12
+      - 0.55
+      - 0.35
+      - 6
+kalman_config:
+  measurements_data_name: "saturation"  # Possible values: "saturation" or "pressure"
+  mes_locations_train: 
+    #- 0.1
+    #- 0.2
+    #- 0.4
+    #- 0.6
+    - 1.0
+    #- 2.5
+    #- 3.5
+  #mes_locations_train_slope_intercept:
+  #  - [0, 0]
+  #  - [0, 0]
+  #  - [0, 0]
+  #  - [0, 0]
+  #  - [0, 0]
+  mes_locations_test: 
+    - 0.3
+    - 0.5
+  measurements_noise_level: 0.1
+  noise_distr_type: uniform #gaussian
+  model_params_noise_level: 0.1
+  pressure_saturation_data_noise_level: 0.1
+  pressure_saturation_data_std: 10
+  Q_var: 0.00005
+  Q_model_params_var: 0.00000001
+  sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}
+  measurements_dir: "/home/martin/Documents/HLAVO/soil_model/data/24_10_01_full_saturation/"
+  plot: False
