@@ -1,0 +1,162 @@
+ATTRS:
+    description: "Storage for the moisture profile monitoring network. Optionally amended by the local meteo data."
+    # for the bucket name see the store_create.sh script.
+    STORE_URL: "s3://hlavo-release/profiles.zarr"
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+    
+    
+   
+
+Uhelna:
+    profiles:    
+        ATTRS:
+            description: "Moisture profile data"
+            VERSION: 0.3.0
+            ingress:
+                # Proposed way to pass some data to the extractor.
+                # ingress will specify zarr node adress and optional ingress dict will be merged with 
+                # other ingress metadata dict.
+                location_file: &loc_file probes_locations.csv
+                
+        VARS:
+            # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+            T_sensor:
+                unit: "deg C"
+                description: "Temperature of sensor"
+                coords: ["date_time", "probe_id", "depth_level"]
+
+            T_probe:
+                unit: "deg C"
+                description: "Temperature of probe (Odyssey - computed from sensor readings, PR2 - measured surface temeprature)"
+                coords: ["date_time", "probe_id", "depth_level"]
+
+            moisture:
+                unit: ""
+                description: "Moisture reading of the probe. Should be proportional to (absolute) volumentic water (usual range: (0, 35))"
+                coords: ["date_time", "probe_id", "depth_level"]
+
+            permeability:
+                unit: ""
+                description: "Relative permeability, original physicaly based reading."
+                coords: ["date_time", "probe_id", "depth_level"]
+
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan'
+                coords: ["date_time", "probe_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan'
+                coords: ["date_time", "probe_id"]
+
+            location_id:
+                description: "Estimated location ID according to the table of possible locations. Including the lab."
+                coords: ["date_time", "probe_id"]
+                
+            probe_type_selector:
+                decription: "Type of the moisture profile probe." 
+                type: int
+                coords: ["probe_id"]
+            
+            sensor_depth:
+                unit: "meter"
+                type: float
+                coords: ["depth_level", "probe_model"]
+
+
+                
+        COORDS:
+            date_time:
+                unit: { tick: "h", tz: "UTC" }
+                description: "Time coordinate"
+                df_col: "timestamp"
+                source_unit: { tick: "s", tz: "CET" }
+                sorted: None # Automatic, sort coord by itself.
+                chunk_size: 1024
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 12, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+            
+            depth_level:
+                description: "Depth index form top to bottom."
+                
+                
+            probe_id:
+                # Secondary description valid for composed coordinates.
+                description: "Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes."
+                type: str16
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: [] # Unsorted
+                chunk_size: 512
+
+            probe_model:
+                decription: "Type of the moisture profile probe." 
+                type: str8
+                values: ["Odyssey", "PR2"]
+
+    meteo:
+        ATTRS:
+            description: "Amateur meteo station data."
+            VERSION: 0.3.0
+
+        VARS:
+            meteo_T:
+                unit: "deg C"
+                description: "Meteo station. Air temperature."
+                coords: ["date_time", "meteo_station_id"]
+            
+            meteo_moisture:
+                unit: "deg C"
+                description: "Meteo station. Air temperature."
+                coords: ["date_time", "meteo_station_id"]
+
+            meteo_percipitation:
+                unit: "deg C"
+                description: "Meteo station. Air temperature."
+                coords: ["date_time", "meteo_station_id"]
+            
+            meteo_wind_velocity:
+                unit: "deg C"
+                description: "Meteo station. Air temperature."
+                coords: ["date_time", "meteo_station_id"]
+
+            meteo_radiation:
+                unit: "deg C"
+                description: "Meteo station. Air temperature."
+                coords: ["date_time", "meteo_station_id"]
+
+        COORDS:
+            date_time:
+                unit: { tick: "h", tz: "UTC" }
+                description: "Time coordinate"
+                df_col: "timestamp"
+                source_unit: { tick: "s", tz: "CET" }
+                sorted: None # Automatic, sort coord by itself.
+                chunk_size: 1024
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 12, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+            
+            depth_level:
+                description: "Depth index form top to bottom."
+
+#Laboratory:
+# Proposed logic : collect all profile data into previous node
+# Read lab station data here + process corresponding profile data and merge.
+        
