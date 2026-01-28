@@ -142,7 +142,7 @@ base_run_conda() {
 }
 
 base_run_docker() {
-  local img_workspace img_conda_path tty_arg workdir host_pwd rel_pwd
+  local img_workspace img_conda_path workdir host_pwd rel_pwd
 
   set_image_vars
   command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
