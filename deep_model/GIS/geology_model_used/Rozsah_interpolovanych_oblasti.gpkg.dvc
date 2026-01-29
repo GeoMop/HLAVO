@@ -1,0 +1,5 @@
+outs:
+- md5: a174e6b716240bade7a2132cea91b33f
+  size: 122880
+  hash: md5
+  path: Rozsah_interpolovanych_oblasti.gpkg

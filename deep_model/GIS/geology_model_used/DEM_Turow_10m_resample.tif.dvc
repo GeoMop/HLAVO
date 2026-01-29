@@ -1,0 +1,5 @@
+outs:
+- md5: 7170a76fc921c5973e72274acea73307
+  size: 28840348
+  hash: md5
+  path: DEM_Turow_10m_resample.tif
