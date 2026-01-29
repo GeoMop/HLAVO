@@ -1,19 +1,37 @@
-# Environment for Developing a MODFLOW Model with CODEX
+# Creation of MODFLOW Based Deep Model
 
-## Directory structure
+## structure
 
-- `../GIS`: GIS project, **read-only**
+- `GIS/`: GIS project with resources for Uhelná locality
+- `model/`: workdir prepared for potential MODFLOW input/output files produced by model preparation and model run scripts
+
+- `qgis_reader.py` - module to read and resample data from GIS resources, produces numpy arrays
+- `build_model_grid.py` - uses surface map arryas produced by qgis_reader to constructe modflow geometry with assigned materials
+- `model_config.yaml` - basic model configuration
+
+
+
+## Paraview states
+- `surfaces_blocks.(py | pvsm)` - paraview vizuaization of the surfaces produced by `qgis_reader.py:write_vtk_surfaces()`
+
+
+
+### Codex files
+- `AGENTS.md`: meta-instructions for how CODEX should operate; project specifics and coding style
+- `PLAN.md`: project-specific, describing the general plan
+-
+
+
+
+
 - `.codex/config.toml`: deterministic CODEX configuration; we allow dangerous operations because we run inside a Docker sandbox
 - `docker/`: Docker container setup with:
   - CODEX support
   - QGIS and PyQGIS installed, but we ultimately **do not use them** (segfaults, and they require read-write access)
   - MODFLOW 6 installed
 - `src/`: CODEX working directory
-  - `AGENTS.md`: meta-instructions for how CODEX should operate; project specifics and coding style
-  - `PLAN.md`: project-specific, describing the general plan
   - `tests/`
     - `run`: script to run tests; a wrapper around `pytest` that captures `stdout`/`stderr`. CODEX must run tests through this wrapper, otherwise it cannot capture output when tests fail.
-- `model/`: prepared for potential MODFLOW input/output files produced by model preparation and model run scripts
 
 ## CODEX workflow
 

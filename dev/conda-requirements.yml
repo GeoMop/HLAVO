@@ -25,6 +25,10 @@ dependencies:
   - cfgrib
   - eccodes   # makes cfgrib happier / more explicit
 
+  # QGis 
+  - gdal
+  
+  
   # MODFLOW ecosystem
   - flopy
 

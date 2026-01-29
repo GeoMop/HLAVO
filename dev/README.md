@@ -41,3 +41,10 @@ Push the built image to Docker Hub (tags as `flow123d/hlavo:<tag>`):
 - `parflow-ldd.sh`: helper to collect ParFlow shared lib deps in the image.
 - `conda-requirements.yml`: conda environment spec.
 - `test_env.py`: smoke test for environment sanity.
+
+
+## Future developments
+
+- support for shell
+- codex derived docker image + dockercompose
+- simplified image for computing only (no ingress and qgis)

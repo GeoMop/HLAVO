@@ -55,3 +55,6 @@ cmake "$src_dir" \
   -DPARFLOW_HAVE_CLM=TRUE
 make -j"$(nproc)"
 make install
+
+
+export PARFLOW_DIR="$PARFLOW_PREFIX"
