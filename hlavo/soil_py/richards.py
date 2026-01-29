@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
 from scipy import integrate, sparse
-from soil import VanGenuchtenParams, SoilMaterialManager
+from .soil import VanGenuchtenParams, SoilMaterialManager
 import attrs
 
 @attrs.define
@@ -365,7 +365,7 @@ def test_richards_solver():
     """
     Test the RichardsEquationSolver with a simple setup.
     """
-    from soil import VanGenuchtenParams, SoilMaterialManager
+    from .soil import VanGenuchtenParams, SoilMaterialManager
 
     # Define Van Genuchten parameters for the soil
     vg_params = VanGenuchtenParams(
