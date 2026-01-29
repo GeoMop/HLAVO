@@ -1,0 +1,11 @@
+# Development packages
+sphinx>=7,<9
+myst-parser>=2,<5
+sphinx-rtd-theme>=2,<4
+
+
+# meteodata inspaction
+PyQt5
+ViTables
+requests
+bs4

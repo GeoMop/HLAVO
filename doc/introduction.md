@@ -1,9 +1,21 @@
-# HLAVO project overview
+# Introduction
 
-The HLAVO (HLAdiny VOd = water table) project aims to develop a
-comprehensive system for modeling and predicting the water table using
-detailed meteorological data and infiltration estimates derived from an
-assimilated soil model.
+The HLAVO (HLAdiny VOd = water table) project develops a system for
+predicting groundwater table dynamics using meteorological inputs and
+assimilated soil moisture profile measurements, combining surface and deep
+vadose zone modeling.
+
+## Installation
+<TODO: describe here, how to get the 0.1.0 tag from github, extract, run dev/hlavo-build pull>
+
+### Environments
+- Dev environment in `dev/` (Docker/conda wrappers and build scripts).
+- Deep model sandboxing and QGIS-related tooling in `hlavo/deep_model/`.
+
+## Top-level scripts (planned)
+- `hlavo/kalman/kalman.py`: surface model assimilation runs.
+- `hlavo/deep_model/deep.py`: deep model build + MODFLOW run.
+- `hlavo/composed/main.py`: parallel coupling of surface + deep models.
 
 ## Locality: Uhelná
 
@@ -23,16 +35,3 @@ and water table model.
 The goal is to enable long-term prediction of water table evolution and to
 support modeling of remediation measures at this locality and other similar
 sites in the Bohemian Cretaceous Basin (česká křídová pánev) region.
-
-## Project software components
-- `data ingress`
-- `soil model` (with evapo-transpoiration and Kalman filter assimilation)
-- `deep vadose zone model`
-- `prediction and calibration engine`
-- `visualization dashboard`
-
-![HLAVO_schema](HLAVO_schema.svg)
-
-
-## Application to the Uhelná locality
-
