@@ -44,19 +44,22 @@ Codex run within docker container
 
 
 ## Coding rules
-- use logging
-- use pathlib
-- use attrs for dataclasses
+
+- Best code, is no code!
 - prefere functional style with poor functions;
   idealy do not change objects after construction, all methods do calculations 
   only reading the data in the class
-- use attrs staticmethod/classmethod technique to construct from other data then is stored in the dataclass  
 - prefere high level code: numpy, pandas, xarray instead loops and native python sturctures (lists, dicts)
+- use logging
+- Use logging for debug outputs.
+- use pathlib
+- use attrs for dataclasses
+- use attrs staticmethod/classmethod technique to construct from other data then is stored in the dataclass  
 - Be defensive, with strong checks, but only for the user input data.
 - Do just basic asserts for consistency for function inputs.
 - Can add more asserts if needed during debugging.
-- Use logging for debug outputs.
 - NEVER resolve test errors by try blocks
+
 
 ## How to verify your changes
 
