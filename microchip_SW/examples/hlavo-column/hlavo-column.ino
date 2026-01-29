@@ -24,7 +24,7 @@ const char* setup_interrupt = "SETUP INTERRUPTED";
     /** TIMERS */
     // times in milliseconds, L*... timing level
     const int timer_L0_period = 1;        // [s] time reader
-    const int timer_L1_period = 3;        // [s] read water height period
+    const int timer_L1_period = 1;        // [s] read water height period
     const int timer_L2_period = 5*60;     // [s] date reading timer - PR2
     const int timer_L4_period = 24*3600;  // [s] watchdog timer - 24 h
     #define VERBOSE 1
@@ -35,12 +35,9 @@ Every timer_L1(timer_L1_period*1000);     // read water height timer
 Every timer_L2(timer_L2_period*1000);     // date reading timer - PR2
 Every timer_L4(timer_L4_period*1000);     // watchdog timer
 
-
-Every timer_rain_start(60*60*1000);         // every T start rain
-Timer timer_rain_length(46*1000, false);    // length of rain
-int rain_n_cycles = 0;                      // current number of rains
-const int rain_max_n_cycles = 48;           // max number of rains
-
+// rain regimes timers
+Timer timer_rain_wait(10*1000, false);      // wait between rain regimes, once timer
+Timer timer_rain_regime(60*1000, false);    // rain regime, once timer
 
 /*********************************************** SD CARD ***********************************************/
 // SD card IO
@@ -62,9 +59,11 @@ DateTime dt_now;
 
 /************************************************ FLOW *************************************************/
 #include "column_flow_data.h"
+#include "linear_voltage_sensor.h"
+#include "average_value.h"
+
 #define VALVE_OUT_PIN 15
 
-#include "linear_voltage_sensor.h"
 // ultrasonic sensor S18U
 LinearVoltageSensor whs(5, 0.05, 3.13, 220, 30);  // pin, aVolt, bVolt, aVal, bVal
 
@@ -72,145 +71,213 @@ bool start_valve_out = false;
 bool valve_out_open = false;
 
 Timer timer_outflow(45*1000, false);    // time for pumping water out
-const float H_limit = 200;              // [mm] limit water height to release
-const uint8_t n_H_avg = 5;              // number of flow samples to average
-
-float H_window[n_H_avg];    // collected water height
-uint8_t n_H_collected = 0;    // collected water height
-uint8_t n_H_collected_start = 0;    // collected water height
-
+const float outflow_min_wh = 200;              // [mm] limit water height to release
+AverageValue outflow_wh(5);
 float previous_height = 0;
 
 char data_flow_filename[max_filepath_length] = "column_flow.csv";
 
 
 /************************************************ RAIN *************************************************/
+#include "rain_regime.h"
+
 #define PUMP_IN_PIN 6
 bool pump_in_finished = true;
-Timer timer_rain(1000, false);    // timer for rain
-uint8_t current_rain_idx = 0;
+bool rain_regime = true;
+uint8_t current_rain_regime_idx = 0;
 FileInfo current_rain_file("/current_rain.txt");
+const bool force_fresh_rain_regimes = false;  // if true, ignore saved rain regime
 
-class RainRegime{
-  public:
-    static const float pump_rate;       // [l/min]
-    static const float column_radius;   // [m]
-    static const float column_cross;    // [m2]
+LinearVoltageSensor rain_whs(7, 0.05, 2.21, 10, 630);  // pin, aVolt, bVolt, aVal, bVal
+float rain_min_wh = 100; // mm
+bool no_more_rain = false;
+AverageValue rain_wh(5);
 
-    float rate;   // [mm/h]
-    float length; // [h]
-    float period; // [h]
+/**
+  15s kropení každých 30min; po dobu 8 hodin, pak 4 hodiny čekat
+  30s kropení každých 30min; po 4 hodiny, 8 hodin čekat
+  60s kropení každých 30min; po 2 hodiny, 10 hod čekat
+  120s kropení každých 30min; 1 hodina; 11 čekat
+  15s kropení každých 15min; po dobu 8 hodin, pak 4 hodiny čekat
+  30s kropení každých 15min; po 4 hodiny, 8 hodin čekat
+  60s kropení každých 15min; po 2 hodiny, 10 hod čekat
+  120s kropení každých 15min; 1 hodina; 11 čekat
+ */
+const int n_rain_regimes = 8;
+// unsigned long tr_legnth_s, float tr_period_h, float length_h, float wait_h
+RainRegime rain_regimes[n_rain_regimes] = {
+  RainRegime(15, 0.5, 8.0, 4.0),
+  RainRegime(30, 0.5, 4.0, 8.0),
+  RainRegime(60, 0.5, 2.0, 10.0),
+  RainRegime(120, 0.5, 1.0, 11.0),
 
-    int trigger_length;
-    int trigger_period;
-
-    DateTime last_rain;
-
-    // [mm/h], [h], [h]
-    RainRegime(float rate, float length, float period)
-    : rate(rate), length(length), period(period)
-    {
-      last_rain = DateTime((uint32_t)0);
-    }
-
-    void compute_trigger()
-    {
-      float pump_rate_m = pump_rate*60;  // [dm3/h]
-      float inflow_rate = rate/100 * column_cross*100; // [dm3/h]
-      float ratio = inflow_rate/pump_rate_m;
-
-      Logger::printf(Logger::INFO, "Ratio: %g\n", ratio);
-      float Tmin = 5.0; // [s]
-      // float Tmax = 3600.0*length/10.0;
-      // float Tmax = 30;  // [s]
-      // Logger::printf(Logger::INFO, "Tmax: %g\n", Tmax);
-      // Logger::printf(Logger::INFO, "(Tmin+Tmax)/2: %g\n", (Tmin+Tmax)/2);
-      // Logger::printf(Logger::INFO, "(Tmin+Tmax)/2: %g\n", std::round((Tmin+Tmax)/2));
-      // Logger::printf(Logger::INFO, "(Tmin+Tmax)/2: %d\n", (int)std::round((Tmin+Tmax)/2));
-      // Logger::printf(Logger::INFO, "(Tmin+Tmax)/2: %d\n", (u_int8_t)std::round((Tmin+Tmax)/2));
-
-      // trigger_period = (int)std::round((Tmin+Tmax)/2);
-      // trigger_length = (int)std::round(trigger_period * ratio);
-      trigger_length = Tmin;
-
-      float n_triggers_f;
-      float last_trigger_length = trigger_length * std::modf(length, &n_triggers_f);
-      int n_triggers = (int) n_triggers_f;
-
-      Logger::printf(Logger::INFO, "Pump lenght: %d  Pump period: %d\n", trigger_length, trigger_period);
-    }
+  RainRegime(15, 0.25, 8.0, 4.0),
+  RainRegime(30, 0.25, 4.0, 8.0),
+  RainRegime(60, 0.25, 2.0, 10.0),
+  RainRegime(120, 0.25, 1.0, 11.0),
 };
 
-const float RainRegime::pump_rate = 0.5/(1.0+50.0/60.0);            // [l/min], measurement 0.5l in 1:50 min
-const float RainRegime::column_radius = 0.2;        // [m]
-const float RainRegime::column_cross = PI * column_radius*column_radius;  // [m2]
+// // DEBUG without peripheries and POWER
+// const int n_rain_regimes = 4;
+// RainRegime rain_regimes[n_rain_regimes] = {
+//   RainRegime(3, 5./3600, 15./3600, 50./3600),
+//   RainRegime(5, 8./3600, 16./3600, 5./3600),
+//   RainRegime(4, 6./3600, 15./3600, 6./3600),
+//   RainRegime(2, 4./3600, 24./3600, 5./3600)
+// };
 
-RainRegime rain_regimes[2] = {
-  RainRegime(0.2, 2, 24), // small daily rain
-  RainRegime(2, 0.5, 72)  // downpour every 3 days
-};
+// DEBUG with POWER
+// const int n_rain_regimes = 4;
+// RainRegime rain_regimes[n_rain_regimes] = {
+//   RainRegime(5, 36./3600, 108./3600, 9./3600),
+//   RainRegime(8, 20./3600, 40./3600, 9./3600),
+//   RainRegime(5, 18./3600, 108./3600, 9./3600),
+//   RainRegime(8, 36./3600, 108./3600, 9./3600)
+// };
 
 void saveCurrentRain() {
   char text[100];
-  DateTime dt = rain_regimes[current_rain_idx].last_rain;
-  snprintf(text, sizeof(text), "%s\n%d", dt.timestamp().c_str(), current_rain_idx);
+  DateTime dt = rain_regimes[current_rain_regime_idx].last_rain;
+  snprintf(text, sizeof(text), "%s\n%d\n%d",
+      dt.timestamp().c_str(),
+      current_rain_regime_idx,
+      rain_regimes[current_rain_regime_idx].counter);
   current_rain_file.write(text);
 }
 
 void loadCurrentRain() {
+
+  Logger::printf(Logger::INFO, "loadCurrentrain.\n");
+
+  if( ! SD.exists(current_rain_file.getPath()))
+  {
+      Logger::printf(Logger::INFO, "No last rain found.\n");
+      current_rain_regime_idx = 0;
+      return;
+  }
+  else
+  {
+    if(force_fresh_rain_regimes)
+    {
+        Logger::printf(Logger::INFO, "Removing last rain found.\n");
+        SD.remove(current_rain_file.getPath());
+        current_rain_regime_idx = 0;
+        return;
+    }
+  }
+
   File file = SD.open(current_rain_file.getPath());
   if(!file){
-      Serial.println("Failed to open file for reading.");
-      current_rain_idx = 0;
-      rain_regimes[current_rain_idx].last_rain = DateTime((uint32_t)0);
+      Logger::printf(Logger::ERROR, "Failed to open file for reading: %s\n", current_rain_file.getPath());
+      current_rain_regime_idx = 0;
       return;
   }
 
   // Serial.print("Read from file: ");
   if(file.available()){
+      // Logger::printf(Logger::INFO, "File available.\n");
       String dt_string = file.readStringUntil('\n');
+      Logger::printf(Logger::INFO, "Read last rain dt: %s\n", dt_string.c_str());
       DateTime dt(dt_string.c_str());
-      uint8_t idx = file.readStringUntil('\n').toInt();
       
-      current_rain_idx = idx;
-      if(idx >= sizeof(rain_regimes))
+      String idx_string = file.readStringUntil('\n');
+      Logger::printf(Logger::INFO, "Read rain regime index: %s\n", idx_string.c_str());
+      current_rain_regime_idx = idx_string.toInt();
+
+      String counter_string = file.readStringUntil('\n');
+      Logger::printf(Logger::INFO, "Read rain counter: %s\n", counter_string.c_str());
+      uint8_t counter = counter_string.toInt() - 1;
+
+      if(current_rain_regime_idx >= sizeof(rain_regimes))
       {
-        Logger::printf(Logger::ERROR, "Invalid rain regime index: %d\n", idx);
-        current_rain_idx = 0;
-        rain_regimes[current_rain_idx].last_rain = dt;
+        Logger::printf(Logger::ERROR, "Invalid rain regime index: %d\n", current_rain_regime_idx);
+        current_rain_regime_idx = 0;
+        rain_regimes[current_rain_regime_idx].last_rain = dt;
+        rain_regimes[current_rain_regime_idx].counter = 0;
       }
       else
-        rain_regimes[current_rain_idx].last_rain = dt;
+      {
+        char msg[100];
+        Logger::printf(Logger::INFO, "Last rain regime [ORIG]:");
+        hlavo::SerialPrintf(sizeof(msg), rain_regimes[current_rain_regime_idx].print(msg, sizeof(msg)));
+
+        rain_regimes[current_rain_regime_idx].last_rain = dt;
+        rain_regimes[current_rain_regime_idx].counter = counter;
+
+        int rest_length = rain_regimes[current_rain_regime_idx].length
+            - counter * rain_regimes[current_rain_regime_idx].trigger_period;
+        if(rest_length>0)
+          rain_regimes[current_rain_regime_idx].length = rest_length;
+        else
+        {
+          // check end of regimes
+          if(current_rain_regime_idx+1 >= n_rain_regimes)
+          {
+            Logger::printf(Logger::INFO, "All rain regimes finished.");
+            no_more_rain = true;
+            return;
+          }
+          else // check wait time
+          {
+            TimeSpan ts(rain_regimes[current_rain_regime_idx].wait / 1000);
+            DateTime dt_wait_end = dt+ts;
+            // dt+ts is end of wait time
+            if( dt_wait_end > dt_now)
+            {
+              TimeSpan wait_ts = dt_wait_end - dt_now;
+              Logger::printf(Logger::INFO, "WAIT REGIME for further %d s.", wait_ts.totalseconds());
+              timer_rain_wait.reset(wait_ts.totalseconds()*1000);
+              rain_regime = false;
+              return;
+            }
+            // else continue with next regime
+            current_rain_regime_idx++;
+          }
+        }
+
+        Logger::printf(Logger::INFO, "Current rain regime [LOADED counter %d]:", counter);
+        hlavo::SerialPrintf(sizeof(msg), rain_regimes[current_rain_regime_idx].print(msg, sizeof(msg)));
+      }
+  }
+  else
+  {
+    Logger::printf(Logger::ERROR, "Failed to open file for reading: %s\n", current_rain_file.getPath());
+    no_more_rain = true;
   }
   file.close();
 }
 
-void controlRain()
+void start_rain()
 {
-  if(timer_rain.after())
-  {
-    // stop raining
-    // ...
-
-
-  }
-
-  uint8_t n_rain_regimes = sizeof(rain_regimes);
-
-  for(int i=0; i<n_rain_regimes; i++)
-  {
-    DateTime next_rain = rain_regimes[i].last_rain + rain_regimes[i].period;
-
-    // TimeSpan ts = (dt_now - rain_regimes[i].last_rain);
-    // TimeSpan per = TimeSpan(3600*rain_regimes[i].period);
-
-    if(next_rain >= dt_now)
-    {
-      timer_rain.reset(rain_regimes[i].trigger_length);
-    }
-  }
+  // start rain
+  digitalWrite(PUMP_IN_PIN, LOW);
+  pump_in_finished = false;
+  rain_regimes[current_rain_regime_idx].reset_timer_length(dt_now);
+  Serial.printf("rain ON %d\n", rain_regimes[current_rain_regime_idx].counter);
+  saveCurrentRain();
 }
 
+void stop_rain()
+{
+    // stop rain
+  digitalWrite(PUMP_IN_PIN, HIGH);
+  Serial.printf("rain OFF\n");
+  pump_in_finished = true;
+  // timer_rain_length.running = false;
+}
+
+void start_rain_regime()
+{
+  RainRegime& rain_reg = rain_regimes[current_rain_regime_idx];
+
+  Serial.printf("RAIN REGIME: %d s\n", rain_reg.length/1000);
+  char msg[100];
+  hlavo::SerialPrintf(sizeof(msg), rain_reg.print(msg, sizeof(msg)));
+  rain_regime = true;
+  start_rain();
+  timer_rain_regime.reset(rain_reg.length);
+  rain_reg.reset_timer_period();
+}
 
 /******************************************* TEMP. AND HUM. *******************************************/
 #include "Adafruit_SHT4x.h"
@@ -261,55 +328,55 @@ bool teros31_all_finished = false;
 /****************************************** DATA COLLECTION ******************************************/
 
 
-void read_water_height()
+void measure_flow_values()
 {
   // read water height
   float voltage;
   float height = whs.read(&voltage);
   Serial.printf("Voltage: %.2f    Height: %.2f\n", voltage, height);
+  float rain_height = rain_whs.read(&voltage);
+  Serial.printf("Voltage: %.2f    Rain Height: %.2f\n", voltage, rain_height);
 
-  H_window[n_H_collected] = height;
-  n_H_collected++;
-  if(n_H_collected == n_H_avg)
-    n_H_collected = 0;
+  outflow_wh.add(height);
+  rain_wh.add(rain_height);
 
   // check height limit, possibly run pump out
-  if(height >= H_limit)
+  if( (outflow_wh.average_unfilled() >= outflow_min_wh)
+     || std::isnan(outflow_wh.average_unfilled())) // safe for overfilled column
   {
     start_valve_out = true; // open valve (once at a time)
-    n_H_collected = 0;
-    n_H_collected_start = 0;
+    outflow_wh.reset();
     previous_height = std::numeric_limits<float>::quiet_NaN();
+  }
+
+  // check rain height limit, possibly stop raining
+  if(rain_wh.average_unfilled() <= rain_min_wh)
+  {
+    stop_rain();
+    no_more_rain = true;
+    Serial.println("NO more water for raining.");
   }
 
   ColumnFlowData data;
   data.datetime = dt_now;
   data.pump_in = !pump_in_finished;   // is pump running?
   data.pump_out = valve_out_open;     // is valve open?
+  data.rain_height = rain_wh.average();
 
   if(valve_out_open){
     // safe NaN during outflow
   }
-  else if(n_H_collected_start < n_H_avg)
+  else if(!outflow_wh.isReady())
   {
-    n_H_collected_start++;
     // safe NaN until window is filled
   }
   else
   {
-    // compute average over H window
-    float H_avg = 0;
-    for (uint8_t i=0; i<n_H_avg; i++)
-    {
-      H_avg += H_window[i];
-    }
-    H_avg /= n_H_avg;
-    // Serial.printf("H avg = %f\n", H_avg);
-    data.height = H_avg;
+    data.height = outflow_wh.average();
     // flux is difference of heights
     //TODO multiply by cross-section
-    data.flux = (previous_height - H_avg) / timer_L1_period;
-    previous_height = H_avg;
+    data.flux = (previous_height - data.height) / timer_L1_period;
+    previous_height = data.height;
   }
 
   // write data
@@ -521,6 +588,9 @@ void setup() {
   // Water Height sensor S18U
   whs.begin();
 
+  rain_whs.setWindow(0.0,3.0);
+  rain_whs.begin();
+
   // BME280 - temperature, pressure, humidity
   tempSensor.setI2CAddress(tempSensor_I2C); // set I2C address, default 0x77
   if(tempSensor.beginI2C())
@@ -585,9 +655,18 @@ void setup() {
                            dt_now, teros31_dir);
   }
 
-  for(int i=0; i<2; i++)
-    rain_regimes[i].compute_trigger();
+  // for(int i=0; i<2; i++)
+    // rain_regimes[i].compute_trigger();
+  for(int i=0; i<n_rain_regimes; i++)
+  {
+    char msg[100];
+    hlavo::SerialPrintf(sizeof(msg), rain_regimes[i].print(msg, sizeof(msg)));
+  }
 
+  loadCurrentRain();
+
+  delay(5000);
+  // Serial.flush();
   // while(1)
   //   ;
 
@@ -599,13 +678,16 @@ void setup() {
   timer_L2.reset(true);
   timer_L1.reset(true);
   timer_L4.reset(false);
-  timer_rain_start.reset(true);
+
+  // start first regime a start first rain
+  if(! no_more_rain && rain_regime)
+    start_rain_regime();
 
   // {
   //   // start rain
   //   digitalWrite(PUMP_IN_PIN, LOW);
   //   Serial.printf("rain ON\n");
-  //   delay(60*1000);
+  //   delay(5*60*1000);
   //   // stop rain
   //   digitalWrite(PUMP_IN_PIN, HIGH);
   //   Serial.printf("rain OFF\n");
@@ -631,7 +713,7 @@ void print_setup_summary(String summary)
 // Runs every loop
 // Checks the flag `start_valve_out` for output valve opening
 // Checks the timer to close the output valve
-void controlValveOut()
+void control_valve_out()
 {
   if(start_valve_out)
   {
@@ -651,47 +733,92 @@ void controlValveOut()
 }
 
 
-// Overnight full saturation rain
-void saturation_rain()
+void control_rain()
 {
-  if(rain_n_cycles < rain_max_n_cycles
-    && timer_rain_start())
+  if(no_more_rain)
   {
-    // start rain
-    digitalWrite(PUMP_IN_PIN, LOW);
-    Serial.printf("rain ON\n");
-    Serial.printf("rain counter %d of %d\n", rain_n_cycles, rain_max_n_cycles);
-    timer_rain_length.reset();
-    pump_in_finished = false;
-    rain_n_cycles++;
+    return;
   }
-  if(!pump_in_finished && timer_rain_length.after())
+
+  RainRegime& rain_reg = rain_regimes[current_rain_regime_idx];
+  // rain interval timer
+  if(rain_regime && rain_reg.timer_period())
   {
-    // stop rain
-    digitalWrite(PUMP_IN_PIN, HIGH);
-    Serial.printf("rain OFF\n");
-    Serial.printf("rain counter %d of %d\n", rain_n_cycles, rain_max_n_cycles);
-    pump_in_finished = true;
+    start_rain();
+    // Serial.printf("rain counter\n");
+  }
+
+  // rain timer finishes
+  if(!pump_in_finished && rain_reg.timer_length())
+  {
+    stop_rain();
+  }
+
+  // rain regime timer finishes
+  if(rain_regime && timer_rain_regime())
+  {
+    // stop_rain();
+    rain_regime = false;
+    timer_rain_wait.reset(rain_reg.wait);
+    Serial.printf("WAIT REGIME: %d s\n", rain_reg.wait/1000);
+  }
+
+  // rain wait timer finishes
+  if(timer_rain_wait())
+  {
+    current_rain_regime_idx++;
+    if (current_rain_regime_idx >= n_rain_regimes)
+    {
+      Serial.println("RAIN REGIME all finished");
+      return;
+    }
+
+    start_rain_regime();
   }
 }
 
 /*********************************************** LOOP ***********************************************/ 
 void loop() {
 
-  saturation_rain();
-
   if(timer_L0()){
     dt_now = rtc_clock.now();
   }
+
+  // if(timer_L1())
+  // {
+  //   measure_flow_values();
+  // }
+  // control_rain();
+  // return; // skip the rest for testing rain
+  
 
   if(timer_L1())
   {
     unsigned int L2_left = (timer_L2.interval + timer_L2.last - millis())/1000;
     Serial.printf("L1: %d s\n", L2_left);
     Serial.flush();
-    read_water_height();
+    measure_flow_values();
+
+    if(!no_more_rain)
+    {
+      String s;
+      if(rain_regime)
+      {
+        unsigned int t_left = (timer_rain_wait.interval + timer_rain_wait.last - millis())/1000;
+        s = "R " + String(t_left) + " s";
+      }
+      else
+      {
+        unsigned int t_left = (timer_rain_wait.interval + timer_rain_wait.last - millis())/1000;
+        s = "W " + String(t_left) + " s";
+      }
+      Serial.printf("RR[%d], c[%d] %s\n", current_rain_regime_idx, rain_regimes[current_rain_regime_idx].counter, s.c_str());
+    }
   }
-  controlValveOut();
+  control_valve_out();
+  control_rain();
+
+  // return; // skip the rest for testing rain
 
   // do not read data during rain (voltage source damages data signal)
   if(pump_in_finished)
