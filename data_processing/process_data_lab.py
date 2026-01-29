@@ -9,13 +9,12 @@ from scipy.ndimage import median_filter
 from scipy.signal import savgol_filter
 
 
-from process_data import create_output_dir, read_data, read_odyssey_data, setup_plt_fontsizes, select_time_interval, \
-    plot_columns, add_start_of_days, set_date_time_axis
+from process_data import create_output_dir, read_data, read_csv_stack, read_odyssey_data, setup_plt_fontsizes, \
+    select_time_interval, plot_columns, add_start_of_days, set_date_time_axis
 
 def read_pr2_data(base_dir, filter=False):
     # for each PR2 sensor
-    filename_pattern = os.path.join(base_dir, '**', 'pr2_sensor', '*.csv')
-    data = read_data(filename_pattern)
+    data = read_csv_stack(base_dir, 'pr2_sensor')
     # FILTERING
     if filter:
         for i in range(0, 6):
@@ -32,8 +31,7 @@ def read_teros31_data(base_dir, filter=False):
     data = []
     sensor_names = ['A', 'B', 'C']
     for a in range(0, 3):
-        filename_pattern = os.path.join(base_dir, '**', 'teros31_sensor_' + str(a), '*.csv')
-        data_chunk = read_data(filename_pattern)
+        data_chunk = read_csv_stack(base_dir, 'teros31_sensor_' + str(a))
         # print(data_chunk)
         data_chunk.rename(columns={'Pressure': f"Pressure_{sensor_names[a]}"}, inplace=True)
         data_chunk.rename(columns={'Temperature': f"Temperature_{sensor_names[a]}"}, inplace=True)
@@ -48,6 +46,25 @@ def read_teros31_data(base_dir, filter=False):
 
         data.append(data_chunk)
     return data
+
+def merge_notes_data(cfg, dfs, notes_data):
+    # dfs = dfs.reset_index().sort_values('DateTime').reset_index(drop=True)
+    # notes_data = notes_data.reset_index().sort_values('DateTime').reset_index(drop=True)
+
+    # As-of merge on the index (carries State forward)
+    merged = pd.merge_asof(
+        dfs,  # left
+        notes_data,  # right
+        left_index=True,
+        right_index=True,
+        direction="backward",
+    )
+
+    # Keep Note only where the timestamp is an exact change instant (exists in notes' index)
+    exact_change = merged.index.isin(notes_data.index)
+    merged["Note"] = merged["Note"].where(exact_change, "")
+
+    return merged
 
 def merge_teros31_data(teros31_data, atm_data):
     teros31_merged = teros31_data[0]
@@ -67,23 +84,6 @@ def teros31_pressure_diff(df):
     teros_ids = ['A', 'B', 'C']
     for tid in teros_ids:
         df[f'Pressure_{tid}{tid}'] = df[f'Pressure_{tid}'] - df['Pressure'] / 1000
-
-
-def read_atmospheric_data(base_dir):
-    filename_pattern = os.path.join(base_dir, '**', 'atmospheric', '*.csv')
-    data = read_data(filename_pattern)
-    return data
-
-
-def read_flow_data(base_dir):
-    filename_pattern = os.path.join(base_dir, '**', 'flow', '*.csv')
-    data = read_data(filename_pattern)
-    return data
-
-def read_inflow_data(base_dir):
-    filename_pattern = os.path.join(base_dir, 'inflow.csv')
-    data = read_data(filename_pattern)
-    return data
 
 def add_inflow_times(df, ax):
     # Filter to only the rows where 'Inflow' is not NaN (i.e., matched sparse points)
@@ -350,7 +350,7 @@ def plot_odyssey(ax, df):
 
 
 def process_flow_data(cfg):
-    flow_data = select_time_interval(read_flow_data(cfg["base_dir"]), **cfg["time_interval"])
+    flow_data = select_time_interval(read_csv_stack(cfg["base_dir"], 'flow'), **cfg["time_interval"])
 
     fig, ax = plt.subplots(figsize=(10, 6))
     flow_data, h_spline = plot_height_data(ax, flow_data, 'Water Height Over Time', cfg["output_dir"])
@@ -382,8 +382,8 @@ def process_flow_data(cfg):
 
 def read_all_data(cfg):
     base_dir = cfg["base_dir"]
-    inflow_data = read_inflow_data(base_dir)
-    atm_data = read_atmospheric_data(base_dir)
+    inflow_data = read_data(os.path.join(base_dir, 'inflow.csv'))
+    atm_data = read_csv_stack(base_dir, 'atmospheric')
     pr2_data = read_pr2_data(base_dir, filter=True)
     # pr2_data = read_pr2_data(base_dir, filter=False)
     teros31_data = read_teros31_data(base_dir)
@@ -470,6 +470,7 @@ def main():
     cfg = select_inputs()
 
     flow_data = process_flow_data(cfg)
+    notes_data = read_data(os.path.join(cfg["base_dir"], 'notes.csv'))
     # plt.show()
     # exit(0)
 
@@ -478,6 +479,7 @@ def main():
     merged_all = merge_all_dfs(all_dfs[:-1])
     merged_all = merge_inflow_data(cfg, merged_all, all_dfs[-1])
     merged_all = merge_flow_data(merged_all, flow_data)
+    merged_all = merge_notes_data(cfg, merged_all, notes_data)
 
     data = select_time_interval(merged_all, **cfg["time_interval"])
     # data.to_parquet("hlavo_lab_merged_data_2025_03-05.parquet")

@@ -91,6 +91,12 @@ def parse_datetime_column(column):
     return column.apply(detect_and_parse)
 
 
+def read_csv_stack(base_dir, pattern_key):
+    filename_pattern = os.path.join(base_dir, '**', pattern_key, '*.csv')
+    data = read_data(filename_pattern)
+    return data
+
+
 def read_data(file_pattern, dt_column='DateTime', sep=';', non_float_cols=[]):
     """
     Reads data from CSV file with file structure given by :param:`file_pattern`
