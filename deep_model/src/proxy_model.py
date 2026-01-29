@@ -473,6 +473,6 @@ if __name__ == '__main__':
     shead = head[ 0, : , : ]
     # Here just print it
     print( shead )
-    # plot_results(sim)
+    plot_results(sim)
 
 # -
