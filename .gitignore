@@ -1,3 +1,21 @@
+**/.python_packages
+**/.pytest_cache
+
+DeepSensor/3Dprint_models/**/*.stl
+DeepSensor/EM_models/**/*.out
+DeepSensor/EM_models/**/*.pdf
+DeepSensor/EM_models/**/*.vti
+DeepSensor/EM_models/**/*.png
+DeepSensor/EM_models/**/*.zip
+
+
+# secret files
+dvc_secret_config.sh
+
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -6,6 +24,8 @@ __pycache__/
 # PyCharm
 .idea
 venv
+
+_project
 
 # C extensions
 *.so
@@ -120,8 +140,6 @@ __pypackages__/
 celerybeat-schedule
 celerybeat.pid
 
-# SageMath parsed files
-*.sage.py
 
 # Environments
 .env
