@@ -74,8 +74,8 @@ latex_elements = {
 \vspace{1em}
 \begin{center}
 \small
-\textit{This PDF document was automatically generated from the original \href{https://hlavo.readthedocs.io/}{online documentation} while the project repository is:
-            \href{https://github.com/geomop/HLAVO}{https://github.com/geomop/HLAVO}.}\\
+\textit{This PDF document was automatically generated from the original \href{https://hlavo.readthedocs.io/}{online documentation}\\
+    while the project repository is: \href{https://github.com/geomop/HLAVO}{https://github.com/geomop/HLAVO}.}\\
 \end{center}
 \vspace{2em}
 """,

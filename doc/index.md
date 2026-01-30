@@ -17,7 +17,6 @@ introduction
 datasets
 ingress-server-deployment
 models
-et_model
 calibration
 dashboard
 dvc_usage
