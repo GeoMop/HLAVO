@@ -1,12 +1,20 @@
+
 # Introduction
 
-The HLAVO (HLAdiny VOd = water table) project develops a system for
-predicting groundwater table dynamics using meteorological inputs and
-assimilated soil moisture profile measurements, combining surface and deep
-vadose zone modeling.
+
+HLAVO (HLAdiny VOd = water table) is a hydrology modeling system for predicting groundwater table
+dynamics from meteorological inputs and soil moisture profile measurements.
+The surface infiltration model is assimilated with soil moisture profile measurements to reconcile
+noisy inputs and measurements with a model of limited expressiveness.
+The surface model with assimilation is coupled to the deep vadose zone model to provide near-term
+groundwater predictions and a basis for longer-term climatic projections.
+
+![HLAVO_schema](graphics/HLAVO_schema.svg)
+
 
 ## Installation
-<TODO: describe here, how to get the 0.1.0 tag from github, extract, run dev/hlavo-build pull>
+- Download the `0.1.0` release tag from GitHub as a source archive and extract it.
+- From the repo root, run `dev/hlavo-build pull` to fetch the prebuilt environment image.
 
 ### Environments
 - Dev environment in `dev/` (Docker/conda wrappers and build scripts).

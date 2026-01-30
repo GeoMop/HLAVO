@@ -8,11 +8,6 @@
 
 # Project HLAVO
 
-HLAVO is a hydrology modeling system for forecasting groundwater table dynamics
-from meteorological inputs and soil moisture profile measurements.
-<TODO: bit longer>
-
-![HLAVO_schema](graphics/HLAVO_schema.svg)
 
 ```{toctree}
 :maxdepth: 2
