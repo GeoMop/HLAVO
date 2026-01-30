@@ -51,7 +51,7 @@ latex_engine = "lualatex"
 latex_documents = [
     (root_doc, "hlavo.tex", 
      f"{project} Documentation", author, 
-     howto)         # article style (without chapters)
+     "howto")         # article style (without chapters)
     #"manual"),     # book style (with chapters)
 ]
 
@@ -68,6 +68,16 @@ latex_elements = {
     # (Sphinx already includes a lot, but this doesn't hurt.)
     "preamble": r"""
 \usepackage{unicode-math}
+""",
+    "maketitle": r"""
+\maketitle
+\vspace{1em}
+\begin{center}
+\small
+\textit{This PDF document was automatically generated from the original \href{https://hlavo.readthedocs.io/}{online documentation} while the project repository is:
+            \href{https://github.com/geomop/HLAVO}{https://github.com/geomop/HLAVO}.}\\
+\end{center}
+\vspace{2em}
 """,
 }
 

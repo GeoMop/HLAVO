@@ -4,10 +4,10 @@
 <svg
    version="1.1"
    id="svg3544"
-   width="133.33333"
-   height="133.33333"
-   viewBox="0 0 133.33333 133.33333"
-   sodipodi:docname="logo_TACR_zakl.svg"
+   width="716.57605"
+   height="66.14193"
+   viewBox="0 0 1433.1521 132.28386"
+   sodipodi:docname="ack.svg"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -46,14 +46,14 @@
        x="0"
        y="0"
        id="page3550"
-       width="133.33333"
-       height="133.33333" />
+       width="1433.1521"
+       height="132.28386" />
   </sodipodi:namedview>
   <g
      id="g3552"
      inkscape:groupmode="layer"
      inkscape:label="Page 1"
-     transform="matrix(1.3333333,0,0,-1.3333333,0,133.33333)">
+     transform="matrix(1.3333333,0,0,-1.3333333,0,132.28386)">
     <g
        id="g3554"
        transform="scale(0.1)">
@@ -85,5 +85,22 @@
         </g>
       </g>
     </g>
+    <text
+       xml:space="preserve"
+       style="font-size:28px;line-height:1.25;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu, Normal';letter-spacing:0px;word-spacing:0px;stroke-width:1.5"
+       x="139.13733"
+       y="-56.921898"
+       id="text4098"
+       transform="scale(1,-1)"><tspan
+         sodipodi:role="line"
+         id="tspan4096"
+         style="font-size:28px;stroke-width:1.5"
+         x="139.13733"
+         y="-56.921898">This work was supported by the Technology Agency of the Czech Republic   </tspan><tspan
+         sodipodi:role="line"
+         style="font-size:28px;stroke-width:1.5"
+         x="139.13733"
+         y="-21.9219"
+         id="tspan4100">under the project no. **SS06010280**.</tspan></text>
   </g>
 </svg>
