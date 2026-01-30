@@ -8,9 +8,9 @@ structure is defined by YAML schemas that document variables, units, and provena
 parallel reads/writes, chunked storage, and flexible analysis through [xarray](https://xarray.dev/) and
 [Dask](https://www.dask.org/).
 
-![HLAVO_schema](graphics/HLAVO_schema.svg)
+![HLAVO_schema](graphics/zarr_fuse_dataset_example.svg)
 
-zarr-fuse adds dataset schema validation, ingestion pipelines, and consistent metadata conventions on
+**zarr-fuse** adds dataset schema validation, ingestion pipelines, and consistent metadata conventions on
 top of Zarr/xarray so that heterogeneous sources can be fused into aligned time/space grids.
 
 
