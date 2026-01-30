@@ -2,7 +2,13 @@
 System for numerical prediction of water table using continuously collected meteorological and 
 soil mosture profile data.
 
-
+---
+```{image} doc/graphics/ack.svg
+:alt: Acknowledgement
+:align: center
+:width: 90%
+```
+---
 
 
 ---
