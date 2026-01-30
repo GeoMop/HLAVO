@@ -1,0 +1,6 @@
+# Doc build packages
+sphinx>=7,<9
+myst-parser>=2,<5
+sphinx-rtd-theme>=2,<4
+sphinxcontrib-svg2pdfconverter  
+# doesn't work, could convert SVG -> PDF for vector graphics in Latex
