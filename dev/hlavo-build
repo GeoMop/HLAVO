@@ -28,16 +28,25 @@ WORKSPACE="/home/hlavo/workspace"
 usage() {
   cat <<'EOF'
 Usage:
-  ./hlavo-build image
-  ./hlavo-build build [-f]
-  ./hlavo-build base [-f]
-  ./hlavo-build make-sif
-  ./hlavo-build push
-
-Env vars:
-  IMAGE_TAG=latest
-  IMAGE_REF=hlavo:latest
-  SIF_NAME=hlavo.sif
+  ./hlavo-build [-c] [-f] (venv | build | pull)
+  
+  
+  Get docker image from Dockerhub.
+  ./hlavo-build pull
+  
+  Install vevn overlay onto Docker (venv-docker), that includes HLAVO editable install.
+  ./hlavo-build [-f] venv
+  
+  Alternative without Docker.
+  
+  Build conda environmnet + vnenv overlay (vonv-conda).
+  ./hlavo-build -c [-f] build
+  
+  
+  
+  Test environment.
+  ./hlavo-build test
+    
 EOF
 }
 
