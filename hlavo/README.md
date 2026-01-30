@@ -1,7 +1,6 @@
-
 # top level scripts
 
-...
+`pbs_run.sh` - run test composed simulation
 
 
 # subdirs

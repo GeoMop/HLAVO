@@ -3,10 +3,9 @@ set -xeuo pipefail
 
 COMMON_ROOT="$( cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 ; pwd -P )"
 REPO_ROOT="${REPO_ROOT:-$COMMON_ROOT/..}"
-IMAGE_NAME="hlavo"
+IMAGE_NAME="flow123d/hlavo"
 HLAVO_MODE="${HLAVO_MODE:-docker}"
 ENV_YAML="$REPO_ROOT/dev/conda-requirements.yml"
-REQ_TXT="$REPO_ROOT/dev/requirements.txt"
 
 CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
 CONDA_BIN="${CONDA_BIN:-$CONDA_BASE/bin/conda}"
@@ -46,7 +45,7 @@ parse_env_name_from_yaml() {
 ENV_NAME="${ENV_NAME:-$(parse_env_name_from_yaml)}"
 
 set_image_vars() {
-  # Con not run within docker.
+  # Can not run within docker.
   local version
   if [[ -n "${IMAGE_REF:-}" ]]; then
     return 0
@@ -123,7 +122,8 @@ base_build_conda() {
       "$MAMBA_BIN" env remove -y -n "$ENV_NAME"
     fi
   fi
-  "$MAMBA_BIN" env create -y --file "$ENV_YAML"
+  
+  conda_env_exists || "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 }
 
 base_build_docker() {
@@ -228,8 +228,8 @@ venv_overlay() {
 
     source \"$VENV_DIR/bin/activate\"
     python -m pip install --upgrade pip
-    if [[ -f \"$ENV_REPO_ROOT/dev/requirements.txt\" ]]; then
-      python -m pip install -r \"$ENV_REPO_ROOT/dev/requirements.txt\"
+    if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
+      python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
     fi
     if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
       python -m pip install -e \"$ENV_REPO_ROOT\"
