@@ -1,10 +1,12 @@
+---
+![Acknowledgement](doc/graphics/ack.svg)
+---
+
 # HLAVO
 System for numerical prediction of water table using continuously collected meteorological and 
 soil mosture profile data.
 
----
-![Acknowledgement](doc/graphics/ack.svg)
----
+
 
 
 ---
