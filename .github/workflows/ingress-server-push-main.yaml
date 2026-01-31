@@ -13,7 +13,7 @@ jobs:
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
       s3-store-url: s3://app-databuk-test-service/hlavo-testing-moc.zarr
-      configuration-dir-path: data_processing/ingress/inputs
+      configuration-dir-path: hlavo/ingress/scrapper
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
       zarr-fuse-ref: SM-ci-outside-repository-clean
