@@ -24,11 +24,9 @@ source "$SCRIPT_ROOT/hlavo_common.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./hlavo run <command> [args...]
-  ./hlavo shell
-  ./hlavo venv [-f]
-  ./hlavo -t run <command> [args...]
-  ./hlavo -t shell
+
+  ./hlavo [-c] run <command> [args...]  
+
 EOF
 }
 
