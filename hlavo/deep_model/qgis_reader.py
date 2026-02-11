@@ -263,8 +263,7 @@ class QgisProjectReader:
 
     project_path: Path
     # Path to the QGIS project.
-    #boundary_layer_name: str = "JB_extended_domain"
-    boundary_layer_name: str = "JB_extended_domain_Turow"
+    boundary_layer_name: str = "JB_extended_domain"
     # Layer name of the boundary polygon.
     raster_group_name: str = "HG model layers"
     # Layer tree group containing model rasters.
@@ -304,6 +303,7 @@ class QgisProjectReader:
         else:
             gdf = gpd.read_file(resolved_source)
 
+        _assert_krovak_vector_crs(gdf.crs)
         assert len(gdf) > 0, f"Boundary layer {self.boundary_layer_name} has no features"
         assert len(gdf) == 1, f"Expected one boundary feature, found {len(gdf)}"
         geom = gdf.geometry.iloc[0]
@@ -355,6 +355,29 @@ class QgisProjectReader:
             with rasterio.open(resolved_source) as dataset:
                 _assert_krovak_crs(dataset.crs)
                 assert dataset.nodata is not None, "Raster nodata value is missing"
+                width = int(dataset.width)
+                height = int(dataset.height)
+                assert width > 0 and height > 0, "Raster has invalid dimensions"
+                raster_extent = _raster_extent_from_transform(
+                    dataset.transform, width=width, height=height
+                )
+                boundary_extent = boundary.raw_ring
+                x0 = float(np.min(boundary_extent[:, 0]))
+                x1 = float(np.max(boundary_extent[:, 0]))
+                y0 = float(np.min(boundary_extent[:, 1]))
+                y1 = float(np.max(boundary_extent[:, 1]))
+                boundary_bbox = np.asarray([[x0, y0], [x1, y1]], dtype=float)
+                inter_min_x = max(raster_extent[0, 0], boundary_bbox[0, 0])
+                inter_min_y = max(raster_extent[0, 1], boundary_bbox[0, 1])
+                inter_max_x = min(raster_extent[1, 0], boundary_bbox[1, 0])
+                inter_max_y = min(raster_extent[1, 1], boundary_bbox[1, 1])
+                if not (inter_min_x < inter_max_x and inter_min_y < inter_max_y):
+                    layer_label = layer_name or _require_text(maplayer, "layername")
+                    LOG.warning(
+                        "Skipping raster %s because it does not overlap boundary extent",
+                        layer_label,
+                    )
+                    continue
                 data = dataset.read(1).astype(float)
                 if dataset.nodata != -1000:
                     data[data == dataset.nodata] = -1000.0
@@ -371,7 +394,11 @@ class QgisProjectReader:
                     relief_field = masked_full
                 else:
                     masked_full = np.ma.minimum(masked_full, relief_field)
-                z_field, extent = _crop_masked_raster(masked_full, resampled_transform)
+                z_field, extent = _crop_masked_raster(
+                    masked_full,
+                    resampled_transform,
+                    layer_name or _require_text(maplayer, "layername"),
+                )
                 crs_wkt = dataset.crs.to_wkt() if dataset.crs else ""
                 extent_local = boundary.to_local(extent)
                 extent_local = _normalize_extent(extent_local)
@@ -601,14 +628,33 @@ def _mask_raster_full(
     return np.ma.array(data, mask=mask)
 
 
+def _raster_extent_from_transform(
+    transform: "object", width: int, height: int
+) -> "np.ndarray":
+    from rasterio.transform import xy
+
+    x_min, y_max = xy(transform, 0, 0, offset="ul")
+    x_max, y_min = xy(transform, height - 1, width - 1, offset="lr")
+    return np.asarray([[x_min, y_min], [x_max, y_max]], dtype=float)
+
+
 def _crop_masked_raster(
-    masked: "np.ma.MaskedArray", transform: "object"
+    masked: "np.ma.MaskedArray", transform: "object", layer_name: str
 ) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
     from rasterio.transform import xy
 
     valid_rows = np.any(~masked.mask, axis=1)
     valid_cols = np.any(~masked.mask, axis=0)
-    assert np.any(valid_rows) and np.any(valid_cols), "Masked raster has no valid data"
+    if not np.any(valid_rows) or not np.any(valid_cols):
+        total = masked.mask.size
+        masked_count = int(np.sum(masked.mask))
+        LOG.debug(
+            "Masked raster has no valid data for layer %s (masked %s of %s cells)",
+            layer_name,
+            masked_count,
+            total,
+        )
+        assert False, f"Masked raster has no valid data for layer {layer_name}"
     row_min = int(np.argmax(valid_rows))
     row_max = int(len(valid_rows) - 1 - np.argmax(valid_rows[::-1]))
     col_min = int(np.argmax(valid_cols))
@@ -632,4 +678,19 @@ def _assert_krovak_crs(crs: "object") -> None:
         crs_text = crs.to_string()
     assert "EPSG\",\"5514" in crs_text or "EPSG:5514" in crs_text, (
         f"Expected Krovak EPSG:5514, got {epsg or crs_text}"
+    )
+
+
+def _assert_krovak_vector_crs(crs: "object") -> None:
+    assert crs is not None, "Boundary layer CRS is missing"
+    epsg = crs.to_epsg() if hasattr(crs, "to_epsg") else None
+    if epsg == 5514:
+        return
+    crs_text = ""
+    if hasattr(crs, "to_wkt"):
+        crs_text = crs.to_wkt()
+    elif hasattr(crs, "to_string"):
+        crs_text = crs.to_string()
+    assert "EPSG\",\"5514" in crs_text or "EPSG:5514" in crs_text, (
+        f"Expected boundary CRS EPSG:5514, got {epsg or crs_text}"
     )
