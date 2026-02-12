@@ -193,6 +193,8 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv, measu
 
     data = preprocess_data(data[min_idx:max_idx])
 
+    timestamps = data["DateTime"].to_numpy()
+
     measurement_state_flag = []
     if "State" in data:
         measurement_state_flag = data["State"].to_numpy()
@@ -217,4 +219,4 @@ def load_data(train_measurements_struc, test_measurements_struc, data_csv, measu
         train_measurements.append(train_measurements_struc.encode(measurement_train))
         test_measurements.append(test_measurements_struc.encode(measurement_test))
 
-    return train_measurements, test_measurements, precipitations, measurement_state_flag
+    return train_measurements, test_measurements, precipitations, measurement_state_flag, timestamps
