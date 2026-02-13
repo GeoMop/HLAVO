@@ -35,7 +35,7 @@ dependencies = [
 
     # Ingress
     "requests",
-    "cfgrib"
+    "cfgrib",
 
     #polars
     #pandas
@@ -47,6 +47,8 @@ dependencies = [
     
     #reportlab
     #weasyprint
+    openpyxl     # for reading original input datasets
+
 ]
 
 [tool.setuptools.packages.find]
