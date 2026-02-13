@@ -24,6 +24,8 @@ dependencies:
   - requests
   - cfgrib
   - eccodes   # makes cfgrib happier / more explicit
+  - python-dotenv
+  - selenium
 
   # QGis 
   - gdal

@@ -302,10 +302,10 @@ def plot_height_data(ax, df, title, output_dir):
     # 4. Interpolate by spline the cummulative height function
     print('create spline')
     from scipy.interpolate import UnivariateSpline
-    x = select_df["TimeIndex"].values  # x-axis in seconds
-    y = select_df['Height_Cumulative'].values
+    x = select_df["TimeIndex"].to_numpy(dtype=float, copy=True)  # x-axis in seconds
+    y = select_df['Height_Cumulative'].to_numpy(dtype="float64", copy=True)
     w = np.isnan(y)
-    y[w] = 0.
+    y[w] = 0.0
     # Fit a smoothing spline, Adjust 's' to control smoothness
     spline = UnivariateSpline(x, y, w=~w, s=len(w)/5, ext=2)
     # Evaluate smooth curve and its derivative
@@ -540,7 +540,8 @@ def main():
 
 def select_inputs():
     # Define the directory structure
-    hlavo_data_dir = '../../hlavo_data'
+    # TODO: move data to DVC, then fix the path
+    hlavo_data_dir = '../../../../hlavo_data'
 
     # Odyssey is in UTC time
     # Lab is in CEST (Central European Summer Time) = UTC+2
