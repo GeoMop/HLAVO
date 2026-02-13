@@ -1,5 +1,6 @@
 # DVC usage
-[DVC](dvc.org) is used to separate version control of large datasets from processing codes and configurations stored on GitHub.
+
+[DVC](https://dvc.org) is used to separate version control of large datasets from processing codes and configurations stored on GitHub.
 For endorse repository the large datasets are stored on Google drive under the shared drive DZ04_Chodby.
 
 ## DVC Setup 

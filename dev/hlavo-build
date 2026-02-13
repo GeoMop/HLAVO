@@ -28,16 +28,25 @@ WORKSPACE="/home/hlavo/workspace"
 usage() {
   cat <<'EOF'
 Usage:
-  ./hlavo-build image
-  ./hlavo-build build [-f]
-  ./hlavo-build base [-f]
-  ./hlavo-build make-sif
-  ./hlavo-build push
-
-Env vars:
-  IMAGE_TAG=latest
-  IMAGE_REF=hlavo:latest
-  SIF_NAME=hlavo.sif
+  ./hlavo-build [-c] [-f] (venv | build | pull)
+  
+  
+  Get docker image from Dockerhub.
+  ./hlavo-build pull
+  
+  Install vevn overlay onto Docker (venv-docker), that includes HLAVO editable install.
+  ./hlavo-build [-f] venv
+  
+  Alternative without Docker.
+  
+  Build conda environmnet + vnenv overlay (vonv-conda).
+  ./hlavo-build -c [-f] build
+  
+  
+  
+  Test environment.
+  ./hlavo-build test
+    
 EOF
 }
 
@@ -46,14 +55,6 @@ run_smoke_test() {
   host_workdir="${REPO_ROOT}/dev/_parflow_smoke"
   mkdir -p "$host_workdir"
   run_cmd python "$ENV_REPO_ROOT/dev/test_env.py"
-}
-
-push_image() {
-  set_image_vars
-  local push_ref
-  push_ref="flow123d/hlavo:${IMAGE_REF#*:}"
-  docker tag "$IMAGE_REF" "$push_ref"
-  docker push "$push_ref"
 }
 
 make_sif() {
@@ -70,6 +71,9 @@ make_sif() {
 cmd="${1:-}"
 shift || true
 case "$cmd" in
+  venv)
+    venv_overlay $force_flag
+    ;;
   base)
     base_build $force_flag
     ;;
@@ -77,7 +81,12 @@ case "$cmd" in
     env_build $force_flag
     ;;
   push)
-    push_image
+    set_image_vars
+    docker push "$IMAGE_REF"
+    ;;
+  pull)
+    set_image_vars
+    docker pull "$IMAGE_REF"
     ;;
   test)
     run_smoke_test

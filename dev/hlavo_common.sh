@@ -2,11 +2,10 @@
 set -xeuo pipefail
 
 COMMON_ROOT="$( cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 ; pwd -P )"
-REPO_ROOT="${REPO_ROOT:-$COMMON_ROOT/..}"
-IMAGE_NAME="hlavo"
+REPO_ROOT="$( cd -- "$COMMON_ROOT/.." >/dev/null 2>&1 ; pwd -P )"
+IMAGE_NAME="flow123d/hlavo"
 HLAVO_MODE="${HLAVO_MODE:-docker}"
 ENV_YAML="$REPO_ROOT/dev/conda-requirements.yml"
-REQ_TXT="$REPO_ROOT/dev/requirements.txt"
 
 CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
 CONDA_BIN="${CONDA_BIN:-$CONDA_BASE/bin/conda}"
@@ -46,7 +45,7 @@ parse_env_name_from_yaml() {
 ENV_NAME="${ENV_NAME:-$(parse_env_name_from_yaml)}"
 
 set_image_vars() {
-  # Con not run within docker.
+  # Can not run within docker.
   local version
   if [[ -n "${IMAGE_REF:-}" ]]; then
     return 0
@@ -123,7 +122,8 @@ base_build_conda() {
       "$MAMBA_BIN" env remove -y -n "$ENV_NAME"
     fi
   fi
-  "$MAMBA_BIN" env create -y --file "$ENV_YAML"
+  
+  conda_env_exists || "$MAMBA_BIN" env create -y --file "$ENV_YAML"
 }
 
 base_build_docker() {
@@ -142,12 +142,11 @@ base_run_conda() {
 }
 
 base_run_docker() {
-  local img_workspace img_conda_path workdir host_pwd rel_pwd
+  local img_workspace workdir host_pwd rel_pwd tty_arg
 
   set_image_vars
   command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
   img_workspace="$ENV_REPO_ROOT"
-  img_conda_path="/home/hlavo/miniconda3/bin/conda"
   tty_arg="${tty_arg:-}"
   host_pwd="$(pwd -P)"
   rel_pwd="${host_pwd#$REPO_ROOT}"
@@ -159,12 +158,11 @@ base_run_docker() {
 
   docker run --rm \
     ${tty_arg} \
-    -e HLAVO_UID="$(id -u)" \
-    -e HLAVO_GID="$(id -g)" \
+    --user "$(id -u):$(id -g)" \
     -v "$REPO_ROOT:$img_workspace" \
     -w "$workdir" \
     "$IMAGE_REF" \
-    "$img_conda_path" run -n "$ENV_NAME" "$@"
+    "$@"
 }
 
 env_build() {
@@ -176,7 +174,7 @@ run_cmd() {
   venv_ensure
   [[ $# -ge 1 ]] || die "Missing command."
   cmd="$(printf '%q ' "$@")"
-  base_run bash -lc "source \"$VENV_DIR/bin/activate\"; exec $cmd"
+  base_run bash -c "source \"$VENV_DIR/bin/activate\"; exec $cmd"
 }
 
 case "$HLAVO_MODE" in
@@ -223,13 +221,13 @@ venv_overlay() {
     rm -rf "$VENV_DIR"
   fi
 
-  base_run bash -lc "
+  base_run bash -c "
     [ -d "$VENV_DIR" ] || python -m venv --system-site-packages "$VENV_DIR"
 
     source \"$VENV_DIR/bin/activate\"
     python -m pip install --upgrade pip
-    if [[ -f \"$ENV_REPO_ROOT/dev/requirements.txt\" ]]; then
-      python -m pip install -r \"$ENV_REPO_ROOT/dev/requirements.txt\"
+    if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
+      python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
     fi
     if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
       python -m pip install -e \"$ENV_REPO_ROOT\"

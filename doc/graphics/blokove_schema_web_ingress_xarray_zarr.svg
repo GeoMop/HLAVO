@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1263.4447"
+   height="152.90982"
+   viewBox="0 0 1263.4447 152.90982"
+   version="1.1"
+   id="svg3939"
+   sodipodi:docname="blokove_schema_web_ingress_xarray_zarr.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview3941"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     showguides="true"
+     inkscape:zoom="0.45262174"
+     inkscape:cx="199.94621"
+     inkscape:cy="19.884153"
+     inkscape:window-width="1866"
+     inkscape:window-height="1048"
+     inkscape:window-x="54"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3939">
+    <sodipodi:guide
+       position="558.49312,152.69111"
+       orientation="0,-1"
+       id="guide4154"
+       inkscape:locked="false" />
+  </sodipodi:namedview>
+  <defs
+     id="defs3875">
+    <marker
+       id="arrow"
+       markerWidth="10"
+       markerHeight="10"
+       refX="9"
+       refY="3"
+       orient="auto"
+       markerUnits="strokeWidth">
+      <path
+         d="M 0,0 9,3 0,6 Z"
+         fill="#111111"
+         id="path3870" />
+    </marker>
+    <style
+       id="style3873">.node { fill: #fff; stroke: #111; stroke-width: 2; }
+.edge { fill: none; stroke: #111; stroke-width: 2; marker-end: url(#arrow); }
+text { font-family: Arial, Helvetica, sans-serif; font-size: 16px; fill: #111; }</style>
+  </defs>
+  <path
+     class="edge"
+     d="m 232.44474,106.90981 h 40"
+     id="path3877" />
+  <path
+     class="edge"
+     d="m 492.44474,106.90981 h 30"
+     id="path3879" />
+  <path
+     class="edge"
+     d="m 782.44474,106.90981 h 40"
+     id="path3881" />
+  <path
+     class="edge"
+     d="m 1012.4447,106.90981 h 20"
+     id="path3883" />
+  <rect
+     class="node"
+     x="0.94430017"
+     y="61.854115"
+     width="231.55614"
+     height="90.111397"
+     rx="8.9060059"
+     ry="10.012378"
+     id="rect3885" />
+  <text
+     x="117.20284"
+     y="106.91567"
+     text-anchor="middle"
+     dominant-baseline="middle"
+     id="text3887"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:24px;font-family:Arial, Helvetica, sans-serif;-inkscape-font-specification:'Arial, Helvetica, sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Webové zdroje</text>
+  <polygon
+     class="node"
+     points="562,230 360,230 378,140 580,140 "
+     id="polygon3889"
+     transform="translate(-87.555265,-78.090189)" />
+  <text
+     x="382.44473"
+     y="106.90981"
+     text-anchor="middle"
+     dominant-baseline="middle"
+     id="text3891"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:24px;font-family:Arial, Helvetica, sans-serif;-inkscape-font-specification:'Arial, Helvetica, sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">služba Ingress</text>
+  <polygon
+     class="node"
+     points="852,230 610,230 628,140 870,140 "
+     id="polygon3893"
+     transform="translate(-87.555265,-78.090189)" />
+  <text
+     x="652.4682"
+     y="91.335594"
+     text-anchor="middle"
+     dominant-baseline="middle"
+     id="text3895"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:24px;font-family:Arial, Helvetica, sans-serif;-inkscape-font-specification:'Arial, Helvetica, sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal"><tspan
+       sodipodi:role="line"
+       id="tspan4066"
+       x="652.4682"
+       y="91.335594">Konverze</tspan><tspan
+       sodipodi:role="line"
+       id="tspan4068"
+       x="652.4682"
+       y="121.33559">podle schématu</tspan></text>
+  <rect
+     class="node"
+     x="822.44476"
+     y="61.909809"
+     width="190"
+     height="90"
+     rx="10"
+     ry="10"
+     id="rect3897" />
+  <text
+     x="917.44476"
+     y="106.90981"
+     text-anchor="middle"
+     dominant-baseline="middle"
+     id="text3899"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:24px;font-family:Arial, Helvetica, sans-serif;-inkscape-font-specification:'Arial, Helvetica, sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">xarray</text>
+  <rect
+     class="node"
+     x="1032.4447"
+     y="61.909809"
+     width="230"
+     height="90"
+     rx="10"
+     ry="10"
+     id="rect3901" />
+  <text
+     x="1147.4447"
+     y="106.90981"
+     text-anchor="middle"
+     dominant-baseline="middle"
+     id="text3903"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:24px;font-family:Arial, Helvetica, sans-serif;-inkscape-font-specification:'Arial, Helvetica, sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">ZARR formát</text>
+  <g
+     id="g3917"
+     transform="translate(-3.6205639,-384.92774)">
+    <circle
+       cx="115"
+       cy="405"
+       r="18"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="circle3907" />
+    <path
+       d="m 97,405 h 36"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3909" />
+    <path
+       d="m 115,387 v 36"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3911" />
+    <ellipse
+       cx="115"
+       cy="405"
+       rx="9.8999996"
+       ry="18"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="ellipse3913" />
+    <ellipse
+       cx="115"
+       cy="405"
+       rx="18"
+       ry="9.8999996"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="ellipse3915" />
+  </g>
+  <g
+     id="g3927"
+     transform="translate(-47.286493,-386.44031)">
+    <rect
+       x="412"
+       y="390"
+       width="46"
+       height="30"
+       rx="4"
+       ry="4"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="rect3923" />
+    <path
+       d="m 425,426 h 20 m -10,-6 v 6"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3925" />
+  </g>
+  <g
+     id="g3927-7"
+     transform="translate(217.7467,-387.32619)">
+    <rect
+       x="412"
+       y="390"
+       width="46"
+       height="30"
+       rx="4"
+       ry="4"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="rect3923-8" />
+    <path
+       d="m 425,426 h 20 m -10,-6 v 6"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3925-6" />
+  </g>
+  <g
+     id="g3927-8"
+     transform="translate(473.03904,-388.64203)">
+    <rect
+       x="412"
+       y="390"
+       width="46"
+       height="30"
+       rx="4"
+       ry="4"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="rect3923-84" />
+    <path
+       d="m 425,426 h 20 m -10,-6 v 6"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3925-3" />
+  </g>
+  <g
+     id="g3935"
+     transform="translate(382.93654,-377.87346)">
+    <path
+       d="m 727,411 c -14,0 -14,-16 0,-18 6,-16 26,-18 34,-8 12,-10 34,-2 28,12 14,2 14,18 0,20 h -62 c -6,0 -6,-6 0,-6 z"
+       fill="none"
+       stroke="#111111"
+       stroke-width="2"
+       id="path3933" />
+  </g>
+</svg>
