@@ -270,7 +270,7 @@ class Model3D:
 # Setup function
 # ---------------------------------------------------------------------------
 
-def setup_models(work_dir, deep_model_config):
+def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
     client = get_client()
 
     queue_names_3d_to_1d = []
@@ -292,15 +292,6 @@ def setup_models(work_dir, deep_model_config):
         Queue(q_name_3d_to_1d, client=client)  # ensure creation
 
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
-
-        start_datetime = datetime.fromisoformat(model_config_content["start_datetime"])
-        end_datetime = datetime.fromisoformat(model_config_content["end_datetime"])
-
-        print("start date time ", start_datetime)
-        print("end date time ", end_datetime)
-
-        if end_datetime <= start_datetime:
-            raise ValueError("end-datetime must be after start-datetime")
 
         fut = client.submit(
             model1d_worker_entry,
@@ -348,12 +339,21 @@ if __name__ == "__main__":
     work_dir = Path(args.work_dir)
     deep_model_config_path = Path(args.config_file).resolve()
 
-    deep_model_config_path = load_config(deep_model_config_path)
+    deep_model_config = load_config(deep_model_config_path)
 
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
-    final_state = setup_models(work_dir, deep_model_config_path)
+    start_datetime = datetime.fromisoformat(deep_model_config["start_datetime"])
+    end_datetime = datetime.fromisoformat(deep_model_config["end_datetime"])
+
+    print("start date time ", start_datetime)
+    print("end date time ", end_datetime)
+
+    if end_datetime <= start_datetime:
+        raise ValueError("end-datetime must be after start-datetime")
+
+    final_state = setup_models(work_dir, start_datetime, end_datetime, deep_model_config)
     print("\n[MAIN] Final 3D state:", final_state)
 
     client.close()
