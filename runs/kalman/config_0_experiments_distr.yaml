@@ -1,6 +1,6 @@
 seed: 123456
 start_datetime: "2025-05-16T12:24:27"
-end_datetime: "2025-08-13T23:40:51"
+end_datetime: "2025-05-23T12:24:27"
 model_config:
   model_class_name: "ToyProblem"
   init_pressure: [-40, -100] #[-0.1, -4]   # bottom, top ; [temporary solution]

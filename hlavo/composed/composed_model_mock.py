@@ -25,6 +25,7 @@ import os
 import sys
 import argparse
 import shutil
+import time
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -148,12 +149,12 @@ class Model1D:
         self.state += data_for_step
         print(f"[1D {self.idx}] new state={self.state}")
 
-
         # measurement must come from somewhere meaningful
         measurements, measurements_flag = self.get_measurement_for_time(start_time, target_time)
         precipitation_flux = self.get_precipitation_for_time(start_time, target_time)
 
-        self.ukf = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements, measurements_flag, precipitation_flux)
+        if len(measurements) > 0:
+            self.ukf = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements, measurements_flag, precipitation_flux)
 
         return self.ukf.x
 
@@ -261,7 +262,7 @@ class Model3D:
             self.step(target_time, contributions)
             current_time = target_time
 
-        print(f"[3D] finished time loop at t={current_time} (t_end={t_end}), state={self.state}")
+        print(f"[3D] finished time loop at t={current_time} (t_end={end_datetime}), state={self.state}")
         return self.state
 
 
@@ -269,7 +270,7 @@ class Model3D:
 # Setup function
 # ---------------------------------------------------------------------------
 
-def setup_models(n_1d, start_datetime, end_datetime, work_dir, kalman_config):
+def setup_models(work_dir, deep_model_config):
     client = get_client()
 
     queue_names_3d_to_1d = []
@@ -278,24 +279,42 @@ def setup_models(n_1d, start_datetime, end_datetime, work_dir, kalman_config):
     queue_name_1d_to_3d = "q-1d-to-3d"
     Queue(queue_name_1d_to_3d, client=client)  # ensure creation
 
-    for i in range(n_1d):
+    for i, model_1d_config in enumerate(deep_model_config["1d_models"]):
+        print('model_1d_config ', model_1d_config)
+        model_1d_config_path = Path(model_1d_config).resolve()
+        model_config_content = load_config(model_1d_config_path)
+
+        model_work_dir = os.path.join(work_dir, "model_1d_{}".format(i))
+        print("model_work_dir ", model_work_dir)
+        os.makedirs(model_work_dir, exist_ok=True)
+
         q_name_3d_to_1d = f"q-3d-to-1d-{i}"
         Queue(q_name_3d_to_1d, client=client)  # ensure creation
 
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
+
+        start_datetime = datetime.fromisoformat(model_config_content["start_datetime"])
+        end_datetime = datetime.fromisoformat(model_config_content["end_datetime"])
+
+        print("start date time ", start_datetime)
+        print("end date time ", end_datetime)
+
+        if end_datetime <= start_datetime:
+            raise ValueError("end-datetime must be after start-datetime")
 
         fut = client.submit(
             model1d_worker_entry,
             i,
             start_datetime, end_datetime,
             q_name_3d_to_1d,
-            queue_name_1d_to_3d, work_dir, kalman_config,
+            queue_name_1d_to_3d, model_work_dir, model_1d_config_path,
             pure=False,
         )
         futures_1d.append(fut)
         print(f"[SETUP] Submitted Model1D idx={i}")
 
-    model_3d = Model3D(n_1d=n_1d)
+
+    model_3d = Model3D(n_1d=i+1)
     final_state_3d = model_3d.run_loop(
         start_datetime, end_datetime,
         queue_names_out_to_1d=queue_names_3d_to_1d,
@@ -327,25 +346,14 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
 
     work_dir = Path(args.work_dir)
-    kalman_config_path = Path(args.config_file).resolve()
+    deep_model_config_path = Path(args.config_file).resolve()
 
-    kalman_config_content = load_config(kalman_config_path)
-    start_datetime = datetime.fromisoformat(kalman_config_content["start_datetime"])
-    end_datetime = datetime.fromisoformat(kalman_config_content["end_datetime"])
-
-    print("start date time ", start_datetime)
-    print("end date time ", end_datetime)
-
-    if end_datetime <= start_datetime:
-        raise ValueError("end-datetime must be after start-datetime")
+    deep_model_config_path = load_config(deep_model_config_path)
 
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
-    n_1d = 3
-    t_end = 5.0
-
-    final_state = setup_models(n_1d, start_datetime, end_datetime, work_dir, kalman_config_path)
+    final_state = setup_models(work_dir, deep_model_config_path)
     print("\n[MAIN] Final 3D state:", final_state)
 
     client.close()
