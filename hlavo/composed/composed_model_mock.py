@@ -40,7 +40,7 @@ from bisect import bisect_left, bisect_right
 # ---------------------------------------------------------------------------
 
 class Model1D:
-    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config_path=None):
+    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config_path=None, seed=None):
         self.idx = idx
         self.state = initial_state
 
@@ -54,7 +54,7 @@ class Model1D:
         #
         # print("final kalman config path ", kalman_config_path)
 
-        self.kalman = KalmanFilter.from_config(work_dir, kalman_config_path, verbose=False)
+        self.kalman = KalmanFilter.from_config(work_dir, kalman_config_path, verbose=False, seed=seed)
         self.ukf = self._prepare_kalman_measurements()
 
         #kalman_filter.run() # load measurements
@@ -182,11 +182,11 @@ class Model1D:
         return f"1D model {self.idx} done; final state={self.state}"
 
 
-def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, kalman_config_path):
+def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, kalman_config_path, seed=123):
     """
     Entry function running on a Dask worker.
     """
-    model = Model1D(idx=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path)
+    model = Model1D(idx=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path, seed=seed)
     return model.run_loop(start_datetime, end_datetime, queue_name_in, queue_name_out)
 
 
@@ -298,7 +298,7 @@ def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
             i,
             start_datetime, end_datetime,
             q_name_3d_to_1d,
-            queue_name_1d_to_3d, model_work_dir, model_1d_config_path,
+            queue_name_1d_to_3d, model_work_dir, model_1d_config_path, seed=deep_model_config["seed"],
             pure=False,
         )
         futures_1d.append(fut)

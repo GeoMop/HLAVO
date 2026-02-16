@@ -31,7 +31,7 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_path, verbose=False):
+    def from_config(workdir, config_path, verbose=False, seed=None):
         """
         Create a KalmanFilter from a YAML configuration file.
 
@@ -42,6 +42,8 @@ class KalmanFilter:
         """
         with config_path.open("r") as f:
             config_dict = yaml.safe_load(f)
+        if seed is not None:
+            config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):
