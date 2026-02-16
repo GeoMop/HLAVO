@@ -9,7 +9,7 @@ import numpy as np
 import os, pathlib
 from matplotlib import pyplot as plt
 from hlavo.soil_parflow.abstract_model import AbstractModel
-from hlavo.kalman.auxiliary_functions import set_nested_attr, set_nested_attrs
+from hlavo.misc.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 
