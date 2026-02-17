@@ -383,7 +383,7 @@ class ToyProblem(AbstractModel):
         self._run.TimingInfo.StartTime = start_time
         self._run.TimingInfo.StopTime = stop_time
         self._run.TimeStep.Value = time_step
-        self._run.TimingInfo.DumpInterval = 1
+        self._run.TimingInfo.DumpInterval = -1
 
         print("start: {} stop: {} step: {}".format(start_time, stop_time, time_step))
 
@@ -500,8 +500,10 @@ class ToyProblem(AbstractModel):
 
         # Iterate through the timesteps of the DataAccessor object
         # i goes from 0 to n_timesteps - 1
-        for i in range(ntimes):
-            pressure[i,:] = np.flip(data.pressure.reshape(nz))
+        for i in data.times:
+            pressure[data.time,:] = data.pressure.reshape(nz)
+            data.time += 1
+
 
         plt.clf()
         plt.imshow(np.flip(pressure), aspect='auto', extent=[0, np.sum(data.dz), 0, data.times[-1]])
