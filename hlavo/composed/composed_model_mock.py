@@ -178,6 +178,7 @@ class Model1D:
 
             current_time = target_time
 
+        self.kalman.save_results()
         print(f"[1D {self.idx}] finished loop at t={current_time} (t_end={t_end})")
         return f"1D model {self.idx} done; final state={self.state}"
 

@@ -643,8 +643,12 @@ class KalmanFilter:
             self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
             self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
 
-        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
+        self.save_results()
         return self.results
+
+
+    def save_results(self):
+        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
 
 
 # @memory.cache
