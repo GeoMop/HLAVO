@@ -682,18 +682,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
-    import pstats
-
-    pr = cProfile.Profile()
-    pr.enable()
-
     main()
-
-    # Configure ParFlow executable paths if needed
-    # os.environ['PARFLOW_HOME'] = '/opt/parflow_install'
-    # os.environ['PATH'] += ':/opt/parflow_install/bin'
-
-    pr.disable()
-    ps = pstats.Stats(pr).sort_stats('cumtime')
-    ps.print_stats(50)

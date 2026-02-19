@@ -33,7 +33,7 @@ def get_measurements(time_step, measurements_struc, probe_data):
     for measurement_name, measure_obj in measurements_struc.items():
         measurements = []
         for zp in measure_obj.z_pos:
-            measurements.append(probe_data[pos_to_index[zp]][time_step])
+            measurements.append(probe_data[pos_to_index[zp]].iloc[time_step])
         measurements_dict[measurement_name] = measurements
 
     return measurements_dict
