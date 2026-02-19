@@ -1,6 +1,9 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
 
+import shutil
+import os
+from math import ceil
 from parflow import Run
 from parflow.tools import settings
 from parflow.tools.io import write_pfb
@@ -368,13 +371,88 @@ class ToyProblem(AbstractModel):
         self._run.Geom.domain.Porosity.Type = "PFBFile"
         self._run.Geom.domain.Porosity.FileName = filename
 
+    def prepare_clm(self, working_dir, n_steps):
+        # We assume these files exist in current dir.
+        # They should be either generated runtime or stored somewhere globally.
+        shutil.copy("drv_clmin.dat", working_dir / "drv_clmin.dat")
+        shutil.copy("drv_vegm.dat", working_dir / "drv_vegm.dat")
+        shutil.copy("drv_vegp.dat", working_dir / "drv_vegp.dat")
+
+        # Create subdirectories necessary for Parflow/CLM coupling.
+        for dir in [
+            "qflx_evap_grnd",
+            "eflx_lh_tot",
+            "qflx_evap_tot",
+            "qflx_tran_veg",
+            "correct_output",
+            "qflx_infl",
+            "swe_out",
+            "eflx_lwrad_out",
+            "t_grnd",
+            "diag_out",
+            "qflx_evap_soi",
+            "eflx_soil_grnd",
+            "eflx_sh_tot",
+            "qflx_evap_veg",
+            "qflx_top_soil",
+        ]:
+            os.makedirs(working_dir / dir)
+
+        # Prepare meteorological data - here a sample dataset.
+        # For each field we comment on the meaning in CLM and add instruction
+        # on how to get the value from chmi_aladin_10m data.
+        sample_met_data = {
+            # Downward Visible or Short-Wave radiation [W/m2].
+            # surface_solar_radiation_downwards [J/m2] / time_step [s]
+            "DSWR": 0,
+
+            # Downward Infa-Red or Long-Wave radiation [W/m2].
+            # surface_thermal_radiation_downwards [J/m2] / time_step [s]
+            "DLWR": 0,
+
+            # Precipitation rate [mm/s].
+            # precipitation_amount_accum [kg/m2] / water_density [kg/m3] / total_time [s] * 1000 [mm/m]
+            # Note: Here we probably need some else field than the total amount since forecast start.
+            "APCP": 0,
+
+            # Air temperature [K].
+            # air_temperature_2m
+            "Temp": 300,
+
+            # West-to-East or U-component of wind [m/s].
+            # -wind_speed_10m * cos(wind_from_direction_10m * pi/180)
+            "UGRD": 0,
+
+            # South-to-North or V-component of wind [m/s].
+            # -wind_speed_10m * sin(wind_from_direction_10m * pi/180)
+            "VGRD": 0,
+
+            # Atmospheric pressure [Pa].
+            # air_pressure_at_sea_level
+            # Note: Can we get the pressure at current terrain level?
+            "Press": 1e5,
+
+            # Water-vapor specific humidity [kg/kg].
+            # relative_humidity_2m
+            "SPFH": 0
+        }
+        with open(working_dir / self._run.Solver.CLM.MetFileName, "w") as f:
+            for i in range(n_steps):
+                # Sample data are replicated for all time steps. It should be replaced by realtime values,
+                # possibly interpolated from the 10m data.
+                f.write( " ".join(str(v) for v in sample_met_data.values()) + "\n")
+
+
+
     def run(self, init_pressure, precipitation_value, state_params=None, start_time=0, stop_time=20, time_step=0.025, working_dir=None):
-        import shutil
-        import os
         if working_dir is None:
             working_dir = self._workdir
         shutil.rmtree(working_dir)
         os.makedirs(working_dir)
+
+        if self._run.Solver.LSM == "CLM":
+            n_time_steps = ceil( (stop_time-start_time)/time_step )
+            self.prepare_clm(working_dir, n_steps=n_time_steps)
 
         if state_params is not None:
             self.set_dynamic_params(state_params)
