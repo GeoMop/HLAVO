@@ -14,7 +14,7 @@ from hlavo.kalman.kalman_result import KalmanResults
 from hlavo.soil_parflow.parflow_model import ToyProblem
 from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 # from soil_model.evapotranspiration_fce import ET0
-from hlavo.kalman.auxiliary_functions import sqrt_func, add_noise
+from hlavo.misc.auxiliary_functions import sqrt_func, add_noise
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
