@@ -6,9 +6,9 @@ active_scrappers:
       - "15 13 * * *"
       - "45 20 * * *"
     url: "https://api.met.no/weatherapi/locationforecast/2.0/complete"
-    schema_path: inputs/schemas/hlavo_surface_schema.yaml
+    schema_path: schemas/hlavo_surface_schema.yaml
     dataset_name: "yr.no"
-    extract_fn: normalize_yrno_forecast
+    extract_fn: normalize
     fn_module: inputs.extract.hlavo_extract
     method: GET
     headers:
@@ -21,3 +21,29 @@ active_scrappers:
         column_name: dflon
     dataframe_path: dataframes/hlavo_surface_dataframe.csv
     dataframe_has_header: true
+
+  - name: chmi-aladin-1km
+    schema_path: schemas/chmi-aladin-1km-schema.yaml
+    dataset_name: chmi_aladin_10m
+    extract_fn: extractor
+    fn_module: inputs.extract.chmi_aladin_1km_extract
+
+    runs:
+      - cron: "1 8 * * *"
+        set:
+          time: "00"
+
+    request:
+      method: GET
+      url: "https://opendata.chmi.cz/meteorology/weather/nwp_aladin/CZ_1km/{time}/ALADCZ1K4opendata_{date}{time}_{quantity}.grb.bz2"
+
+    render:
+      - name: date
+        source: datetime_utc
+        format: "%Y%m%d"
+
+    iterate:
+      - name: quantity
+        source: schema
+        dataset_name: "chmi_aladin_10m"
+        schema_regex: "VARS.*.df_col"
