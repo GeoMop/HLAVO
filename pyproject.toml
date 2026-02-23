@@ -40,7 +40,8 @@ dependencies = [
     #polars
     #pandas
     #seaborn
-    #joblib
+    "joblib",
+    "pytest",
     #plotly
     #cdsapi      # era5 weather data
 
