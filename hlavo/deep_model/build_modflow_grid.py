@@ -8,7 +8,7 @@ import attrs
 import numpy as np
 import yaml
 
-from qgis_reader import Grid, ModelInputs, RasterLayer
+from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
@@ -24,12 +24,22 @@ class BuildConfig:
         with config_path.open("r", encoding="utf-8") as handle:
             raw = yaml.safe_load(handle)
         assert isinstance(raw, dict), "Config YAML must be a mapping"
+        model_raw = raw.get("model", {})
+        assert isinstance(model_raw, dict), "model config must be a mapping"
+        model_name = model_raw.get("model_name")
+        assert model_name, "model.model_name is required in the config"
+        model_name = str(model_name)
+        base_workspace = Path(model_raw.get("workspace", "model"))
+        run_workspace = base_workspace / model_name
+
         output_raw = raw.get("grid_output_path")
         if output_path is None:
             if output_raw:
                 output_path = Path(str(output_raw))
+                if not output_path.is_absolute():
+                    output_path = run_workspace / output_path
             else:
-                output_path = Path("model") / "grid_materials.npz"
+                output_path = run_workspace / "grid_materials.npz"
         return BuildConfig(config_path=config_path, output_path=output_path)
 
 
@@ -59,6 +69,33 @@ def active_mask_from_rasters(
             mask = mask & raster_mask
     assert mask is not None, "Active mask could not be derived from rasters"
     return ~mask
+
+
+def active_mask_from_boundary(boundary: BoundaryPolygon, grid: Grid) -> np.ndarray:
+    from shapely.geometry import Polygon, mapping
+    from rasterio.features import geometry_mask
+    from rasterio.transform import from_origin
+
+    ny = int(grid.el_dims[1])
+    nx = int(grid.el_dims[0])
+    step_x = float(grid.step[0])
+    step_y = float(grid.step[1])
+    assert step_x > 0.0 and step_y > 0.0, "Grid steps must be positive"
+
+    x_min = float(grid.origin[0])
+    y_max = float(grid.origin[1]) + step_y * ny
+    transform = from_origin(x_min, y_max, step_x, step_y)
+
+    polygon = Polygon(boundary.coords_local)
+    assert polygon.is_valid, "Boundary polygon is invalid"
+    inside = geometry_mask(
+        [mapping(polygon)],
+        out_shape=(ny, nx),
+        transform=transform,
+        invert=True,
+        all_touched=True,
+    )
+    return inside
 
 
 def raster_to_full_grid(raster: RasterLayer, grid: Grid) -> np.ma.MaskedArray:
@@ -147,10 +184,12 @@ def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     model_inputs = ModelInputs.from_yaml(config_path)
     grid = model_inputs.grid
 
-    active_mask = active_mask_from_rasters(model_inputs.rasters, grid)
+    active_mask = active_mask_from_boundary(model_inputs.boundary, grid)
+    full_active = np.ones_like(active_mask, dtype=bool)
     rasters_bottom_up = tuple(reversed(model_inputs.rasters))
 
-    materials = assign_materials(rasters_bottom_up, grid, active_mask)
+    materials_full = assign_materials(rasters_bottom_up, grid, full_active)
+    materials = np.where(active_mask[None, :, :], materials_full, -1)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

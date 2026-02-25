@@ -14,6 +14,7 @@ assert config_path.exists(), 'model_config.yaml missing'
 
 run_config = RunConfig.from_yaml(config_path)
 assert run_config.config_path == config_path
+assert run_config.model_name
 assert run_config.plot_output_dir
 assert run_config.plot_active_mask_name
 assert run_config.plot_head_name

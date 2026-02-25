@@ -5,7 +5,7 @@ qgis_project_path: "/home/jb/GIS/uhelna_all.qgs"  # example: /data/gis/uhelna_al
 boundary_layer_name: "domain_around_mine"     # example: JB_extended_domain
 raster_group_name: "HG model layers"          # example: HG model layers
 
-grid_output_path: "model/grid_materials.npz"
+grid_output_path: "grid_materials.npz"
 
 meshsteps:
   x: 100.0  # example: 25.0
@@ -13,12 +13,19 @@ meshsteps:
   z: 10.0   # example: 1.0
 
 model:
+  model_name: "around_mine_coarse"
   workspace: "model"
   sim_name: "uhelna"
   exe_name: "mf6"
+  paraview:
+    quantities: [head, hk, idomain, materials, velocity, q, velocity_magnitude, active]
+    include_inactive: false
+    z_scale: 1.0
   recharge_rate: 0.0001  # 0.1 mm/day in m/day
   drain_conductance: 1.0
   conductivity_default: 1.0e-6
+  simulation_days: 1.0
+  stress_periods_days: [1.0]
   # Either provide conductivities in the bottom-up order of HG model layers
   # or map by layer name.
   # conductivities: [1.0e-5, 1.0e-6]

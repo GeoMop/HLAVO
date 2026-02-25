@@ -25,6 +25,7 @@ LOG = logging.getLogger(__name__)
 class RunConfig:
     config_path: Path
     workspace: Path
+    model_name: str
     sim_name: str
     exe_name: str
     recharge_rate: float
@@ -32,8 +33,14 @@ class RunConfig:
     conductivity_default: float
     conductivity_by_layer: dict[str, float] | None
     conductivities: tuple[float, ...] | None
+    simulation_days: float
+    stress_periods_days: tuple[float, ...]
     output_grid_path: Path
     paraview_output_path: Path
+    paraview_materials_output_path: Path
+    paraview_quantities: tuple[str, ...]
+    paraview_include_inactive: bool
+    paraview_z_scale: float
     plot_enabled: bool
     plot_output_dir: Path
     plot_dpi: int
@@ -56,11 +63,49 @@ class RunConfig:
         model_raw = raw.get("model", {})
         assert isinstance(model_raw, dict), "model config must be a mapping"
 
+        model_name = model_raw.get("model_name")
+        assert model_name, "model.model_name is required in the config"
+        model_name = str(model_name)
+
         sim_name = str(model_raw.get("sim_name", "uhelna"))
         exe_name = str(model_raw.get("exe_name", "mf6"))
         recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
         drain_conductance = float(model_raw.get("drain_conductance", 1.0))
         conductivity_default = float(model_raw.get("conductivity_default", 1e-6))
+        simulation_days = model_raw.get("simulation_days")
+        if simulation_days is not None:
+            simulation_days = float(simulation_days)
+            assert simulation_days > 0.0, "model.simulation_days must be > 0"
+
+        stress_periods_raw = model_raw.get("stress_periods_days")
+        if stress_periods_raw is not None:
+            assert isinstance(
+                stress_periods_raw, (list, tuple)
+            ), "model.stress_periods_days must be a list"
+            stress_periods_days = tuple(float(value) for value in stress_periods_raw)
+            assert all(value > 0.0 for value in stress_periods_days), (
+                "model.stress_periods_days values must be > 0"
+            )
+        else:
+            stress_periods_days = ()
+
+        if simulation_days is None and not stress_periods_days:
+            simulation_days = 1.0
+            stress_periods_days = (simulation_days,)
+        elif simulation_days is None:
+            simulation_days = float(sum(stress_periods_days))
+        elif not stress_periods_days:
+            stress_periods_days = (simulation_days,)
+        else:
+            total = float(sum(stress_periods_days))
+            assert np.isclose(total, simulation_days, rtol=1e-6, atol=1e-6), (
+                "Sum of model.stress_periods_days must equal model.simulation_days"
+            )
+
+        base_workspace = Path(workspace) if workspace is not None else Path(
+            model_raw.get("workspace", "model")
+        )
+        run_workspace = base_workspace / model_name
 
         conductivity_by_layer = model_raw.get("conductivity_by_layer")
         if conductivity_by_layer is not None:
@@ -74,21 +119,61 @@ class RunConfig:
             assert isinstance(conductivities, (list, tuple)), "conductivities must be a list"
             conductivities = tuple(float(value) for value in conductivities)
 
-        output_grid_path = Path(raw.get("grid_output_path", Path("model") / "grid_materials.npz"))
-
-        if workspace is None:
-            workspace = Path(model_raw.get("workspace", "model"))
+        output_grid_raw = raw.get("grid_output_path")
+        if output_grid_raw:
+            output_grid_path = Path(str(output_grid_raw))
+            if not output_grid_path.is_absolute():
+                output_grid_path = run_workspace / output_grid_path
+        else:
+            output_grid_path = run_workspace / "grid_materials.npz"
 
         paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
         if paraview_raw:
             paraview_output_path = Path(str(paraview_raw))
+            if not paraview_output_path.is_absolute():
+                paraview_output_path = run_workspace / paraview_output_path
         else:
-            paraview_output_path = Path(workspace) / f"{sim_name}_results.vtr"
+            paraview_output_path = run_workspace / f"{sim_name}_results.vtu"
+
+        materials_raw = model_raw.get("paraview_grid_output", raw.get("paraview_grid_output"))
+        if materials_raw:
+            paraview_materials_output_path = Path(str(materials_raw))
+            if not paraview_materials_output_path.is_absolute():
+                paraview_materials_output_path = run_workspace / paraview_materials_output_path
+        else:
+            paraview_materials_output_path = run_workspace / f"{sim_name}_materials.vtr"
+
+        paraview_raw = model_raw.get("paraview", raw.get("paraview", {}))
+        assert isinstance(paraview_raw, dict), "paraview config must be a mapping"
+        quantities_raw = paraview_raw.get("quantities")
+        if quantities_raw is None:
+            paraview_quantities = (
+                "head",
+                "hk",
+                "idomain",
+                "materials",
+                "velocity",
+                "q",
+                "velocity_magnitude",
+                "active",
+            )
+        else:
+            assert isinstance(quantities_raw, (list, tuple)), "paraview.quantities must be a list"
+            paraview_quantities = tuple(str(item) for item in quantities_raw)
+        paraview_include_inactive = bool(paraview_raw.get("include_inactive", False))
+        paraview_z_scale = float(paraview_raw.get("z_scale", 1.0))
+        assert paraview_z_scale > 0.0, "paraview.z_scale must be > 0"
 
         plot_raw = raw.get("plots", {})
         assert isinstance(plot_raw, dict), "plots config must be a mapping"
         plot_enabled = bool(plot_raw.get("enabled", True))
-        plot_output_dir = Path(plot_raw.get("output_dir", Path(workspace) / "plots"))
+        plot_output_raw = plot_raw.get("output_dir")
+        if plot_output_raw:
+            plot_output_dir = Path(str(plot_output_raw))
+            if not plot_output_dir.is_absolute():
+                plot_output_dir = run_workspace / plot_output_dir
+        else:
+            plot_output_dir = run_workspace / "plots"
         plot_dpi = int(plot_raw.get("dpi", 150))
         plot_active_mask_name = str(plot_raw.get("active_mask_name", "grid_active_mask.png"))
         plot_idomain_name = str(plot_raw.get("idomain_name", "idomain_top.png"))
@@ -105,7 +190,8 @@ class RunConfig:
 
         return RunConfig(
             config_path=config_path,
-            workspace=Path(workspace),
+            workspace=run_workspace,
+            model_name=model_name,
             sim_name=sim_name,
             exe_name=exe_name,
             recharge_rate=recharge_rate,
@@ -113,8 +199,14 @@ class RunConfig:
             conductivity_default=conductivity_default,
             conductivity_by_layer=conductivity_by_layer,
             conductivities=conductivities,
+            simulation_days=simulation_days,
+            stress_periods_days=stress_periods_days,
             output_grid_path=output_grid_path,
             paraview_output_path=paraview_output_path,
+            paraview_materials_output_path=paraview_materials_output_path,
+            paraview_quantities=paraview_quantities,
+            paraview_include_inactive=paraview_include_inactive,
+            paraview_z_scale=paraview_z_scale,
             plot_enabled=plot_enabled,
             plot_output_dir=plot_output_dir,
             plot_dpi=plot_dpi,
@@ -164,6 +256,13 @@ def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
     return cell_values.ravel(order="F")
 
 
+def _vtk_oriented(values: np.ndarray) -> np.ndarray:
+    assert values.ndim == 3, "Values must be 3D"
+    # Flip Z and Y to align array indexing (top row first, top layer last) with
+    # increasing coordinate axes used by VTK.
+    return values[::-1, ::-1, :]
+
+
 def _vtk_cell_vectors(
     qx: np.ndarray,
     qy: np.ndarray,
@@ -176,6 +275,60 @@ def _vtk_cell_vectors(
     return np.column_stack([qx_flat, qy_flat, qz_flat])
 
 
+def _surface_to_nodes(surface: np.ndarray) -> np.ndarray:
+    assert surface.ndim == 2, "Surface must be 2D"
+    ny, nx = surface.shape
+    nodes = np.empty((ny + 1, nx + 1), dtype=float)
+    nodes[1:-1, 1:-1] = 0.25 * (
+        surface[:-1, :-1]
+        + surface[:-1, 1:]
+        + surface[1:, :-1]
+        + surface[1:, 1:]
+    )
+    nodes[0, 1:-1] = 0.5 * (surface[0, :-1] + surface[0, 1:])
+    nodes[-1, 1:-1] = 0.5 * (surface[-1, :-1] + surface[-1, 1:])
+    nodes[1:-1, 0] = 0.5 * (surface[:-1, 0] + surface[1:, 0])
+    nodes[1:-1, -1] = 0.5 * (surface[:-1, -1] + surface[1:, -1])
+    nodes[0, 0] = surface[0, 0]
+    nodes[0, -1] = surface[0, -1]
+    nodes[-1, 0] = surface[-1, 0]
+    nodes[-1, -1] = surface[-1, -1]
+    return nodes
+
+
+def _deformed_structured_grid(
+    x_nodes: np.ndarray,
+    y_nodes: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    z_scale: float,
+) -> "pv.StructuredGrid":
+    import pyvista as pv
+
+    assert top.ndim == 2, "Top surface must be 2D"
+    assert botm.ndim == 3, "Botm must be 3D"
+    assert z_scale > 0.0, "z_scale must be > 0"
+    nz, ny, nx = botm.shape
+    assert top.shape == (ny, nx), "Top shape mismatch with botm"
+
+    # Build surfaces from bottom to top in VTK coordinate order.
+    surfaces = [botm[k] for k in range(nz - 1, -1, -1)] + [top]
+    # Orient surfaces so Y increases with coordinate axes.
+    node_surfaces = [_surface_to_nodes(surface[::-1, :]) for surface in surfaces]
+
+    x_grid, y_grid = np.meshgrid(x_nodes, y_nodes, indexing="ij")
+    x_3d = np.repeat(x_grid[:, :, None], nz + 1, axis=2)
+    y_3d = np.repeat(y_grid[:, :, None], nz + 1, axis=2)
+    z_3d = np.empty((x_nodes.size, y_nodes.size, nz + 1), dtype=float)
+    for k, nodes in enumerate(node_surfaces):
+        z_3d[:, :, k] = nodes.T
+    if z_scale != 1.0:
+        z_ref = float(np.nanmax(z_3d))
+        z_3d = z_ref + (z_3d - z_ref) * z_scale
+
+    return pv.StructuredGrid(x_3d, y_3d, z_3d)
+
+
 def _export_results_to_paraview(
     output_path: Path,
     grid_data: dict[str, np.ndarray],
@@ -186,37 +339,143 @@ def _export_results_to_paraview(
     qz: np.ndarray,
     idomain: np.ndarray,
     materials: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    paraview_quantities: tuple[str, ...],
+    include_inactive: bool,
+    z_scale: float,
 ) -> Path:
     import pyvista as pv
+    from pyvista.core.pointset import UnstructuredGrid
 
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
-    z_nodes = grid_data["z_nodes"].astype(float)
-
-    assert head.shape == hk.shape == idomain.shape, "Head, hk, and idomain shape mismatch"
-    assert qx.shape == qy.shape == qz.shape == head.shape, "Velocity shape mismatch"
-    assert materials.shape == head.shape, "Materials shape mismatch"
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    grid = pv.RectilinearGrid(x_nodes, y_nodes, z_nodes)
+    grid = _deformed_structured_grid(x_nodes, y_nodes, top, botm, z_scale)
 
+    quantities = set(paraview_quantities)
     head_masked = np.where(idomain > 0, head, np.nan)
     qx_masked = np.where(idomain > 0, qx, np.nan)
     qy_masked = np.where(idomain > 0, qy, np.nan)
     qz_masked = np.where(idomain > 0, qz, np.nan)
-    qmag = np.sqrt(qx_masked**2 + qy_masked**2 + qz_masked**2)
-    grid.cell_data["head"] = _vtk_cell_array(head_masked[::-1])
-    grid.cell_data["hk"] = _vtk_cell_array(hk[::-1])
-    grid.cell_data["idomain"] = _vtk_cell_array(idomain[::-1].astype(np.int8))
-    grid.cell_data["materials"] = _vtk_cell_array(materials.astype(np.int16))
-    grid.cell_data["q"] = _vtk_cell_vectors(qx_masked[::-1], qy_masked[::-1], qz_masked[::-1])
-    grid.cell_data["qmag"] = _vtk_cell_array(qmag[::-1])
+    idomain_vtk = _vtk_cell_array(_vtk_oriented(idomain).astype(np.int8))
 
-    grid.save(str(output_path))
+    if "head" in quantities:
+        grid.cell_data["head"] = _vtk_cell_array(_vtk_oriented(head_masked))
+    if "hk" in quantities:
+        grid.cell_data["hk"] = _vtk_cell_array(_vtk_oriented(hk))
+    if "idomain" in quantities:
+        grid.cell_data["idomain"] = idomain_vtk
+    if "materials" in quantities:
+        grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+
+    needs_vectors = "velocity" in quantities or "q" in quantities
+    needs_qmag = "velocity_magnitude" in quantities
+    if needs_vectors or needs_qmag:
+        vectors = _vtk_cell_vectors(
+            _vtk_oriented(qx_masked),
+            _vtk_oriented(qy_masked),
+            _vtk_oriented(qz_masked),
+        )
+        if "velocity" in quantities:
+            grid.cell_data["velocity"] = vectors
+        if "q" in quantities:
+            grid.cell_data["q"] = vectors
+        if needs_qmag:
+            qmag = np.sqrt(qx_masked**2 + qy_masked**2 + qz_masked**2)
+            grid.cell_data["velocity_magnitude"] = _vtk_cell_array(_vtk_oriented(qmag))
+
+    active_grid = grid
+    if not include_inactive:
+        active_cells = np.flatnonzero(idomain_vtk > 0)
+        active_grid = grid.extract_cells(active_cells)
+    output_path = Path(output_path)
+    structured_ext = {".vtk", ".vts", ".pkl", ".pickle"}
+    unstructured_ext = {".vtu", ".vtk", ".vtkhdf", ".pkl", ".pickle"}
+    if isinstance(active_grid, UnstructuredGrid):
+        if output_path.suffix.lower() not in unstructured_ext:
+            corrected = output_path.with_suffix(".vtu")
+            LOG.warning(
+                "Paraview output extension %s invalid for UnstructuredGrid; using %s instead.",
+                output_path.suffix,
+                corrected,
+            )
+            output_path = corrected
+    elif output_path.suffix.lower() not in structured_ext:
+        corrected = output_path.with_suffix(".vts")
+        LOG.warning(
+            "Paraview output extension %s invalid for StructuredGrid; using %s instead.",
+            output_path.suffix,
+            corrected,
+        )
+        output_path = corrected
+    active_grid.save(str(output_path))
     assert output_path.exists(), f"Failed to write Paraview results: {output_path}"
     LOG.info("Saved Paraview results to %s", output_path)
+    return output_path
+
+
+def _export_materials_to_paraview(
+    output_path: Path,
+    grid_data: dict[str, np.ndarray],
+    materials: np.ndarray,
+    active_mask: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    paraview_quantities: tuple[str, ...],
+    include_inactive: bool,
+    z_scale: float,
+) -> Path:
+    import pyvista as pv
+    from pyvista.core.pointset import UnstructuredGrid
+
+    x_nodes = grid_data["x_nodes"].astype(float)
+    y_nodes = grid_data["y_nodes"].astype(float)
+
+    assert materials.ndim == 3, "Materials array must be 3D"
+    assert active_mask.ndim == 2, "Active mask must be 2D"
+
+    active_cells = np.broadcast_to(active_mask, materials.shape)
+
+    grid = _deformed_structured_grid(x_nodes, y_nodes, top, botm, z_scale)
+    quantities = set(paraview_quantities)
+    active_vtk = _vtk_cell_array(_vtk_oriented(active_cells.astype(np.uint8)))
+    if "materials" in quantities:
+        grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+    if "active" in quantities:
+        grid.cell_data["active"] = active_vtk
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    active_grid = grid
+    if not include_inactive:
+        active_ids = np.flatnonzero(active_vtk > 0)
+        active_grid = grid.extract_cells(active_ids)
+    structured_ext = {".vtk", ".vts", ".pkl", ".pickle"}
+    unstructured_ext = {".vtu", ".vtk", ".vtkhdf", ".pkl", ".pickle"}
+    if isinstance(active_grid, UnstructuredGrid):
+        if output_path.suffix.lower() not in unstructured_ext:
+            corrected = output_path.with_suffix(".vtu")
+            LOG.warning(
+                "Paraview materials extension %s invalid for UnstructuredGrid; using %s instead.",
+                output_path.suffix,
+                corrected,
+            )
+            output_path = corrected
+    elif output_path.suffix.lower() not in structured_ext:
+        corrected = output_path.with_suffix(".vts")
+        LOG.warning(
+            "Paraview materials extension %s invalid for StructuredGrid; using %s instead.",
+            output_path.suffix,
+            corrected,
+        )
+        output_path = corrected
+    active_grid.save(str(output_path))
+    assert output_path.exists(), f"Failed to write Paraview materials: {output_path}"
+    LOG.info("Saved Paraview materials to %s", output_path)
     return output_path
 
 
@@ -279,19 +538,31 @@ def _write_plan_view_plots(
     plt.close()
     LOG.info("Saved head plot to %s", head_path)
 
-    velocity_plan = np.where(
-        idomain[0] > 0, np.sqrt(qx[0] ** 2 + qy[0] ** 2), np.nan
-    )
-    plt.figure(figsize=(8, 6))
-    img = plt.imshow(velocity_plan, origin="upper", extent=extent, cmap="magma")
-    plt.title("Flow Velocity Magnitude (Top Layer, Plan View)")
-    plt.xlabel("X (local)")
-    plt.ylabel("Y (local)")
-    plt.colorbar(img, label="Velocity")
-    plt.tight_layout()
+    velocity_plan = np.where(idomain[0] > 0, np.sqrt(qx[0] ** 2 + qy[0] ** 2), np.nan)
+    x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
+    y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
+    xv, yv = np.meshgrid(x_centers, y_centers)
+    stride = max(1, int(max(x_centers.size, y_centers.size) / 30))
+    xs = xv[::stride, ::stride]
+    ys = yv[::stride, ::stride]
+    u = qx[0][::stride, ::stride]
+    v = qy[0][::stride, ::stride]
+    mask = ~np.isfinite(u) | ~np.isfinite(v) | (idomain[0][::stride, ::stride] <= 0)
+    u = np.where(mask, np.nan, u)
+    v = np.where(mask, np.nan, v)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    img = ax.imshow(velocity_plan, origin="upper", extent=extent, cmap="magma")
+    ax.quiver(xs, ys, u, v, angles="xy", scale_units="xy", scale=None, width=0.002)
+    ax.set_title("Flow Velocity Vectors (Top Layer, Plan View)")
+    ax.set_xlabel("X (local)")
+    ax.set_ylabel("Y (local)")
+    ax.set_ylim(y_nodes[-1], y_nodes[0])
+    fig.colorbar(img, ax=ax, label="Velocity magnitude")
+    fig.tight_layout()
     velocity_path = plot_dir / run_config.plot_velocity_name
-    plt.savefig(velocity_path, dpi=run_config.plot_dpi)
-    plt.close()
+    fig.savefig(velocity_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
     LOG.info("Saved velocity plot to %s", velocity_path)
 
     _write_cross_section_plots(
@@ -337,7 +608,6 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(x_edges, z_edges, materials_x, shading="auto", cmap="tab20")
-    plt.gca().invert_yaxis()
     plt.title(f"Materials X-Section (y index {y_index})")
     plt.xlabel("X (local)")
     plt.ylabel("Z")
@@ -359,7 +629,6 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(y_edges, z_edges, materials_y, shading="auto", cmap="tab20")
-    plt.gca().invert_yaxis()
     plt.title(f"Materials Y-Section (x index {x_index})")
     plt.xlabel("Y (local)")
     plt.ylabel("Z")
@@ -470,12 +739,12 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     grid = model_inputs.grid
     nx = int(grid.el_dims[0])
     ny = int(grid.el_dims[1])
-    nz = int(grid.el_dims[2])
 
     active_mask = grid_data["active_mask"].astype(bool)
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
 
     z_nodes = grid_data["z_nodes"].astype(float)
+    nz = int(grid.el_dims[2])
     assert z_nodes.size == nz + 1, "z_nodes size mismatch"
 
     top_raster = model_inputs.rasters[0]
@@ -515,7 +784,13 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         sim_ws=str(workdir),
     )
 
-    flopy.mf6.ModflowTdis(sim, time_units="DAYS", perioddata=[(1.0, 1, 1.0)])
+    perioddata = [(float(days), 1, 1.0) for days in run_config.stress_periods_days]
+    flopy.mf6.ModflowTdis(
+        sim,
+        time_units="DAYS",
+        nper=len(perioddata),
+        perioddata=perioddata,
+    )
     flopy.mf6.ModflowIms(sim, complexity="SIMPLE")
 
     gwf = flopy.mf6.ModflowGwf(sim, modelname=run_config.sim_name, save_flows=True)
@@ -589,6 +864,22 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         qz,
         idomain,
         materials,
+        top,
+        botm,
+        run_config.paraview_quantities,
+        run_config.paraview_include_inactive,
+        run_config.paraview_z_scale,
+    )
+    _export_materials_to_paraview(
+        run_config.paraview_materials_output_path,
+        grid_data,
+        materials,
+        active_mask,
+        top,
+        botm,
+        run_config.paraview_quantities,
+        run_config.paraview_include_inactive,
+        run_config.paraview_z_scale,
     )
     _write_plan_view_plots(
         run_config,
