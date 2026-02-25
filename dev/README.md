@@ -17,14 +17,33 @@ Build or update the docker (or conda [-c]) environment. Optionally, remove [-f] 
 Run a command inside the environment. Use `-t` to enforce interactive terminal:
 
 ```bash
-./hlavo [-t] run <cmd>
+./hlavo [-c] [-t] [run] <cmd>
+./hlavo [-c] [shell|codex]
+```
+
+`run` - execute <cmd> command with arguments within the environment
+`shell` - <WIP>
+`codex` - run codex within hlavo environment
+
+
+Notes:
+- `-c` uses CONDA environmnet to run the command, docker container is used otherwise.
+- `-t` sets `TERM=-it` so Docker allocates a TTY, this is necessary only to run from other script.
+- UID/GID are passed into the container to match host ownership.
+
+Push the built image to Docker Hub (tags as `flow123d/hlavo:<tag>`):
+
+```bash
+./hlavo [-c] [-t] run <cmd>
 ```
 
 Notes:
+- `-c` uses CONDA environmnet to run the command, docker container is used otherwise.
 - `-t` sets `TERM=-it` so Docker allocates a TTY.
 - UID/GID are passed into the container to match host ownership.
 
 Push the built image to Docker Hub (tags as `flow123d/hlavo:<tag>`):
+
 
 ```bash
 ./hlavo-build push

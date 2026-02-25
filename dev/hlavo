@@ -38,6 +38,16 @@ case "$subcmd" in
   shell)
     run_cmd "${SHELL:-bash}" -i
     ;;
+  codex)
+
+    set_image_vars
+    HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+    BASE_IMAGE="$IMAGE_REF" \
+    docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
+      -e RUST_LOG=debug \
+      -e RUST_BACKTRACE=full \
+      codex_env codex --dangerously-bypass-approvals-and-sandbox
+    ;;
   run)
     run_cmd "$@"
     ;;

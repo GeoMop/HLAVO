@@ -16,7 +16,7 @@ services:
       - ../model:/home/jb/model:rw
 
       # GIS data mounted read-only
-      - ../../GIS:/home/jb/GIS:ro
+      - ../GIS:/home/jb/GIS:ro
 
       # Persist Codex auth/config
       - ../.codex:/home/jb/.codex:rw

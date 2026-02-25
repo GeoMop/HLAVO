@@ -1,11 +1,12 @@
 # DVC usage
 
 [DVC](https://dvc.org) is used to separate version control of large datasets from processing codes and configurations stored on GitHub.
-For endorse repository the large datasets are stored on Google drive under the shared drive DZ04_Chodby.
+The large development data stored on Google team/shared drive "HLAVO", you need to get read access before using DVC.
+
 
 ## DVC Setup 
 
-1. Use 'bin/dvc_install.sh' for pip install into a Python environment 
+1. Use 'dev/dvc_install.sh' for pip install into a Python environment (independent of the project environment) 
    or [DVC install](https://dvc.org/doc/install) for other options like install it system-wide.
    
 2. Download DVC endorse secret [config script](https://drive.google.com/file/d/1Dag4N3KYz5q9rkLURayXHjUV0yN-zYYH/view?usp=drive_link),
@@ -34,11 +35,11 @@ See [large datasets modification doc](https://dvc.org/doc/user-guide/data-manage
         dvc init
         ``` 
 
-2. Add google drive remote [DZ04_Chodby/Podklady/endorse_large_files](https://drive.google.com/drive/u/1/folders/109cr1pZ8GV5s8yXKgVzl8NPQ8j537E4T)
+2. Add google drive remote [HLAVO/Deep Vadose Zone/GIS and large data](https://drive.google.com/drive/u/1/folders/1jx5F59QX6Yc51oFls-Tu_NW1SvmujcQw)
 
         ```
-        dvc remote add -d gdrive gdrive://109cr1pZ8GV5s8yXKgVzl8NPQ8j537E4T
+        dvc remote add -d gdrive gdrive://1jx5F59QX6Yc51oFls-Tu_NW1SvmujcQw
 
         ```
 
-The hash comes form the link.
+The hash comes from the link.

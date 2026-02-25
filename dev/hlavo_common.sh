@@ -165,6 +165,29 @@ base_run_docker() {
     "$@"
 }
 
+base_run_codex() {
+  local img_workspace workdir host_pwd rel_pwd tty_arg
+
+  set_image_vars
+  command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+  img_workspace="$ENV_REPO_ROOT"
+  tty_arg="${tty_arg:-}"
+  host_pwd="$(pwd -P)"
+  rel_pwd="${host_pwd#$REPO_ROOT}"
+  if [[ "$rel_pwd" != "$host_pwd" ]]; then
+    workdir="${img_workspace}${rel_pwd}"
+  else
+    workdir="$img_workspace"
+  fi
+
+  HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+  IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" BASE_IMAGE="$IMAGE_REF" \
+  docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm \
+    ${tty_arg} \
+    codex_env codex --dangerously-bypass-approvals-and-sandbox
+}
+
+
 env_build() {
   base_build "$@"
   venv_overlay "$@"
@@ -190,6 +213,13 @@ case "$HLAVO_MODE" in
     VENV_DIR="$ENV_REPO_ROOT/dev/venv-docker"
     HOST_VENV_DIR="$REPO_ROOT/dev/venv-docker"
     base_run() { base_run_docker "$@"; }
+    base_build() { base_build_docker "$@"; }
+    ;;
+  codex)
+    ENV_REPO_ROOT="${ENV_REPO_ROOT:-/home/hlavo/workspace}"
+    VENV_DIR="$ENV_REPO_ROOT/dev/venv-docker"
+    HOST_VENV_DIR="$REPO_ROOT/dev/venv-docker"
+    base_run() { base_run_codex "$@"; }
     base_build() { base_build_docker "$@"; }
     ;;
   *)

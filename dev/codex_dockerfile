@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.6
-FROM hlavo:last
+ARG BASE_IMAGE=flow123d/hlavo:latest
+FROM ${BASE_IMAGE}
 
 # ---- Configurable versions ----
 ARG NODE_MAJOR=22
@@ -17,13 +18,13 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # ---- Codex config dir ----
-# (base image already has user jb; create config with correct ownership)
+# (base image already has user hlavo; create config with correct ownership)
 RUN set -eux; \
-    mkdir -p /home/jb/.codex; \
-    chown -R jb:jb /home/jb/.codex; \
-    chmod 0775 /home/jb; \
-    chmod 0775 /home/jb/.codex
+    mkdir -p /home/hlavo/.codex; \
+    chown -R hlavo:hlavo /home/hlavo/.codex; \
+    chmod 0775 /home/hlavo; \
+    chmod 0775 /home/hlavo/.codex
 
-USER jb
+USER hlavo
 WORKDIR /workspace
 CMD ["bash"]

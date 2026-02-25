@@ -48,7 +48,7 @@ dependencies = [
     
     #reportlab
     #weasyprint
-    openpyxl     # for reading original input datasets
+    "openpyxl",     # for reading original input datasets
 
 ]
 
