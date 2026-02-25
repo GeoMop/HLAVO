@@ -138,7 +138,7 @@ base_build_docker() {
 
 base_run_conda() {
   ensure_conda
-  "$CONDA_BIN" run -n "$ENV_NAME" "$@"
+  "$CONDA_BIN" run -n "$ENV_NAME" --no-capture-output "$@"
 }
 
 base_run_docker() {
@@ -166,12 +166,12 @@ base_run_docker() {
 }
 
 base_run_codex() {
-  local img_workspace workdir host_pwd rel_pwd tty_arg
+  local img_workspace workdir host_pwd rel_pwd
 
   set_image_vars
   command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+  [[ $# -ge 1 ]] || die "Missing command."
   img_workspace="$ENV_REPO_ROOT"
-  tty_arg="${tty_arg:-}"
   host_pwd="$(pwd -P)"
   rel_pwd="${host_pwd#$REPO_ROOT}"
   if [[ "$rel_pwd" != "$host_pwd" ]]; then
@@ -181,10 +181,11 @@ base_run_codex() {
   fi
 
   HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
-  IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" BASE_IMAGE="$IMAGE_REF" \
-  docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm \
-    ${tty_arg} \
-    codex_env codex --dangerously-bypass-approvals-and-sandbox
+  BASE_IMAGE="$IMAGE_REF" \
+  docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
+    -e CODEX_HOME="$ENV_REPO_ROOT/dev/.codex_docker" \
+    -w "$workdir" \
+    codex_env "$@"
 }
 
 

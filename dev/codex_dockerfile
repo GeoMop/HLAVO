@@ -27,4 +27,5 @@ RUN set -eux; \
 
 USER hlavo
 WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/hlavo-entrypoint"]
 CMD ["bash"]

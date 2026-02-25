@@ -19,6 +19,14 @@ while [[ "${1:-}" == -* ]]; do
   esac
 done
 
+[[ $# -ge 1 ]] || { usage; exit 1; }
+subcmd="$1"
+shift || true
+
+if [[ "$subcmd" == "codex" ]]; then
+    HLAVO_MODE="codex"
+fi
+
 source "$SCRIPT_ROOT/hlavo_common.sh"
 
 usage() {
@@ -30,23 +38,17 @@ Usage:
 EOF
 }
 
-[[ $# -ge 1 ]] || { usage; exit 1; }
-subcmd="$1"
-shift || true
 
 case "$subcmd" in
   shell)
     run_cmd "${SHELL:-bash}" -i
     ;;
   codex)
-
-    set_image_vars
-    HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
-    BASE_IMAGE="$IMAGE_REF" \
-    docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
-      -e RUST_LOG=debug \
-      -e RUST_BACKTRACE=full \
-      codex_env codex --dangerously-bypass-approvals-and-sandbox
+    #run_cmd bash -c "echo \$PATH"
+    #run_cmd pwd
+    #run_cmd python3 -c "import filterpy"
+    #run_cmd python3 -c "import sys; print(sys.executable)"
+    run_cmd codex "$@"
     ;;
   run)
     run_cmd "$@"
