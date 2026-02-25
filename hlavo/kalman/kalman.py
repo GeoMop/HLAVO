@@ -12,13 +12,14 @@ from itertools import groupby
 # memory = Memory(location='cache_dir', verbose=10)
 from hlavo.kalman.kalman_result import KalmanResults
 from hlavo.soil_parflow.parflow_model import ToyProblem
-from filterpy.kalman import MerweScaledSigmaPoints
+from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 # from soil_model.evapotranspiration_fce import ET0
 from hlavo.misc.auxiliary_functions import sqrt_func, add_noise
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
 import threading
+from datetime import datetime
 
 ######
 # Unscented Kalman Filter for Parflow model
@@ -30,7 +31,7 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_path, verbose=False):
+    def from_config(workdir, config_path, verbose=False, seed=None):
         """
         Create a KalmanFilter from a YAML configuration file.
 
@@ -41,6 +42,8 @@ class KalmanFilter:
         """
         with config_path.open("r") as f:
             config_dict = yaml.safe_load(f)
+        if seed is not None:
+            config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):
@@ -97,7 +100,7 @@ class KalmanFilter:
             raise NotImplemented("Import desired class")
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
-    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag):
+    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag, timestamps):
         """
         Align preloaded measurements with precipitation schedule and iteration grouping.
 
@@ -114,6 +117,7 @@ class KalmanFilter:
         noisy_train_measurements = []
         noisy_test_measurements = []
         measurement_state_flag_sampled = []
+        meas_model_iter_timestamps = []
 
         print("len(noisy_measurements_train) ", len(noisy_measurements_train))
         total_index = 0
@@ -141,16 +145,18 @@ class KalmanFilter:
                     noisy_train_measurements.append(noisy_measurements_train[total_index])
                     noisy_test_measurements.append(noisy_measurements_test[total_index])
                     measurement_state_flag_sampled.append(measurement_state_flag[total_index])
+                    meas_model_iter_timestamps.append(datetime.fromisoformat(timestamps[total_index]))
                 except IndexError as idxerr:
                     print("idx_error ", idxerr)
                     noisy_train_measurements.append(noisy_measurements_train[total_index - 1])
                     noisy_test_measurements.append(noisy_measurements_test[total_index - 1])
                     measurement_state_flag_sampled.append(measurement_state_flag[total_index - 1])
+                    meas_model_iter_timestamps.append(timestamps[total_index - 1])
 
                 meas_model_iter_time.append(prec_time)
                 meas_model_iter_flux.append(prec_flux)
 
-        return noisy_train_measurements, noisy_test_measurements, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux
+        return noisy_train_measurements, noisy_test_measurements, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps
 
     def run(self):
         """
@@ -164,7 +170,7 @@ class KalmanFilter:
         ### Generate measurements ###
         #############################
         if "measurements_file" in self.measurements_config:
-            noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag = load_data(
+            noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
                 self.train_measurements_struc,
                 self.test_measurements_struc,
                 data_csv=self.measurements_config["measurements_file"],
@@ -176,8 +182,11 @@ class KalmanFilter:
                 precipitation_list.extend([precipitation] * time_prec)
             self.measurements_config["precipitation_list"] = precipitation_list
 
-            noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux = \
-                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag)
+            print("precipitation_list ", len(precipitation_list))
+            print("noisy measurements ", len(noisy_measurements))
+
+            noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps = \
+                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag, timestamps)
 
             sample_variance = np.nanvar(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
@@ -187,6 +196,7 @@ class KalmanFilter:
             # Generate synthetic measurements via forward model runs
             measurements, noisy_measurements, measurements_to_test, noisy_measurements_to_test, \
             state_data_iters, meas_model_iter_time, meas_model_iter_flux = self.generate_measurements()
+            measurement_state_flag_sampled = []
 
             measurement_state_flag = []  # No state flag for synthetic data
             residuals = noisy_measurements - measurements
@@ -200,6 +210,7 @@ class KalmanFilter:
             print("self.results.times_measurements ", self.results.times_measurements)
 
         self.results.precipitation_flux_measurements = meas_model_iter_flux
+
 
         #######################################
         ### UKF settings: sigma points, Q/R ###
@@ -370,6 +381,7 @@ class KalmanFilter:
         """
         print("dt: ", dt, "iter duration time: ", iter_duration)
         print("process PID:", os.getpid(), "thread:", threading.get_ident())
+        pid = os.getpid()
         timestamp = int(time.time())
 
         if os.environ.get("SCRATCHDIR"):
@@ -494,11 +506,18 @@ class KalmanFilter:
 
         time_step = 1  # UKF internal dt (hours) — physical duration passed via kwargs
 
-        ukf = ParallelUKF(
-            dim_x=num_state_params, dim_z=dim_z, dt=time_step,
-            fx=self.state_transition_function, hx=self.measurement_function,
-            points=sigma_points
-        )
+        if "parallel_sigmas" in self.kalman_config and self.kalman_config["parallel_sigmas"]:
+            ukf = ParallelUKF(
+                dim_x=num_state_params, dim_z=dim_z, dt=time_step,
+                fx=self.state_transition_function, hx=self.measurement_function,
+                points=sigma_points
+            )
+        else:
+            ukf = UnscentedKalmanFilter(
+                dim_x=num_state_params, dim_z=dim_z, dt=time_step,
+                fx=self.state_transition_function, hx=self.measurement_function,
+                points=sigma_points
+            )
 
         Q_state = self.state_struc.compose_Q()
         ukf.Q = Q_state
@@ -529,6 +548,58 @@ class KalmanFilter:
 
         return ukf
 
+    def kalman_step(self, ukf, start_time, target_time, measurements, measurements_state_flag, precipitation_flux):
+        """
+        Run ONE UKF predict/update step.
+        Intended to be called from the 1D model step().
+        """
+        print("RUN kalman step, process id:", os.getpid())
+
+        iter_duration = target_time - start_time
+        iter_minutes = int(iter_duration.total_seconds() // 60)
+
+        assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
+
+        for i in range(len(measurements)):
+            measurement = measurements[i]
+
+            # --- Predict ---
+            ukf.predict(
+                iter_duration=iter_minutes,
+                precipitation_flux=precipitation_flux[i]
+            )
+
+            # --- Update logic ---
+            if i < len(measurements_state_flag) and measurements_state_flag[i] != 0:
+                print(f"[UKF] Skipping update at timestep {i} (bad measurements)")
+            elif np.isnan(measurement).any():
+                print(f"[UKF] Skipping update at timestep {i} (contains NaN)")
+            else:
+                ukf.update(measurement)
+
+            print("sum ukf.P ", np.sum(ukf.P))
+            print("Estimated State:", ukf.x)
+
+        # --- Store results ---
+        self.results.times.append(target_time)
+        self.results.ukf_x.append(ukf.x.copy())
+        self.results.ukf_P.append(ukf.P.copy())
+        self.results.measurement_in.append(measurements)
+
+        velocity, moisture = self.state_model_velocity_moisture[
+            list(self.state_measurements.keys())[-1]
+        ]
+        self.results.velocities.append(velocity)
+        self.results.moistures.append(moisture)
+
+        measurements_train_dict, measurements_test_dict = \
+            self.state_measurements[list(self.state_measurements.keys())[-1]]
+
+        self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
+        self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
+
+        return ukf
+
     def run_kalman_filter(self, ukf, noisy_measurements, measurement_state_flag):
         """
         Run the UKF predict/update loop for all measurement timesteps.
@@ -541,6 +612,7 @@ class KalmanFilter:
         iter_durations = [self.results.times_measurements[0]] + list(
             np.array(self.results.times_measurements[1:]) - np.array(self.results.times_measurements[:-1])
         )
+        print("RUN kalman filter, process id:", os.getpid())
 
         measurement_state_flag = np.array(measurement_state_flag)
         for i, measurement in enumerate(noisy_measurements):
@@ -571,8 +643,12 @@ class KalmanFilter:
             self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
             self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
 
-        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
+        self.save_results()
         return self.results
+
+
+    def save_results(self):
+        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
 
 
 # @memory.cache
@@ -606,18 +682,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
-    import pstats
-
-    pr = cProfile.Profile()
-    pr.enable()
-
     main()
-
-    # Configure ParFlow executable paths if needed
-    # os.environ['PARFLOW_HOME'] = '/opt/parflow_install'
-    # os.environ['PATH'] += ':/opt/parflow_install/bin'
-
-    pr.disable()
-    ps = pstats.Stats(pr).sort_stats('cumtime')
-    ps.print_stats(50)
