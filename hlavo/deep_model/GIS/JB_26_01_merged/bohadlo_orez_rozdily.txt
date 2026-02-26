@@ -1,0 +1,4 @@
+Q2_base_17* samostatná menší část je výše oproti neoříznuté verzi.
+Q3_base - oříznutá verze je od linie zhruba v první dolní třetině na sever výrazně výše oproti neoříznuté verzi
+Q6_top_18* - pidikousek, výše než neoříznutá verze
+Q6_base_16* - oříznutá verze má úplně jiný rozsah výšek
