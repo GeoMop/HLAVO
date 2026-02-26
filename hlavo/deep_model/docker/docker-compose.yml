@@ -10,7 +10,7 @@ services:
 
     volumes:
       # Workspace Codex can edit
-      - ../src:/home/jb/workspace:rw
+      - ..:/home/jb/workspace:rw
 
       # Workspace Codex can edit
       - ../model:/home/jb/model:rw

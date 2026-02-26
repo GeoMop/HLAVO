@@ -1,4 +1,5 @@
 #!/bin/bash
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
 set -x
 
 export HOST_UID="$(id -u)"

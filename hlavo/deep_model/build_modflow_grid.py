@@ -8,7 +8,7 @@ import attrs
 import numpy as np
 import yaml
 
-from .qgis_reader import Grid, ModelInputs, RasterLayer
+from qgis_reader import Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
