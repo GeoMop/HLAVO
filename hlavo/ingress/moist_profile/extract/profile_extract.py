@@ -31,10 +31,6 @@ RENAME_MAP: dict[str, str] = {
     "dateTime": "date_time",
 }
 
-# Optional helper if you prefer to only rename a subset:
-# (You can delete keys you don't want to rename, or leave values as "" and they’ll be ignored.)
-
-
 # DROP COLUMNS
 DROP_COLS: set[str] = {
     "ttlDate",
@@ -74,30 +70,6 @@ def rename_columns(df: pl.DataFrame, rename_map: dict[str, str]) -> pl.DataFrame
         raise ValueError(f"Rename target collision(s): {sorted(dupes)}")
 
     return df.rename(effective) if effective else df
-
-
-# def reshape_moisture_long_explode(df: pl.DataFrame) -> pl.DataFrame:
-#     moisture_cols = [c for c in df.columns if c.startswith("s") and c[1:].isdigit()]
-#     if not moisture_cols:
-#         raise ValueError("No moisture columns found matching s<digits> (e.g. s1, s2, ...).")
-#
-#     depth_levels = [int(c[1:]) for c in moisture_cols]
-#     id_cols = [c for c in df.columns if c not in moisture_cols]
-#
-#     return (
-#         df.select(
-#             *[pl.col(c) for c in id_cols],
-#             pl.concat_list([pl.col(c) for c in moisture_cols]).alias("moisture"),
-#         )
-#         .explode("moisture")
-#         .with_columns(
-#             # repeat depth levels for each row and align with exploded moisture
-#             pl.int_range(0, pl.len()).mod(len(depth_levels)).map_elements(
-#                 lambda idx: depth_levels[idx],
-#                 return_dtype=pl.Int32,
-#             ).alias("depth_level")
-#         )
-#     )
 
 
 def reshape_columns(
@@ -274,6 +246,13 @@ def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) ->
     # df = reshape_moisture_long_explode(df)
     df = reshape_columns(df)
     df = add_sensor_depth(df, SENSOR_DEPTHS)
+
+    # add probe type column with constant values "Odyssey"
+    df = df.with_columns(pl.lit("Odyssey").alias("probe_model"))
+    # add permeability column with zeros
+    df = df.with_columns(pl.lit(0.0).alias("permeability"))
+    df = df.with_columns(pl.lit(0).alias("location_id"))
+
 
     # add latitude, longitude
     loc = load_locations_csv("location_in_time.csv")

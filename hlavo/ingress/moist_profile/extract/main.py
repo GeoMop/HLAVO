@@ -1,5 +1,6 @@
 # from __future__ import annotations
 from pathlib import Path
+from dotenv import load_dotenv
 import polars as pl
 from profile_extract import extract_df
 
@@ -37,6 +38,23 @@ def main():
     csv_files = list_csv_filepaths(source_dir)
     df = read_csv_files_to_polars(csv_files)
     print(df)
+
+    import zarr_fuse
+    load_dotenv("../.env")
+    schema_path = Path("../profile_schema.yaml")
+    workdir = Path("../workdir")
+    workdir.mkdir(exist_ok=True, parents=True)
+    schema = zarr_fuse.schema.deserialize(schema_path)
+    root_node = zarr_fuse.open_store(schema, workdir=workdir)
+    print('Store open')
+    root_node['Uhelna']['profiles'].update(df)
+    print('Updated')
+    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture"])
+    print(rdf)
+
+    # works locally
+    # test on S3
+    # zarr_fuse.remove_store(schema, workdir=workdir)
 
 
 if __name__ == '__main__':
