@@ -1,11 +1,12 @@
 ATTRS:
     description: "Storage for the moisture profile monitoring network. Optionally amended by the local meteo data."
     # for the bucket name see the store_create.sh script.
-    STORE_URL: "s3://hlavo-release/profiles.zarr"
-    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
-    
-    
-   
+#    STORE_URL: "s3://hlavo-release/profiles.zarr"
+#    STORE_URL: "s3://<bucket>>/<zarr_storage>"
+#    STORE_URL: "s3://hlavo-testing/profiles.zarr"
+#    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+    STORE_URL: "file:///home/paulie/Workspace/HLAVO/hlavo/ingress/moist_profile/workdir/"
+
 
 Uhelna:
     profiles:    
@@ -22,67 +23,72 @@ Uhelna:
             # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
             T_sensor:
                 unit: "deg C"
+                type: float
+                na_value: 'nan' # default
                 description: "Temperature of sensor"
                 coords: ["date_time", "probe_id", "depth_level"]
 
             T_probe:
                 unit: "deg C"
-                description: "Temperature of probe (Odyssey - computed from sensor readings, PR2 - measured surface temeprature)"
-                coords: ["date_time", "probe_id", "depth_level"]
+                type: float
+                na_value: 'nan' # default
+                description: "Temperature of probe head (Odyssey, PR2 - measured surface temperature)"
+                coords: ["date_time", "probe_id"]
 
             moisture:
                 unit: ""
-                description: "Moisture reading of the probe. Should be proportional to (absolute) volumentic water (usual range: (0, 35))"
+                type: float
+                na_value: 'nan' # default
+                description: "Moisture reading of the probe. Should be proportional to (absolute) volumetric water (usual range: (0, 35))"
                 coords: ["date_time", "probe_id", "depth_level"]
 
             permeability:
                 unit: ""
-                description: "Relative permeability, original physicaly based reading."
+                type: float
+                description: "Relative permeability, original physically based reading."
                 coords: ["date_time", "probe_id", "depth_level"]
 
             longitude:
                 description: "GPS. Signed Earth longitude. Indicated by the probe itself."
-                geodetic_system: "WGS84"
+                #geodetic_system: "WGS84"
                 unit: "deg"
                 type: float
-                na_value: 'nan'
+                na_value: 'nan' # default
                 coords: ["date_time", "probe_id"]
 
             latitude:
                 description: "GPS. Signed Earth latitude. Indicated by the probe itself."
-                geodetic_system: "WGS84"
+                #geodetic_system: "WGS84"
                 unit: "deg"
                 type: float
-                na_value: 'nan'
+                na_value: 'nan' # default
                 coords: ["date_time", "probe_id"]
 
             location_id:
                 description: "Estimated location ID according to the table of possible locations. Including the lab."
+                type: int32
+                na_value: 'min_int'
                 coords: ["date_time", "probe_id"]
-                
-            probe_type_selector:
-                decription: "Type of the moisture profile probe." 
-                type: int
-                coords: ["probe_id"]
             
             sensor_depth:
                 unit: "meter"
                 type: float
+                na_value: 'nan' # default
                 coords: ["depth_level", "probe_model"]
 
             # probe_manufacture_id
             manufacture_id:
                 description: "Original manufacturer uid."
-                type: string
-                coords: [ probe_id" ]
+                type: str[12]
+                coords: [ "probe_id" ]
 
                 
         COORDS:
             date_time:
                 unit: { tick: "h", tz: "UTC" }
                 description: "Time coordinate"
-                df_col: "timestamp"
-                source_unit: { tick: "s", tz: "CET" }
+#                df_col: "timestamp"
+#                source_unit: { tick: "s", tz: "CET" }
                 sorted: None # Automatic, sort coord by itself.
                 chunk_size: 1024
                 #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
@@ -100,16 +106,16 @@ Uhelna:
             probe_id:
                 # Secondary description valid for composed coordinates.
                 description: "Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes."
-                type: str16
+                type: str[16]
                 # Composed implies unsorted, no support for sparse data interpolation, right now.
                 # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
                 sorted: [] # Unsorted
                 chunk_size: 512
 
             probe_model:
-                decription: "Type of the moisture profile probe." 
-                type: str8
-                values: ["Odyssey", "PR2"]
+                decription: "Type of the moisture profile probe."
+                range:
+                    discrete: ["Odyssey", "PR2"]
 
     meteo:
         ATTRS:
