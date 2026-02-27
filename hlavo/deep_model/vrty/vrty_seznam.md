@@ -44,7 +44,7 @@ Vrty, jejichž výsledky měření nelze aproximovat souvislou křivkou:
 - G11
 
 
-## Seznam vrtů a výsledků měření v souboru 25_09_27_vrty_nové_vše.xlsx
+## Seznam vrtů a výsledků měření v souboru 25_09_27_vrty_staré_vše.xlsx
 
 Vrty s použitelnými výsledky měření v celém intervalu:
 - G-H3
