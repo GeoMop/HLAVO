@@ -1,5 +1,18 @@
 # Creation of MODFLOW Based Deep Model
 
+State on 11.2.2026
+
+## Main script execution
+
+```
+python run_model.py --config <config_file>
+```
+There are two yaml config files provided - the `coarse_config.yaml` may be outdated.
+
+It reads data from GIS files, write a Modflow model (under `model` folder), runs it and creates outputs for ParaView and some plots in `model/plots`.
+
+
+
 ## structure
 
 - `GIS/`: GIS project with resources for Uhelná locality
