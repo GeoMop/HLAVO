@@ -548,12 +548,14 @@ class KalmanFilter:
 
         return ukf
 
-    def kalman_step(self, ukf, start_time, target_time, measurements, measurements_state_flag, precipitation_flux):
+    def kalman_step(self, ukf, start_time, target_time, measurements, measurements_state_flag, precipitation_flux, pressure_at_bottom):
         """
         Run ONE UKF predict/update step.
         Intended to be called from the 1D model step().
         """
         print("RUN kalman step, process id:", os.getpid())
+
+        #self.model.set_pressure_at_bottom(pressure_at_bottom)
 
         iter_duration = target_time - start_time
         iter_minutes = int(iter_duration.total_seconds() // 60)
@@ -598,7 +600,9 @@ class KalmanFilter:
         self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
         self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
 
-        return ukf
+        longitude, latitude = self.get_longitude_latitude()
+
+        return velocity, longitude, latitude
 
     def run_kalman_filter(self, ukf, noisy_measurements, measurement_state_flag):
         """
@@ -645,6 +649,11 @@ class KalmanFilter:
 
         self.save_results()
         return self.results
+
+
+    def get_longitude_latitude(self):
+        longitude, latitude = 0, 0 #@TODO: get correct values
+        return longitude, latitude
 
 
     def save_results(self):

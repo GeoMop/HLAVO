@@ -134,29 +134,27 @@ class Model1D:
         return self.kalman.results.precipitation_flux_measurements[i0:i1]
 
 
-    def step(self, start_time, target_time, data_for_step):
+    def step(self, start_time, target_time, pressure_at_bottom):
         """
         Advance the 1D model state from start_time to target_time.
-
         Steps:
         1. Update physical state using provided forcing data.
         2. Retrieve measurements within this time window.
         3. Retrieve aligned precipitation flux.
         4. Execute one Kalman step.
         """
-        print(f"[1D {self.idx}] step at t={target_time}, "
-              f"data={data_for_step}, current_state={self.state}")
-        self.state += data_for_step
-        print(f"[1D {self.idx}] new state={self.state}")
+        print(f"[1D {self.idx}] step at t={target_time}")
 
         # measurement must come from somewhere meaningful
         measurements, measurements_flag = self.get_measurement_for_time(start_time, target_time)
         precipitation_flux = self.get_precipitation_for_time(start_time, target_time)
 
+        darcy_velocity = None
         if len(measurements) > 0:
-            self.ukf = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements, measurements_flag, precipitation_flux)
+            darcy_velocity = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements,
+                                               measurements_flag, precipitation_flux, pressure_at_bottom)
 
-        return self.ukf.x
+        return darcy_velocity
 
     def run_loop(self, t_start, t_end, queue_name_in, queue_name_out):
         """
@@ -215,12 +213,16 @@ class Model3D:
         return min(self.base_dt, remaining)
 
     def step(self, target_time, contributions):
+        #@TODO: how to handle this method?
         print(f"[3D] step to t={target_time}, "
               f"current_state={self.state}, contributions={contributions}")
-        total_contrib = sum(contributions)
-        self.state += total_contrib
-        self.time = target_time
-        print(f"[3D] new state={self.state}")
+        print("contributions ", contributions)
+
+        #total_contrib = sum(contributions)
+        #print("total contribution ", total_contrib)
+        #self.state += total_contrib
+        #self.time = target_time
+        #print(f"[3D] new state={self.state}")
         return self.state
 
     def run_loop(self, start_datetime, end_datetime, queue_names_out_to_1d, queue_name_in_from_1d):
@@ -257,7 +259,10 @@ class Model3D:
             while received < self.n_1d:
                 idx, t_recv, contrib = q_1d_to_3d.get()
                 print(f"[3D] received from 1D {idx}: t={t_recv}, contrib={contrib}")
-                contributions[idx] = contrib
+
+                if contrib is not None:
+                    contrib_velocity, contrib_long, contrib_lat = contrib
+                    contributions[idx] = contrib_velocity
                 received += 1
 
             self.step(target_time, contributions)
