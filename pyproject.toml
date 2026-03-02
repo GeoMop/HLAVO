@@ -36,18 +36,21 @@ dependencies = [
     # Ingress
     "requests",
     "cfgrib",
+    "selenium",
+    "python-dotenv",
 
     #polars
     #pandas
     #seaborn
-    #joblib
+    "joblib",
+    "pytest",
     #plotly
     #cdsapi      # era5 weather data
 
     
     #reportlab
     #weasyprint
-    openpyxl     # for reading original input datasets
+    "openpyxl",     # for reading original input datasets
 
 ]
 

@@ -9,7 +9,7 @@ import numpy as np
 import os, pathlib
 from matplotlib import pyplot as plt
 from hlavo.soil_parflow.abstract_model import AbstractModel
-from hlavo.kalman.auxiliary_functions import set_nested_attr, set_nested_attrs
+from hlavo.misc.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 
@@ -383,7 +383,7 @@ class ToyProblem(AbstractModel):
         self._run.TimingInfo.StartTime = start_time
         self._run.TimingInfo.StopTime = stop_time
         self._run.TimeStep.Value = time_step
-        self._run.TimingInfo.DumpInterval = 1
+        self._run.TimingInfo.DumpInterval = -1
 
         print("start: {} stop: {} step: {}".format(start_time, stop_time, time_step))
 
@@ -495,56 +495,19 @@ class ToyProblem(AbstractModel):
         data.time = 0
 
         ntimes = len(data.times)
-
-        #print("ntimes ", ntimes)
-
         nz = data.pressure.shape[0]
-        #print("nz ", nz)
         pressure = np.zeros((ntimes, nz))
-
-        #print("data.times ", data.times)
-
 
         # Iterate through the timesteps of the DataAccessor object
         # i goes from 0 to n_timesteps - 1
         for i in data.times:
-            print("time i ", i)
-            # print("data.time ", data.time)
-            # print("data.pressure[:5] ", data.pressure[:2])
-            #pressure[i, :] = data.pressure.reshape(nz)
-            print("pressure ", data.pressure)
-            print("data.time ", data.time)
-            pressure[data.time,:] = np.flip(data.pressure.reshape(nz))
+            pressure[data.time,:] = data.pressure.reshape(nz)
             data.time += 1
 
-        print("pressure ", pressure)
-
-        #print("np.flip(pressure) ", np.flip(pressure).shape)
-        #flipped_pressure = np.flip(pressure)
-        #print("flipped_pressure[:, 2] ", flipped_pressure[:, 2])
 
         plt.clf()
-        #fig, ax = plt.subplots(1, 1)
-        plt.imshow(pressure, aspect='auto')
-        nticks = int(ntimes/10)
-        #print("n ticks ", nticks)
+        plt.imshow(np.flip(pressure), aspect='auto', extent=[0, np.sum(data.dz), 0, data.times[-1]])
 
-        # from matplotlib import ticker
-        # formatter = ticker.ScalarFormatter(useMathText=True)
-        # formatter.set_scientific(True)
-        # formatter.set_powerlimits((-1, 1))
-
-        print("data.dz ", data.dz)
-
-        plt.yticks( np.arange(ntimes)[::nticks], np.flip(data.times[::nticks]) )
-        nzticks = int(nz/10)
-        print("np.arange(nz)[1::nzticks] ", np.arange(nz)[1::nzticks])
-        print("np.cumsum(data.dz) ", np.cumsum(data.dz))
-        print("np.cumsum(data.dz)[1::nzticks] ", np.cumsum(data.dz)[1::nzticks])
-        #print("nzticks ", nzticks)
-        #plt.xticks(np.arange(nz)[1::nzticks], np.cumsum(data.dz)[1::nzticks] )
-        plt.xticks(list(np.arange(nz)[1::nzticks]), list(np.cumsum(data.dz)[1::nzticks]))
-        #plt.xticks(np.arange(nz)[1::nzticks], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.,  1.1, 1.2])
         plt.colorbar()
         plt.title("pressure")
         plt.xlabel("depth [m]")
