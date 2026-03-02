@@ -218,10 +218,11 @@ def add_location_to_measurements(
     ).drop(loc_dt_col)  # optional: drop loc_datetime after join
 
 
-def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) -> pl.DataFrame:
+def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) -> pl.DataFrame | None:
     """
     Read a single CSV file into a Polars DataFrame, extract sensor_id from the filename,
     and add it as a new column.
+    Returns None if no data found in CSV (no dateTime column).
     """
     p = Path(file_path)
     name = p.name
@@ -235,6 +236,11 @@ def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) ->
     kwargs = read_csv_kwargs or {}
     # dateTime: 06-01-2025 11:00:00
     df = pl.read_csv(p, **kwargs)
+
+    # test due to empty files (no data):
+    if "dateTime" not in df.columns:
+        return None
+
     df = df.with_columns( pl.col("dateTime")
         .str.strptime(pl.Datetime, format="%d-%m-%Y %H:%M:%S", strict=True)
         .alias("dateTime")
