@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export MPLCONFIGDIR="/tmp/mplconfig_tests"
+
+python - <<'PY'
+from pathlib import Path
+import yaml
+
+from run_model import RunConfig
+
+config_path = Path('model_config.yaml')
+assert config_path.exists(), 'model_config.yaml missing'
+
+run_config = RunConfig.from_yaml(config_path)
+assert run_config.config_path == config_path
+assert run_config.plot_output_dir
+assert run_config.plot_active_mask_name
+assert run_config.plot_head_name
+assert run_config.plot_velocity_name
+assert run_config.plot_xsection_x_name
+assert run_config.plot_xsection_y_name
+
+raw = yaml.safe_load(config_path.read_text())
+assert isinstance(raw, dict)
+assert 'meshsteps' in raw
+assert 'model' in raw
+
+print('OK')
+PY
