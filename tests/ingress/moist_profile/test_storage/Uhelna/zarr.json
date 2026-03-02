@@ -1,0 +1,9 @@
+{
+  "attributes": {
+    "__structure__": "ATTRS:\n  VERSION: 0.0.0\nCOORDS: {}\nVARS: {}\n",
+    "__empty__": true,
+    "VERSION": "0.0.0"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

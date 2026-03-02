@@ -6,7 +6,7 @@ import seaborn as sns
 from pathlib import Path
 from typing import List, Dict, Any
 from hlavo.kalman.kalman_state import StateStructure, GVar, Measure, MeasurementsStructure, CalibrationCoeffs
-from hlavo.kalman.visualization.plots import plot_richards_output, RichardsSolverOutput, covariance_plot
+from hlavo.kalman.plots import plot_richards_output, RichardsSolverOutput, covariance_plot
 
 
 def trans_state(state_var):
