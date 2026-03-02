@@ -5,7 +5,7 @@ ATTRS:
 #    STORE_URL: "s3://<bucket>>/<zarr_storage>"
 #    STORE_URL: "s3://hlavo-testing/profiles.zarr"
 #    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
-    STORE_URL: "file:///home/paulie/Workspace/HLAVO/hlavo/ingress/moist_profile/workdir/"
+    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
 
 
 Uhelna:

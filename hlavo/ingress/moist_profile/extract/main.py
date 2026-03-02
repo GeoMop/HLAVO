@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import polars as pl
 from profile_extract import extract_df
+import zarr_fuse
 
 
 def list_csv_filepaths(dir_path: str | Path) -> list[Path]:
@@ -32,25 +33,25 @@ def read_csv_files_to_polars(filepaths: list[str | Path], *, read_csv_kwargs: di
     return pl.concat(dfs, how="vertical", rechunk=True)
 
 
-# script: zavola zarr_fuse, vytvori lokalni zarr storage (cesta z dict parametru)
-def main():
-    source_dir = "../20260201T205548_dataflow_grab"
+def main(source_dir: str | Path) -> None:
+    """
+    :param source_dir: source directory with CSV files from xpert.nz datareports
+    :return:
+    """
+    load_dotenv("../.env")
+    schema_path = Path("../profile_schema.yaml")
+
     csv_files = list_csv_filepaths(source_dir)
     df = read_csv_files_to_polars(csv_files)
     print(df)
 
-    import zarr_fuse
-    load_dotenv("../.env")
-    schema_path = Path("../profile_schema.yaml")
-    workdir = Path("../workdir")
-    workdir.mkdir(exist_ok=True, parents=True)
     schema = zarr_fuse.schema.deserialize(schema_path)
-    root_node = zarr_fuse.open_store(schema, workdir=workdir)
+    root_node = zarr_fuse.open_store(schema)
     print('Store open')
     root_node['Uhelna']['profiles'].update(df)
     print('Updated')
-    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture"])
-    print(rdf)
+    # rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture"])
+    # print(rdf)
 
     # works locally
     # test on S3
@@ -58,4 +59,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    root_path = Path(__file__).parents[4]
+    main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab")
