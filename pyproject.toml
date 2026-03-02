@@ -36,6 +36,8 @@ dependencies = [
     # Ingress
     "requests",
     "cfgrib",
+    "selenium",
+    "python-dotenv",
 
     #polars
     #pandas
