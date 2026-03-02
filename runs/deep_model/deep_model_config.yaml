@@ -1,0 +1,7 @@
+seed: 123456
+start_datetime: "2025-05-16T12:24:27"
+end_datetime: "2025-05-20T12:24:27"
+1d_models:
+  - /storage/liberec3-tul/home/martin_spetlik/HLAVO_distr/runs/deep_model/config_0_experiments_distr.yaml
+  - /storage/liberec3-tul/home/martin_spetlik/HLAVO_distr/runs/deep_model/config_1_experiments_distr.yaml
+  - /storage/liberec3-tul/home/martin_spetlik/HLAVO_distr/runs/deep_model/config_2_experiments_distr.yaml
