@@ -25,18 +25,20 @@ def load_data_from_excel(xls_file, sheetname):
     df_read = pd.read_excel(xls_file, sheet_name=sheetname, header=0)
     df_read = df_read.rename(columns={
         df_read.columns[1]: "date_time",
-        "FINAL záměr (m)": "water_intention_(m)",
-        "FINAL hladina (m nm)": "water_level_(masl)"
+        "FINAL záměr (m)": "water_depth",
+        "FINAL hladina (m nm)": "water_level"
     })
     df_read["well_id_orig"] = sheetname
     df_read["well_id"] = df_read["well_id_orig"].values.astype("str")
-    df = df_read[["well_id", "date_time", "water_intention_(m)", "water_level_(masl)"]].sort_values("date_time").reset_index(drop=True)
+    df = df_read[["well_id", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
 
     # remove rows contains NaN values of water_level
-    df = df.dropna(subset=["water_level_(masl)"])
+    df = df.dropna(subset=["water_level"])
 
     # convert values of date_time column to datetime64[min]
     df["date_time"] = pd.to_datetime(df["date_time"]).dt.floor("min")
+
+    df.attrs["units"] = {"water_depth ": "m", "water_level": "m above see level"}
 
     return df
 
@@ -46,7 +48,7 @@ Perform graph to PDF file.
 def pdf_plot(pdf_file, df):
     ax = df.plot(
         x="date_time",
-        y=["water_intention_(m)", "water_level_(masl)"],
+        y=["water_depth", "water_level"],
         figsize=(10, 5)
     )
 

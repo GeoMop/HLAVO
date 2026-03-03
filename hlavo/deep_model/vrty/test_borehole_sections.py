@@ -28,7 +28,7 @@ def load_data_from_excel(xls_file, sheetname):
         "ZOB": "Z",
         "Hloubka": "depth",
         "Kolektor_puv": "collector",
-        "Perf_dilci" : "interval_A",
+        "Perf_dilci" : "interval",
         "Z_OD": "Z_OD",
         "Z_DO": "Z_DO",
         "OD": "OD",
@@ -38,23 +38,23 @@ def load_data_from_excel(xls_file, sheetname):
     df = df.rename(columns=column_map)
 
     # split more intervals to separate rows
-    df["interval_A"] = df["interval_A"].str.split(";")
-    df = df.explode("interval_A", ignore_index=True)
+    df["interval"] = df["interval"].str.split(";")
+    df = df.explode("interval", ignore_index=True)
 
-    tmp = df["interval_A"].str.extract(
-        r"(?P<interval_A_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_A_max>\d+(?:\.\d+)?)"
+    tmp = df["interval"].str.extract(
+        r"(?P<interval_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_max>\d+(?:\.\d+)?)"
     )
-    df["interval_A_max"] = tmp["interval_A_max"].astype(float)
-    df["interval_A_min"] = tmp["interval_A_min"].astype(float)
+    df["interval_max"] = tmp["interval_max"].astype(float)
+    df["interval_min"] = tmp["interval_min"].astype(float)
 
     # add column interval_num_from_top (numbering of rows with same well_id)
     df["interval_num_from_top"] = df.groupby(["well_id", "collector"]).cumcount()
 
     # check values, print different problems
-    invalid_mask_interval = df["interval_A_min"] >= df["interval_A_max"]
+    invalid_mask_interval = df["interval_min"] >= df["interval_max"]
     invalid_rows_interval = df[invalid_mask_interval]
     for idx in invalid_rows_interval.index:
-        print(f"Invalid interval at row {idx}: min={df.at[idx, 'interval_A_min']}, max={df.at[idx, 'interval_A_max']}")
+        print(f"Invalid interval at row {idx}: min={df.at[idx, 'interval_min']}, max={df.at[idx, 'interval_max']}")
 
     invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
     invalid_rows_from = df[invalid_mask_from]
@@ -66,14 +66,16 @@ def load_data_from_excel(xls_file, sheetname):
     for idx in invalid_rows_to.index:
         print(f"Invalid \'Z_DO\' value at row {idx}: Z_DO={df.at[idx, 'Z_DO']}, Z={df.at[idx, 'Z']}, OD={df.at[idx, 'OD']}. It should be \'Z_DO = Z - OD\'")
 
-    expected_from = df.groupby(["well_id", "collector"])["interval_A_min"].transform("min")
-    expected_to = df.groupby(["well_id", "collector"])["interval_A_max"].transform("max")
+    expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
+    expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
     invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
     for idx, row in df.loc[invalid_mask_interval].iterrows():
         print(f"Invalid \'OD - DO\' interval at row {idx}: OD={row['OD']}, expected={expected_from.loc[idx]}; DO={row['DO']}, expected={expected_to.loc[idx]}")
 
     # remove unnecessary columns
-    df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval_A"])
+    df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
+
+    df.attrs["units"] = { "X": "m", "Y": "m", "Z": "m", "depth": "m", "interval_max": "m", "interval_min": "m"}
 
     return df
 

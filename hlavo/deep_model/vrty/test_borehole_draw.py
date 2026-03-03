@@ -56,6 +56,11 @@ def load_data_from_excel(xls_file, sheetname):
     # filter output columns to result dataframe
     df_result = df_months[["date", "cum_draw"]].sort_values("date").reset_index(drop=True)
 
+    # convert to base unit (m^3)
+    df_result["cum_draw"] = df_result["cum_draw"] * 1000
+
+    df_result.attrs["units"] = {"cum_draw ": "m^3"}
+
     return df_result
 
 """
