@@ -1,3 +1,5 @@
+dev/.codex_docker
+hlavo/deep_model/model
 _*/*
 
 dev/parflow_install
