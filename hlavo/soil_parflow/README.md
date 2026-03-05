@@ -1,10 +1,7 @@
 # Parflow model
 
 
-TODO here:
 
-- move here: parflow_model.py
-- make a test that runs a single simulation
 
 ## Support for CLM model
 
@@ -19,5 +16,21 @@ TODO here:
     
 ## Input meteo data
 See node 'chmi_aladin_10m' in [zarr-fuse schema](../ingress/scrapper/schemas/hlavo_surface_schema.yaml).
+
+- Meteorological data: CLM needs DSWR, DLWR, APCP, Temp, UGRD, VGRD, Press, SPFH (see [https://parflow.readthedocs.io/en/latest/keys.html#clm-solver-parameters]);
+  these can be computed from CHMI data:
+                surface_solar_radiation_downwards
+                surface_thermal_radiation_downwards
+                precipitation_amount_accum
+                air_temperature_2m
+                wind_speed_10m
+                wind_from_direction_10m
+                air_pressure_at_sea_level
+                relative_humidity_2m
+  The CHMI time-dependent data are passed to Toyroblem.run() as xarray.Dataset.
+- Vegetation data (LAI, SAI, Z0M, DISPLA, ... ): defined in drv_vegp.dat;
+  these data are fixed for given soil type and must be adjusted to seasonality.
+  It is possible to use time- and space-dependent vegetation, but I think it makes sense
+  only in long-term simulations.
 
 
