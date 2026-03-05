@@ -1,4 +1,7 @@
 import tempfile
+import numpy as np
+import pandas as pd
+import xarray as xr
 from pathlib import Path
 from hlavo.soil_parflow.parflow_model import ToyProblem
 
@@ -65,6 +68,36 @@ def test_parflow_model_with_clm():
         model_time_step = 0.025
         pressure = toy.make_linear_pressure(model_config)
 
+        # Define a sample xarray
+        n_loc = 1 # number of GPS locations
+        lon = [14.41854] * n_loc
+        lat = [50.073658] * n_loc
+        time_step = pd.Timedelta(hours=model_time_step)
+        start_date = "2026-03-01"
+        time = pd.date_range(start=start_date, end=pd.Timestamp(start_date)+pd.Timedelta(hours=stop_time), freq=time_step)
+        ds = xr.Dataset(
+            data_vars=dict(
+                surface_solar_radiation_downwards=(["loc","time"], np.zeros((n_loc,time.size))),
+                surface_thermal_radiation_downwards=(["loc","time"], np.zeros((n_loc,time.size))),
+                precipitation_amount_accum=(["loc","time"], precipitation_flux*np.ones((n_loc,time.size))),
+                air_temperature_2m=(["loc","time"], 300*np.ones((n_loc,time.size))),
+                wind_speed_10m=(["loc","time"], np.zeros((n_loc,time.size))),
+                wind_from_direction_10m=(["loc","time"], np.zeros((n_loc,time.size))),
+                air_pressure_at_sea_level=(["loc","time"], 1e5*np.ones((n_loc,time.size))),
+                relative_humidity_2m=(["loc","time"], np.zeros((n_loc,time.size))),
+            ),
+            coords=dict(
+                lon=("loc", lon),
+                lat=("loc", lat),
+                time=time,
+            ),
+            attrs=dict(
+                description="Meteorological dataset from CHMI opendata.",
+                time_step=time_step,
+                time_interval=time[-1]-time[0]
+            ),
+        )
+
         # Setup CLM
         toy._run.Solver.LSM = "CLM"
         toy._run.Patch.top.BCPressure.Type = "OverlandFlow"
@@ -76,10 +109,12 @@ def test_parflow_model_with_clm():
 
         # Run and postprocess
         toy.run(init_pressure=pressure,
-                precipitation_value=precipitation_flux,
-                start_time=0.0,
-                stop_time=stop_time,
-                time_step=model_time_step)
+                met_data=ds,
+                # precipitation_value=precipitation_flux,
+                # start_time=0.0,
+                # stop_time=stop_time,
+                # time_step=model_time_step
+        )
 
         toy.save_pressure(output_path / "pressure.png")
 
