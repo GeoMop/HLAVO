@@ -1,5 +1,6 @@
 _*/*
 
+dev/.codex_docker
 dev/parflow_install
 dev/venv-*
 **/.codex
