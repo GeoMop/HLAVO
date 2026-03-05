@@ -34,6 +34,7 @@ def _process_water_level_sheet(df_read, sheetname):
 
     return df
 
+
 """
 Load data from list of excel files (*.xls, *.xlsx ...).
 """
@@ -72,8 +73,128 @@ def read_water_level(file_paths=None):
 
     return final_df
 
+
+"""
+Load data from excel file (*.xls, *.xlsx ...).
+"""
+def read_draw(xls_file, sheetname):
+    # read data from excel, set required column names
+    column_map = {
+        "MVM1" : "M1",
+        "MVM2" : "M2",
+        "MVM3" : "M3",
+        "MVM4" : "M4",
+        "MVM5" : "M5",
+        "MVM6" : "M6",
+        "MVM7" : "M7",
+        "MVM8" : "M8",
+        "MVM9" : "M9",
+        "MVM10" : "M10",
+        "MVM11" : "M11",
+        "MVM12" : "M12",
+        "ROK" : "year"
+    }
+    df_long_cols = pd.read_excel(io=xls_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
+    df_long_cols = df_long_cols.rename(columns=column_map)
+
+    # transform data, create separate row for each month
+    df_months = df_long_cols.melt(
+        id_vars="year",
+        value_vars=[f"M{i}" for i in range(1, 13)],
+        var_name="month",
+        value_name="cum_draw"
+    )
+    df_months["month"] = df_months["month"].str[1:].astype(int)
+    df_months["date"] = (
+        pd.to_datetime(
+            dict(year=df_months["year"], month=df_months["month"], day=28)
+        )
+    ).values.astype("datetime64[D]")
+
+    # filter output columns to result dataframe
+    df_result = df_months[["date", "cum_draw"]].sort_values("date").reset_index(drop=True)
+
+    # convert to base unit (m^3)
+    df_result["cum_draw"] = df_result["cum_draw"] * 1000
+
+    df_result.attrs["units"] = {"cum_draw ": "m^3"}
+
+    return df_result
+
+
+"""
+Load data from excel file (*.xls, *.xlsx ...).
+"""
+def read_sections(xls_file, sheetname):
+    # read data from excel, set required column names
+    column_map = {
+        "Vrt_bez_poradi_vPR": "well_id",
+        "x_SJTSK" : "X",
+        "y_SJTSK": "Y",
+        "ZOB": "Z",
+        "Hloubka": "depth",
+        "Kolektor_puv": "collector",
+        "Perf_dilci" : "interval",
+        "Z_OD": "Z_OD",
+        "Z_DO": "Z_DO",
+        "OD": "OD",
+        "DO": "DO"
+    }
+    df = pd.read_excel(io=xls_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
+    df = df.rename(columns=column_map)
+
+    # split more intervals to separate rows
+    df["interval"] = df["interval"].str.split(";")
+    df = df.explode("interval", ignore_index=True)
+
+    tmp = df["interval"].str.extract(
+        r"(?P<interval_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_max>\d+(?:\.\d+)?)"
+    )
+    df["interval_max"] = tmp["interval_max"].astype(float)
+    df["interval_min"] = tmp["interval_min"].astype(float)
+
+    # add column interval_num_from_top (numbering of rows with same well_id)
+    df["interval_num_from_top"] = df.groupby(["well_id", "collector"]).cumcount()
+
+    # check values, print different problems
+    invalid_mask_interval = df["interval_min"] >= df["interval_max"]
+    invalid_rows_interval = df[invalid_mask_interval]
+    for idx in invalid_rows_interval.index:
+        print(f"Invalid interval at row {idx}: min={df.at[idx, 'interval_min']}, max={df.at[idx, 'interval_max']}")
+
+    invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
+    invalid_rows_from = df[invalid_mask_from]
+    for idx in invalid_rows_from.index:
+        print(f"Invalid \'Z_OD\' value at row {idx}: Z_OD={df.at[idx, 'Z_OD']}, Z={df.at[idx, 'Z']}, DO={df.at[idx, 'DO']}. It should be \'Z_OD = Z - DO\'")
+
+    invalid_mask_to = df["Z_DO"] == df["Z"] - df["OD"]
+    invalid_rows_to = df[invalid_mask_to]
+    for idx in invalid_rows_to.index:
+        print(f"Invalid \'Z_DO\' value at row {idx}: Z_DO={df.at[idx, 'Z_DO']}, Z={df.at[idx, 'Z']}, OD={df.at[idx, 'OD']}. It should be \'Z_DO = Z - OD\'")
+
+    expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
+    expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
+    invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
+    for idx, row in df.loc[invalid_mask_interval].iterrows():
+        print(f"Invalid \'OD - DO\' interval at row {idx}: OD={row['OD']}, expected={expected_from.loc[idx]}; DO={row['DO']}, expected={expected_to.loc[idx]}")
+
+    # remove unnecessary columns
+    df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
+
+    df.attrs["units"] = { "X": "m", "Y": "m", "Z": "m", "depth": "m", "interval_max": "m", "interval_min": "m"}
+
+    return df
+
+"""
+Perform data to CSV file.
+"""
+def csv_output(csv_file, df):
+    df.to_csv(path_or_buf=csv_file, header=True, mode='w')
+
+
 """
 Perform graph to PDF file.
+TODO rename and add documentation
 """
 def pdf_plot(pdf_file, df):
     ax = df.plot(
@@ -91,10 +212,9 @@ def pdf_plot(pdf_file, df):
     plt.close()
 
 
-def main(argv):
+def main():
     final_df = read_water_level()
     print(final_df)
-    #pdf_plot(pdf_file=argv[2], df=final_df)
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+   main()
