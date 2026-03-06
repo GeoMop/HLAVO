@@ -138,7 +138,7 @@ base_build_docker() {
 
 base_run_conda() {
   ensure_conda
-  "$CONDA_BIN" run -n "$ENV_NAME" "$@"
+  "$CONDA_BIN" run -n "$ENV_NAME" --no-capture-output "$@"
 }
 
 base_run_docker() {
@@ -165,6 +165,30 @@ base_run_docker() {
     "$@"
 }
 
+base_run_codex() {
+  local img_workspace workdir host_pwd rel_pwd
+
+  set_image_vars
+  command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+  [[ $# -ge 1 ]] || die "Missing command."
+  img_workspace="$ENV_REPO_ROOT"
+  host_pwd="$(pwd -P)"
+  rel_pwd="${host_pwd#$REPO_ROOT}"
+  if [[ "$rel_pwd" != "$host_pwd" ]]; then
+    workdir="${img_workspace}${rel_pwd}"
+  else
+    workdir="$img_workspace"
+  fi
+
+  HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+  BASE_IMAGE="$IMAGE_REF" \
+  docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
+    -e CODEX_HOME="$ENV_REPO_ROOT/dev/.codex_docker" \
+    -w "$workdir" \
+    codex_env "$@"
+}
+
+
 env_build() {
   base_build "$@"
   venv_overlay "$@"
@@ -190,6 +214,13 @@ case "$HLAVO_MODE" in
     VENV_DIR="$ENV_REPO_ROOT/dev/venv-docker"
     HOST_VENV_DIR="$REPO_ROOT/dev/venv-docker"
     base_run() { base_run_docker "$@"; }
+    base_build() { base_build_docker "$@"; }
+    ;;
+  codex)
+    ENV_REPO_ROOT="${ENV_REPO_ROOT:-/home/hlavo/workspace}"
+    VENV_DIR="$ENV_REPO_ROOT/dev/venv-docker"
+    HOST_VENV_DIR="$REPO_ROOT/dev/venv-docker"
+    base_run() { base_run_codex "$@"; }
     base_build() { base_build_docker "$@"; }
     ;;
   *)
