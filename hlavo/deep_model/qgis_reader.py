@@ -631,11 +631,11 @@ def _mask_raster_full(
 def _raster_extent_from_transform(
     transform: "object", width: int, height: int
 ) -> "np.ndarray":
-    from rasterio.transform import xy
+    from rasterio.transform import array_bounds
 
-    x_min, y_max = xy(transform, 0, 0, offset="ul")
-    x_max, y_min = xy(transform, height - 1, width - 1, offset="lr")
-    return np.asarray([[x_min, y_min], [x_max, y_max]], dtype=float)
+    x_min, y_min, x_max, y_max = array_bounds(height, width, transform)
+    extent = np.asarray([[x_min, y_min], [x_max, y_max]], dtype=float)
+    return _normalize_extent(extent)
 
 
 def _crop_masked_raster(
