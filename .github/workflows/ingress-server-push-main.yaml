@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 jobs:
   build-and-deploy:
-    uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@SM-ci-outside-repository-clean
+    uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@main
     with:
       deploy: true
       tag: generate
@@ -16,7 +16,7 @@ jobs:
       configuration-dir-path: hlavo/ingress/scrapper
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
-      zarr-fuse-ref: SM-ci-outside-repository-clean
+      zarr-fuse-ref: main
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
     secrets: inherit
