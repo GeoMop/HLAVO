@@ -639,7 +639,7 @@ def _raster_extent_from_transform(
 
 
 def _crop_masked_raster(
-    masked: "np.ma.MaskedArray", transform: "object", layer_name: str
+    ma sked: "np.ma.MaskedArray", transform: "object", layer_name: str
 ) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
     from rasterio.transform import xy
 

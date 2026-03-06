@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "__structure__": "ATTRS:\n  description: Storage for the moisture profile monitoring network. Optionally amended\n    by the local meteo data.\n  STORE_URL: file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/\n  VERSION: 0.0.0\nCOORDS: {}\nVARS: {}\n",
+    "__empty__": true,
+    "description": "Storage for the moisture profile monitoring network. Optionally amended by the local meteo data.",
+    "STORE_URL": "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/",
+    "VERSION": "0.0.0"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

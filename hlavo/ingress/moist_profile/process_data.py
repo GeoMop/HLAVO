@@ -44,7 +44,8 @@ def add_start_of_days(df, ax):
 
     # Add vertical lines at the start of each day
     start_of_days = df.select_dtypes(include='number').resample('D').mean().index
-    for day in start_of_days:
+    # do not include first (may occur before measured interval)
+    for day in start_of_days[1:]:
         ax.axvline(day, color='grey', linestyle='--', linewidth=0.5)
 
 def set_date_time_axis(ax):
@@ -88,6 +89,12 @@ def parse_datetime_column(column):
 
     # Apply detection and parsing to the entire column
     return column.apply(detect_and_parse)
+
+
+def read_csv_stack(base_dir, pattern_key):
+    filename_pattern = os.path.join(base_dir, '**', pattern_key, '*.csv')
+    data = read_data(filename_pattern)
+    return data
 
 
 def read_data(file_pattern, dt_column='DateTime', sep=';', non_float_cols=[]):

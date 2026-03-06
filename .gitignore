@@ -2,6 +2,7 @@ dev/.codex_docker
 hlavo/deep_model/model
 _*/*
 
+dev/.codex_docker
 dev/parflow_install
 dev/venv-*
 **/.codex
@@ -201,4 +202,4 @@ microchip_SW/.pio
 microchip_SW/.vscode
 
 data_processing/.env
-
+/data_processing/.python-version

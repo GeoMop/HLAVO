@@ -9,13 +9,12 @@ from scipy.ndimage import median_filter
 from scipy.signal import savgol_filter
 
 
-from process_data import create_output_dir, read_data, read_odyssey_data, setup_plt_fontsizes, select_time_interval, \
-    plot_columns, add_start_of_days, set_date_time_axis
+from process_data import create_output_dir, read_data, read_csv_stack, read_odyssey_data, setup_plt_fontsizes, \
+    select_time_interval, plot_columns, add_start_of_days, set_date_time_axis
 
 def read_pr2_data(base_dir, filter=False):
     # for each PR2 sensor
-    filename_pattern = os.path.join(base_dir, '**', 'pr2_sensor', '*.csv')
-    data = read_data(filename_pattern)
+    data = read_csv_stack(base_dir, 'pr2_sensor')
     # FILTERING
     if filter:
         for i in range(0, 6):
@@ -24,14 +23,15 @@ def read_pr2_data(base_dir, filter=False):
             # Filter rows where a selected column is between 0 and 1
             data = data[(data[selected_column] > 0.01) & (data[selected_column] <= 1)]
 
-    return data
+    # remove unnecessary columns
+    keep_columns = [c for c in data.columns if not any(b in c for b in ["Voltage", "rawADC"])]
+    return data[keep_columns]
 
 def read_teros31_data(base_dir, filter=False):
     data = []
     sensor_names = ['A', 'B', 'C']
     for a in range(0, 3):
-        filename_pattern = os.path.join(base_dir, '**', 'teros31_sensor_' + str(a), '*.csv')
-        data_chunk = read_data(filename_pattern)
+        data_chunk = read_csv_stack(base_dir, 'teros31_sensor_' + str(a))
         # print(data_chunk)
         data_chunk.rename(columns={'Pressure': f"Pressure_{sensor_names[a]}"}, inplace=True)
         data_chunk.rename(columns={'Temperature': f"Temperature_{sensor_names[a]}"}, inplace=True)
@@ -46,6 +46,25 @@ def read_teros31_data(base_dir, filter=False):
 
         data.append(data_chunk)
     return data
+
+def merge_notes_data(cfg, dfs, notes_data):
+    # dfs = dfs.reset_index().sort_values('DateTime').reset_index(drop=True)
+    # notes_data = notes_data.reset_index().sort_values('DateTime').reset_index(drop=True)
+
+    # As-of merge on the index (carries State forward)
+    merged = pd.merge_asof(
+        dfs,  # left
+        notes_data,  # right
+        left_index=True,
+        right_index=True,
+        direction="backward",
+    )
+
+    # Keep Note only where the timestamp is an exact change instant (exists in notes' index)
+    exact_change = merged.index.isin(notes_data.index)
+    merged["Note"] = merged["Note"].where(exact_change, "")
+
+    return merged
 
 def merge_teros31_data(teros31_data, atm_data):
     teros31_merged = teros31_data[0]
@@ -65,23 +84,6 @@ def teros31_pressure_diff(df):
     teros_ids = ['A', 'B', 'C']
     for tid in teros_ids:
         df[f'Pressure_{tid}{tid}'] = df[f'Pressure_{tid}'] - df['Pressure'] / 1000
-
-
-def read_atmospheric_data(base_dir):
-    filename_pattern = os.path.join(base_dir, '**', 'atmospheric', '*.csv')
-    data = read_data(filename_pattern)
-    return data
-
-
-def read_flow_data(base_dir):
-    filename_pattern = os.path.join(base_dir, '**', 'flow', '*.csv')
-    data = read_data(filename_pattern)
-    return data
-
-def read_inflow_data(base_dir):
-    filename_pattern = os.path.join(base_dir, 'inflow.csv')
-    data = read_data(filename_pattern)
-    return data
 
 def add_inflow_times(df, ax):
     # Filter to only the rows where 'Inflow' is not NaN (i.e., matched sparse points)
@@ -348,7 +350,7 @@ def plot_odyssey(ax, df):
 
 
 def process_flow_data(cfg):
-    flow_data = select_time_interval(read_flow_data(cfg["base_dir"]), **cfg["time_interval"])
+    flow_data = select_time_interval(read_csv_stack(cfg["base_dir"], 'flow'), **cfg["time_interval"])
 
     fig, ax = plt.subplots(figsize=(10, 6))
     flow_data, h_spline = plot_height_data(ax, flow_data, 'Water Height Over Time', cfg["output_dir"])
@@ -370,23 +372,31 @@ def process_flow_data(cfg):
     ax.set_title('Water Flux Over Time')
     fig.savefig(os.path.join(cfg["output_dir"], 'flux_data.pdf'), format='pdf')
 
-    flow_data = flow_data[['Height_Cumulative', 'Height_Spline', 'Flux_Spline']]
+    # add PumpIn, PumpOut columns (for 9-11)
+    # add RainHeight (for 12-)
+
+    keep_columns = [c for c in flow_data.columns if c not in ["Height", "Flux", "TimeIndex", "Height_Smooth"]]
+    flow_data = flow_data[keep_columns]
     return flow_data
 
 
 def read_all_data(cfg):
     base_dir = cfg["base_dir"]
-    inflow_data = read_inflow_data(base_dir)
-    atm_data = read_atmospheric_data(base_dir)
+    inflow_data = read_data(os.path.join(base_dir, 'inflow.csv'))
+    atm_data = read_csv_stack(base_dir, 'atmospheric')
     pr2_data = read_pr2_data(base_dir, filter=True)
     # pr2_data = read_pr2_data(base_dir, filter=False)
     teros31_data = read_teros31_data(base_dir)
     odyssey_id = cfg["odyssey_id"]
-    ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
 
-    # SHIFT UTC time to CEST (in Lab)
-    # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
-    ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
+    if cfg["odyssey"]:
+        ods_data = read_odyssey_data(base_dir, filter=False, ids=[odyssey_id])[0]
+
+        # SHIFT UTC time to CEST (in Lab)
+        # ods_data["DateTime"] = ods_data["DateTime"] + pd.to_timedelta(2, unit="h")
+        ods_data.index = ods_data.index + pd.to_timedelta(2, unit="h")
+    else:
+        ods_data = None
 
     return [atm_data, pr2_data, *teros31_data, ods_data, inflow_data]
 
@@ -460,6 +470,7 @@ def main():
     cfg = select_inputs()
 
     flow_data = process_flow_data(cfg)
+    notes_data = read_data(os.path.join(cfg["base_dir"], 'notes.csv'))
     # plt.show()
     # exit(0)
 
@@ -468,6 +479,7 @@ def main():
     merged_all = merge_all_dfs(all_dfs[:-1])
     merged_all = merge_inflow_data(cfg, merged_all, all_dfs[-1])
     merged_all = merge_flow_data(merged_all, flow_data)
+    merged_all = merge_notes_data(cfg, merged_all, notes_data)
 
     data = select_time_interval(merged_all, **cfg["time_interval"])
     # data.to_parquet("hlavo_lab_merged_data_2025_03-05.parquet")
@@ -561,7 +573,12 @@ def select_inputs():
     # full saturation experiment 3
     # time_interval = {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'}
 
-    folder_id = "09"
+    # folder_id = "09"
+    # folder_id = "11"
+    folder_id = "09-11"
+    # folder_id = "12"
+    # folder_id = "13"
+    # folder_id = "14"
     cfg = {
         "base_dir": os.path.join(hlavo_data_dir, f'data_lab/data_lab_{folder_id}'),
         "output_dir": create_output_dir(os.path.join(hlavo_data_dir, 'OUTPUT', f"lab_results_{folder_id}")),
@@ -571,7 +588,36 @@ def select_inputs():
         # "time_interval": {'start_date': '2025-03-26T12:00:00', 'end_date': '2025-03-28T12:00:00'},
 
         # full saturation experiment 3
-        "time_interval": {'start_date': '2025-05-16T11:40:00', 'end_date': '2025-05-21T09:00:00'},
+        # "time_interval": {'start_date': '2025-05-16T11:35:00', 'end_date': '2025-06-13T09:00:00'},
+        # "time_interval": {'start_date': '2025-06-02T08:00:00', 'end_date': '2025-06-03T09:00:00'},
+
+        # full saturation - release experiment 3
+        # "time_interval": {'start_date': '2025-06-13T00:00:00', 'end_date': '2025-06-23T10:00:00'},
+        # "time_interval": {'start_date': '2025-06-13T00:00:00', 'end_date': '2025-06-25T10:00:00'},
+
+        # folder_id = "11"
+        # full saturation - release experiment 4
+        # "time_interval": {'start_date': '2025-06-25T18:00:00', 'end_date': '2025-08-06T11:00:00'},
+        # "time_interval": {'start_date': '2025-06-25T18:00:00', 'end_date': '2025-08-13T15:00:00'},
+
+        # folder_id = "9-11"
+        # full saturation - release experiment 3-4 merged
+        "time_interval": {'start_date': '2025-05-16T0:00:00', 'end_date': '2025-08-15T15:00:00'},
+
+
+        # folder_id = "12"
+        # raining experiment - 8 rain regimes for 48 hours, accidentaly 24h watchdog
+        # "time_interval": {'start_date': '2025-08-14T15:00:00', 'end_date': '2025-08-16T15:00:00'},
+        # "time_interval": {'start_date': '2025-08-14T15:00:00', 'end_date': '2025-08-28T10:00:00'},
+
+        # folder_id = "13"
+        # raining experiment - 8 rain regimes for 48 hours
+        # "time_interval": {'start_date': '2025-08-26T08:00:00', 'end_date': '2025-08-29T10:00:00'},
+
+        # folder_id = "14"
+        # raining experiment - 8 rain regimes for 48 hours
+        # "time_interval": {'start_date': '2025-08-26T08:00:00', 'end_date': '2025-09-17T00:00:00'},
+
 
         "odyssey": True,
         # "odyssey_id": 5,

@@ -1,4 +1,6 @@
 seed: 123456
+start_datetime: "2025-05-16T12:24:27"
+end_datetime: "2025-08-13T23:40:51"
 model_config:
   model_class_name: "ToyProblem"
   init_pressure: [-40, -100] #[-0.1, -4]   # bottom, top ; [temporary solution]
@@ -36,7 +38,7 @@ model_config:
       - 0.35
       - 6
 measurements_config:
-  measurements_file: ../runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
+  measurements_file: /home/martin/Documents/HLAVO/runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
   measurements_time_step: 5
   probe: "pr2"
   model_time_step: 0.025 #2.5e-2
@@ -169,5 +171,6 @@ kalman_config:
   #Q_var: 5.0e-5
   #Q_model_params_var: 1e-8
   sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}
+  parallel_sigmas: false
 postprocess:
   show: True
