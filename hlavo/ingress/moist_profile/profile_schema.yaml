@@ -1,11 +1,11 @@
 ATTRS:
     description: "Storage for the moisture profile monitoring network. Optionally amended by the local meteo data."
     # for the bucket name see the store_create.sh script.
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+    #  note:  STORE_URL: "s3://<bucket>>/<zarr_storage>"
 #    STORE_URL: "s3://hlavo-release/profiles.zarr"
-#    STORE_URL: "s3://<bucket>>/<zarr_storage>"
-#    STORE_URL: "s3://hlavo-testing/profiles.zarr"
-#    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
-    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
+    STORE_URL: "s3://hlavo-testing/profiles_test.zarr"
+#    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
 
 
 Uhelna:
@@ -26,27 +26,27 @@ Uhelna:
                 type: float
                 na_value: 'nan' # default
                 description: "Temperature of sensor"
-                coords: ["date_time", "probe_id", "depth_level"]
+                coords: ["date_time", "site_id", "depth_level"]
 
             T_probe:
                 unit: "deg C"
                 type: float
                 na_value: 'nan' # default
                 description: "Temperature of probe head (Odyssey, PR2 - measured surface temperature)"
-                coords: ["date_time", "probe_id"]
+                coords: ["date_time", "site_id"]
 
             moisture:
                 unit: ""
                 type: float
                 na_value: 'nan' # default
                 description: "Moisture reading of the probe. Should be proportional to (absolute) volumetric water (usual range: (0, 35))"
-                coords: ["date_time", "probe_id", "depth_level"]
+                coords: ["date_time", "site_id", "depth_level"]
 
             permeability:
                 unit: ""
                 type: float
                 description: "Relative permeability, original physically based reading."
-                coords: ["date_time", "probe_id", "depth_level"]
+                coords: ["date_time", "site_id", "depth_level"]
 
             longitude:
                 description: "GPS. Signed Earth longitude. Indicated by the probe itself."
@@ -54,7 +54,7 @@ Uhelna:
                 unit: "deg"
                 type: float
                 na_value: 'nan' # default
-                coords: ["date_time", "probe_id"]
+                coords: ["date_time", "site_id"]
 
             latitude:
                 description: "GPS. Signed Earth latitude. Indicated by the probe itself."
@@ -62,13 +62,21 @@ Uhelna:
                 unit: "deg"
                 type: float
                 na_value: 'nan' # default
-                coords: ["date_time", "probe_id"]
+                coords: ["date_time", "site_id"]
 
-            location_id:
-                description: "Estimated location ID according to the table of possible locations. Including the lab."
+            probe_id:
+                # Secondary description valid for composed coordinates.
+                description: "Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                coords: [ "date_time", "site_id" ]
+
+            site_status:
+                description: "Integer status code of the site: positive - ok, negative - data invalid."
                 type: int32
-                na_value: 'min_int'
-                coords: ["date_time", "probe_id"]
+                na_value: 0
+                coords: [ "date_time", "site_id" ]
             
             sensor_depth:
                 unit: "meter"
@@ -80,7 +88,7 @@ Uhelna:
             manufacture_id:
                 description: "Original manufacturer uid."
                 type: str[12]
-                coords: [ "probe_id" ]
+                coords: [ "site_id" ]
 
                 
         COORDS:
@@ -101,15 +109,12 @@ Uhelna:
             
             depth_level:
                 description: "Depth index form top to bottom."
-                
-                
-            probe_id:
-                # Secondary description valid for composed coordinates.
-                description: "Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes."
-                type: str[16]
-                # Composed implies unsorted, no support for sparse data interpolation, right now.
-                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
-                sorted: [] # Unsorted
+
+            site_id:
+                description: "Estimated location ID according to the table of possible locations. Including the lab."
+                type: int32
+                na_value: 0 # valid site ids start with 1
+                sorted: [ ] # Unsorted
                 chunk_size: 512
 
             probe_model:
