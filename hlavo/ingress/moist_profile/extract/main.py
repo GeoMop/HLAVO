@@ -258,6 +258,33 @@ def status_to_site_frames(
     return joined
 
 
+def split_lab(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
+    """
+    Split a list of dataframes into:
+      - one dataframe containing all rows with site_id == 5
+      - list of dataframes containing the remaining rows
+    """
+
+    lab_parts = []
+    rest_dfs = []
+
+    for df in dfs:
+        mask = pl.col("site_id") == 5
+
+        site_lab = df.filter(mask)
+        rest = df.filter(~mask)
+
+        if not site_lab.is_empty():
+            lab_parts.append(site_lab)
+
+        if not rest.is_empty():
+            rest_dfs.append(rest)
+
+    df_lab = pl.concat(lab_parts) if lab_parts else pl.DataFrame()
+
+    return df_lab, rest_dfs
+
+
 def override_local_storage(schema, storage_path: str | Path | None):
     if storage_path is not None:
         schema.ds.ATTRS['STORE_URL'] = str(storage_path)
@@ -286,16 +313,21 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
         return None
     print(dfs)
 
+    df_lab, dfs_network = split_lab(dfs)
+
     schema = zarr_fuse.schema.deserialize(schema_path)
     override_local_storage(schema, storage_path)
 
-
     root_node = zarr_fuse.open_store(schema)
     print('Store open')
-    for i, df in enumerate(dfs):
-        print(f'Storing df[{i}/{len(dfs)}]: {df.shape[0]} rows.')
+    for i, df in enumerate(dfs_network):
+        print(f'Storing df[{i}/{len(dfs_network)}]: {df.shape[0]} rows.')
         root_node['Uhelna']['profiles'].update(df)
-    # print('Updated')
+    print('Updated')
+
+    if not df_lab.is_empty():
+        print(f'Storing lab df: {df_lab.shape[0]} rows.')
+        root_node['Uhelna']['lab'].update(df_lab)
 
     # close/open again
     # root_node = zarr_fuse.open_store(schema)
