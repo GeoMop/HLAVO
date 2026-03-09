@@ -36,15 +36,24 @@ def _process_water_level_sheet(df_read, sheetname):
 
 
 """
-Load data from list of excel files (*.xls, *.xlsx ...).
+Set default paths to input files if file_paths is not set.
 """
-def read_water_level(file_paths=None):
-    # use default input files  if file_paths is not set
+def _prepare_default_filepaths(file_paths):
     if file_paths is None:
         defautl_files = ["./25_09_27_vrty_III.etapa_vše.xlsx", "./25_09_27_vrty_nové_vše.xlsx",
                          "./25_09_27_vrty_staré_vše.xlsx"]
         script_path = Path(__file__).resolve().parent
         file_paths = {script_path / f for f in defautl_files}
+    return file_paths
+
+"""
+Read water level data from set of excel files (*.xls, *.xlsx ...).
+
+Param   file_paths    Set of paths to Excel input files
+Returns pandas:DataFrame
+"""
+def read_water_level(file_paths=None):
+    file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
     dfs = []
@@ -75,7 +84,11 @@ def read_water_level(file_paths=None):
 
 
 """
-Load data from excel file (*.xls, *.xlsx ...).
+Read draw data from excel file (*.xls, *.xlsx ...).
+
+Param   xls_file    Path to Excel input file
+Param   sheetname   Name of sheet in xls_file
+Returns pandas:DataFrame
 """
 def read_draw(xls_file, sheetname):
     # read data from excel, set required column names
@@ -125,9 +138,10 @@ def read_draw(xls_file, sheetname):
 """
 Load data from excel file (*.xls, *.xlsx ...).
 """
-def read_sections(xls_file, sheetname):
+def read_sections(section_file, sheetname, water_level_file_paths=None):
     # read data from excel, set required column names
     column_map = {
+        "Vrt_s_kolektorem": "borehole_full_name",
         "Vrt_bez_poradi_vPR": "well_id",
         "x_SJTSK" : "X",
         "y_SJTSK": "Y",
@@ -140,8 +154,23 @@ def read_sections(xls_file, sheetname):
         "OD": "OD",
         "DO": "DO"
     }
-    df = pd.read_excel(io=xls_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
+    df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
+
+    water_level_file_paths = _prepare_default_filepaths(water_level_file_paths)
+    # List of borehole names used in
+    borehole_water_level_names = []
+    for xls_file in water_level_file_paths:
+        xls = pd.ExcelFile(xls_file)
+        for sheet in xls.sheet_names:
+            df_in = pd.read_excel(xls, sheet_name=sheet)
+            clmns = df_in.columns.values.tolist()
+            if (clmns[0] == "m nm OB :") and (clmns[2] == "záměr (m)"):
+                borehole_water_level_names.append(sheet)
+    print(f"Sheets in water level files: {borehole_water_level_names}")
+    print("Values of column full_name:")
+    print(df['borehole_full_name'].to_string(index=False))
+    # add columns  ‘borehole_id’ (name of sheet in file with water levels), ‘confirmed’ -  0, 1
 
     # split more intervals to separate rows
     df["interval"] = df["interval"].str.split(";")
@@ -186,7 +215,7 @@ def read_sections(xls_file, sheetname):
     return df
 
 """
-Perform data to CSV file.
+Perform pandas.DataFrame data to CSV file.
 """
 def csv_output(csv_file, df):
     df.to_csv(path_or_buf=csv_file, header=True, mode='w')
