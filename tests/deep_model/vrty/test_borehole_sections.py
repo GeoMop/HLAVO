@@ -14,9 +14,9 @@ def main(argv):
         #print("Invalid number of input args, must be 3! ")
         #sys.exit(1)
 
-    excel_df = conversion_data.read_sections(xls_file=argv[0], sheetname=argv[1])
+    excel_df = conversion_data.read_sections(section_file=argv[0], sheetname=argv[1])
     print(excel_df)
-    #csv_output(csv_file=argv[2], df=excel_df)
+    # conversion_data.csv_output("borehole_water_section_out.csv", excel_df)
 
 if __name__ == "__main__":
    main(sys.argv[1:])

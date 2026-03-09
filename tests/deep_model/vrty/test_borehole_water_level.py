@@ -11,6 +11,7 @@ import conversion_data
 def main():
     final_df = conversion_data.read_water_level()
     print(final_df)
+    #conversion_data.csv_output("borehole_water_level_out.csv", final_df)
 
 if __name__ == "__main__":
    main()

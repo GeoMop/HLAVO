@@ -9,7 +9,7 @@ import conversion_data
 
 def main(argv):
     if (len(argv) != 3):
-        argv = ["../../../hlavo/deep_model/vrty/25_09_27_Odbery_Uhelna.xlsx", "List1", "Odbery_uprav.csv"]
+        argv = ["../../../hlavo/deep_model/vrty/25_09_27_Odbery_Uhelna.xlsx", "List1", "borehole_water_draw_out.csv"]
         # temporary hack, set args automatically if they are not set
         #print("Invalid number of input args, must be 3! ")
         #sys.exit(1)
