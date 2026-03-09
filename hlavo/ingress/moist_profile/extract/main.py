@@ -91,7 +91,7 @@ def load_site_status_csv(
     Returns a DataFrame with columns:
       status_datetime, 1,2,3,4,5,...
     """
-    df = pl.read_csv(path, skip_lines=16)
+    df = pl.read_csv(path, skip_lines=20)
 
     # Build a clean time column:
     #   - null/empty -> 0:00:00
@@ -159,9 +159,6 @@ def status_to_site_frames(
     )
 
     # --- 2) Sticky probe_id with resets on X/null, and updates on U*
-    # is_reset = pl.col("raw").is_null() | (pl.col("raw") == "X")
-    # is_reset = pl.col("raw") == "X"
-
     raw = pl.col("raw")
     # Only X breaks the carry-forward
     is_x = raw.eq("X").fill_null(False)  # bool, never null
@@ -181,6 +178,63 @@ def status_to_site_frames(
         )
     )
 
+    # -----------------------------
+    # 3) site_status
+    # -----------------------------
+    # parse signed integers from raw; non-integers become null
+    raw_int = raw.cast(pl.Int64, strict=False)
+
+    is_probe = raw.str.starts_with("U").fill_null(False)
+    is_int = raw_int.is_not_null()
+
+    # adjust this if you actually want >= 10 to persist
+    is_persistent_status = is_int & (raw_int >= 10)
+    is_transient_status = is_int & (raw_int < 10)
+
+    # look at the next row within each site
+    next_raw_int = raw_int.shift(-1).over(site_id_col)
+    next_is_persistent = next_raw_int.is_not_null() & (next_raw_int >= 10)
+
+    # any explicit value/probe/X breaks previous persistent carry
+    status_boundary = (is_probe | is_x | is_int)
+
+    status_segment = status_boundary.cast(pl.Int64).cum_sum().over(site_id_col)
+
+    persistent_status = (
+        pl.when(is_persistent_status)
+        .then(raw_int)
+        .otherwise(None)
+        .forward_fill()
+        .over([site_id_col, status_segment])
+    )
+
+    # long = (
+    #     long
+    #     .with_columns(
+    #         raw_int=raw_int,
+    #         status_segment=status_segment,
+    #         site_status=pl.when(is_transient_status)
+    #         .then(raw_int)  # only current row
+    #         .otherwise(persistent_status),  # carried over nulls
+    #     )
+    # )
+    long = (
+        long
+        .with_columns(
+            raw_int=raw_int,
+            next_raw_int=next_raw_int,
+            status_segment=status_segment,
+        )
+        .with_columns(
+            site_status=
+            pl.when(is_probe & next_is_persistent)
+            .then(next_raw_int)  # U* row gets next row's persistent status
+            .when(is_transient_status)
+            .then(raw_int)  # <10 only on current row
+            .otherwise(persistent_status)  # >=10 persists forward
+        )
+    )
+
     # --- 3) Asof-join latitude/longitude from df_coords (closest previous site_datetime)
     site_sorted = df_coords.sort([site_id_col, site_dt_col])
     long_sorted = long.sort([site_id_col, "datetime"])
@@ -194,7 +248,7 @@ def status_to_site_frames(
             by=site_id_col,
             strategy="backward",
         )
-        .select(["datetime", "probe_id", site_id_col, "latitude", "longitude"])
+        .select(["datetime", "probe_id", site_id_col, "latitude", "longitude", "site_status"])
     )
     print(joined)
     # joined_np = joined.to_pandas()
@@ -244,13 +298,14 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     # print('Updated')
 
     # close/open again
-    root_node = zarr_fuse.open_store(schema)
-    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
-    print(rdf)
+    # root_node = zarr_fuse.open_store(schema)
+    # rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
+    # print(rdf)
 
     # works locally
     # test on S3
     # zarr_fuse.remove_store(schema, workdir=workdir)
+    pass
 
 
 def read_storage(storage_path: str | Path = None):
@@ -270,7 +325,8 @@ def read_storage(storage_path: str | Path = None):
 if __name__ == '__main__':
     root_path = Path(__file__).parents[4]
     main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab",
-         storage_path="test_storage")
+         storage_path=root_path / "tests/ingress/moist_profile/test_storage")
+        # storage_path = "test_storage")
     # 2025 01-06
     # main(source_dir="../20260301T224908_dataflow_grab",
     #      storage_path=Path("storage_2025"))
@@ -281,5 +337,6 @@ if __name__ == '__main__':
     #      storage_path=Path("storage_empty"))
 
     # read to check zarr storage
-    read_storage(storage_path=Path("test_storage"))
+    # read_storage(storage_path=Path("test_storage"))
+    read_storage(storage_path=root_path / "tests/ingress/moist_profile/test_storage")
     # read_storage(storage_path=Path("storage_2025"))
