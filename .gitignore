@@ -1,6 +1,7 @@
 dev/.codex_docker
 hlavo/deep_model/model
 _*/*
+.DS_Store
 
 dev/.codex_docker
 dev/parflow_install
