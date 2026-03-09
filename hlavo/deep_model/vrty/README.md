@@ -37,3 +37,29 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 
     matplotlib, grafy průběhů odběru a hladin -> PDF
     
+## Formát tabulek generovaných funkcemi skriptu
+
+- sloupce generované funkcí read_water_level
+  - well_id                 id vrtu
+  - date_time               datum a čas měření
+  - water_depth             hloubka hladiny vody [m]
+  - water_level             nadmořská výška hladiny vody [m nm]
+  
+- sloupce generované funkcí read_sections
+  - well_id                 id vrtu
+  - borehole_full_name      celé jméno vrtu ve vstupním souboru (včetně názvu kolektoru)
+  - borehole_id             název tabulky v souboru měření vrtů
+  - confirmed               indikátor existující tabulky v souboru měření vrtů
+  - X                       x-souřadnice vrtu [m]
+  - Y                       y-souřadnice vrtu [m]
+  - Z                       z-souřadnice vrtu [m]
+  - collector               název kolektoru [m]
+  - depth                   hloubka vrtu [m]
+  - interval_max            maximum měřeného intervalu [m]
+  - interval_min            minimum měřeného intervalu [m]
+  - interval_num_from_top   index měřeného intervalu v rámci měření stejného vrtu (měření seřazena vzestupně od povrchu))
+
+- sloupce generované funkcí read_draw
+  - date                    datum a čas měření
+  - cum_draw                množství odčerpané vody za kalendářní měsích [m^3]
+  
