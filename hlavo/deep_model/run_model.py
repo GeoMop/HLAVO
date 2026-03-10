@@ -36,6 +36,7 @@ class RunConfig:
     simulation_days: float
     stress_periods_days: tuple[float, ...]
     output_grid_path: Path
+    points_output_path: Path
     paraview_output_path: Path
     paraview_materials_output_path: Path
     paraview_quantities: tuple[str, ...]
@@ -127,6 +128,14 @@ class RunConfig:
         else:
             output_grid_path = run_workspace / "grid_materials.npz"
 
+        points_output_raw = raw.get("points_output_path")
+        if points_output_raw:
+            points_output_path = Path(str(points_output_raw))
+            if not points_output_path.is_absolute():
+                points_output_path = run_workspace / points_output_path
+        else:
+            points_output_path = run_workspace / "points_in_grid.yaml"
+
         paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
         if paraview_raw:
             paraview_output_path = Path(str(paraview_raw))
@@ -202,6 +211,7 @@ class RunConfig:
             simulation_days=simulation_days,
             stress_periods_days=stress_periods_days,
             output_grid_path=output_grid_path,
+            points_output_path=points_output_path,
             paraview_output_path=paraview_output_path,
             paraview_materials_output_path=paraview_materials_output_path,
             paraview_quantities=paraview_quantities,
@@ -733,7 +743,11 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     _assert_mf6_compatible(exe_path)
 
     model_inputs = ModelInputs.from_yaml(run_config.config_path)
-    grid_output_path = build_modflow_grid(run_config.config_path, run_config.output_grid_path)
+    grid_output_path = build_modflow_grid(
+        run_config.config_path,
+        run_config.output_grid_path,
+        run_config.points_output_path,
+    )
     grid_data = _grid_arrays_from_npz(grid_output_path)
 
     grid = model_inputs.grid
