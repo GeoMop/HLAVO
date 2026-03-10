@@ -5,7 +5,6 @@ from pathlib import Path
 import zipfile
 import xml.etree.ElementTree as ET
 from functools import cached_property
-from urllib.parse import parse_qsl
 
 import attrs
 import numpy as np
@@ -153,18 +152,6 @@ class Grid:
 
 
 @attrs.define(frozen=True)
-class StationPoint:
-    """Point feature expressed in local model coordinates."""
-
-    name: str
-    coords_local: "np.ndarray"
-    # shape (2,)
-
-    def __attrs_post_init__(self) -> None:
-        assert self.coords_local.shape == (2,), "coords_local must be shape (2,)"
-
-
-
 @attrs.define(frozen=True)
 class ModelInputs:
     """In-memory representation of boundary and raster inputs."""
@@ -175,8 +162,6 @@ class ModelInputs:
     # Raster layers in project order.
     grid: Grid
     # Rectangular grid covering the domain.
-    points: tuple[StationPoint, ...]
-    # Point features in local coordinates.
 
     @staticmethod
     def from_yaml(config_path: Path) -> "ModelInputs":
@@ -185,13 +170,11 @@ class ModelInputs:
             project_path=config.qgis_project_path,
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
-            points_layer_name=config.points_layer_name,
-            points_name_field=config.points_name_field,
         )
-        boundary, rasters, grid_xy, points = reader.read(config.meshsteps)
+        boundary, rasters, grid_xy = reader.read(config.meshsteps)
         z_min, z_max = _combined_z_extent(rasters)
         grid = Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
-        return ModelInputs(boundary=boundary, rasters=rasters, grid=grid, points=points)
+        return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
 
 def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
@@ -245,10 +228,6 @@ class ModelConfig:
     # Layer tree group containing model rasters.
     meshsteps: tuple[float, float, float]
     # Mesh steps (x, y, z) in model units.
-    points_layer_name: str | None
-    # Optional layer name for point features.
-    points_name_field: str
-    # Field name storing point names.
 
     @staticmethod
     def from_yaml(path: Path) -> "ModelConfig":
@@ -261,11 +240,6 @@ class ModelConfig:
         qgis_project_path = Path(raw["qgis_project_path"])
         boundary_layer_name = str(raw.get("boundary_layer_name", "JB_extended_domain"))
         raster_group_name = str(raw.get("raster_group_name", "HG model layers"))
-        points_layer_raw = raw.get("points_layer_name", "2025_seznam_stanovist")
-        points_layer_name = None
-        if points_layer_raw not in (None, "", False):
-            points_layer_name = str(points_layer_raw)
-        points_name_field = str(raw.get("points_name_field", "loc_id"))
         assert "meshsteps" in raw, "Missing required config key: meshsteps"
         meshsteps_raw = raw["meshsteps"]
         assert isinstance(meshsteps_raw, dict), "meshsteps must be a mapping with x, y, z"
@@ -280,8 +254,6 @@ class ModelConfig:
             boundary_layer_name=boundary_layer_name,
             raster_group_name=raster_group_name,
             meshsteps=meshsteps,
-            points_layer_name=points_layer_name,
-            points_name_field=points_name_field,
         )
 
 
@@ -295,14 +267,10 @@ class QgisProjectReader:
     # Layer name of the boundary polygon.
     raster_group_name: str = "HG model layers"
     # Layer tree group containing model rasters.
-    points_layer_name: str | None = None
-    # Layer name for point features (optional).
-    points_name_field: str | None = None
-    # Field name storing point names.
 
     def read(
         self, meshsteps: tuple[float, float, float]
-    ) -> tuple[BoundaryPolygon, tuple[RasterLayer, ...], Grid, tuple[StationPoint, ...]]:
+    ) -> tuple[BoundaryPolygon, tuple[RasterLayer, ...], Grid]:
         project_path = self.project_path
         assert project_path.exists(), f"Missing QGIS project: {project_path}"
 
@@ -310,23 +278,11 @@ class QgisProjectReader:
         boundary = self._read_boundary_xml(root, project_dir, home_path)
         grid_xy = Grid.from_boundary_xy(boundary, meshsteps)
         rasters = self._read_rasters_xml(root, project_dir, home_path, boundary, grid_xy)
-        points: tuple[StationPoint, ...] = ()
-        if self.points_layer_name:
-            points = self._read_points_xml(
-                root,
-                project_dir,
-                home_path,
-                boundary,
-                self.points_layer_name,
-                self.points_name_field,
-            )
         LOG.debug("Loaded boundary with single ring")
         LOG.debug("Loaded %s raster layers from group %s", len(rasters), self.raster_group_name)
-        if self.points_layer_name:
-            LOG.debug("Loaded %s point features from %s", len(points), self.points_layer_name)
         LOG.debug("Local origin set to %s", boundary.origin)
 
-        return boundary, rasters, grid_xy, points
+        return boundary, rasters, grid_xy
 
     def _read_boundary_xml(
         self, root: ET.Element, project_dir: Path, home_path: Path | None
@@ -462,67 +418,6 @@ class QgisProjectReader:
 
         assert raster_layers, f"No raster layers found in group: {self.raster_group_name}"
         return tuple(raster_layers)
-
-    def _read_points_xml(
-        self,
-        root: ET.Element,
-        project_dir: Path,
-        home_path: Path | None,
-        boundary: BoundaryPolygon,
-        layer_name: str,
-        name_field: str | None,
-    ) -> tuple[StationPoint, ...]:
-        import geopandas as gpd
-        import pandas as pd
-
-        maplayers = _maplayers_by_id(root)
-        layer = _find_maplayer_by_name(maplayers, layer_name)
-        assert layer is not None, f"Points layer not found: {layer_name}"
-
-        datasource = _require_text(layer, "datasource")
-        source_path_str, datasource_layer, params = _split_datasource_with_params(datasource)
-        resolved_source = _resolve_source_path(source_path_str, project_dir, home_path)
-        assert resolved_source, f"Points source path missing for layer {layer_name}"
-
-        if params.get("type") == "csv" or params.get("xField") or resolved_source.lower().endswith(".csv"):
-            df = pd.read_csv(resolved_source)
-            x_field = params.get("xField") or params.get("xfield")
-            y_field = params.get("yField") or params.get("yfield")
-            assert x_field and y_field, "CSV points layer missing xField/yField parameters"
-            assert x_field in df.columns, f"Missing CSV xField column: {x_field}"
-            assert y_field in df.columns, f"Missing CSV yField column: {y_field}"
-            gdf = gpd.GeoDataFrame(
-                df,
-                geometry=gpd.points_from_xy(df[x_field], df[y_field]),
-                crs=params.get("crs"),
-            )
-        else:
-            if datasource_layer:
-                gdf = gpd.read_file(resolved_source, layer=datasource_layer)
-            else:
-                gdf = gpd.read_file(resolved_source)
-
-        assert len(gdf) > 0, f"Points layer {layer_name} has no features"
-        assert gdf.crs is not None, f"Points layer CRS is missing for {layer_name}"
-        if gdf.crs.to_epsg() != 5514:
-            gdf = gdf.to_crs(epsg=5514)
-
-        if (gdf.geom_type == "MultiPoint").any():
-            gdf = gdf.explode(index_parts=False)
-
-        assert (gdf.geom_type == "Point").all(), "Points layer must contain only point geometry"
-        assert not gdf.geometry.is_empty.any(), "Points layer has empty geometries"
-
-        if name_field is None:
-            name_field = "name"
-        assert name_field in gdf.columns, f"Points layer missing name field: {name_field}"
-        names = gdf[name_field].astype(str).tolist()
-        coords = np.column_stack([gdf.geometry.x, gdf.geometry.y]).astype(float)
-        coords_local = boundary.to_local(coords)
-        points: list[StationPoint] = []
-        for name, coord in zip(names, coords_local, strict=False):
-            points.append(StationPoint(name=name, coords_local=np.asarray(coord, dtype=float)))
-        return tuple(points)
 
 
 def _round_to_km(value: float) -> float:
@@ -674,27 +569,18 @@ def _iter_layer_tree_layers(root: ET.Element) -> list[tuple[str, str]]:
 
 
 def _split_datasource(datasource: str) -> tuple[str, str | None]:
-    path_part, layer_name, _ = _split_datasource_with_params(datasource)
-    return path_part, layer_name
-
-
-def _split_datasource_with_params(
-    datasource: str,
-) -> tuple[str, str | None, dict[str, str]]:
     data = datasource
     if data.startswith("file:"):
         data = data[len("file:") :]
     parts = data.split("|")
     path_part = parts[0]
     layer_name = None
-    query = None
     for part in parts[1:]:
         if part.startswith("layername="):
             layer_name = part[len("layername=") :]
     if "?" in path_part:
-        path_part, query = path_part.split("?", 1)
-    params = dict(parse_qsl(query or "", keep_blank_values=True))
-    return path_part, layer_name, params
+        path_part = path_part.split("?", 1)[0]
+    return path_part, layer_name
 
 
 def _resolve_source_path(path_str: str, project_dir: Path, home_path: Path | None) -> str:

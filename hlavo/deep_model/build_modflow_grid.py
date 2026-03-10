@@ -8,7 +8,7 @@ import attrs
 import numpy as np
 import yaml
 
-from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer, StationPoint
+from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ LOG = logging.getLogger(__name__)
 class BuildConfig:
     config_path: Path
     output_path: Path
-    points_output_path: Path
 
     @staticmethod
     def from_yaml(config_path: Path, output_path: Path | None = None) -> "BuildConfig":
@@ -41,18 +40,7 @@ class BuildConfig:
                     output_path = run_workspace / output_path
             else:
                 output_path = run_workspace / "grid_materials.npz"
-        points_output_raw = raw.get("points_output_path")
-        if points_output_raw:
-            points_output_path = Path(str(points_output_raw))
-            if not points_output_path.is_absolute():
-                points_output_path = run_workspace / points_output_path
-        else:
-            points_output_path = run_workspace / "points_in_grid.yaml"
-        return BuildConfig(
-            config_path=config_path,
-            output_path=output_path,
-            points_output_path=points_output_path,
-        )
+        return BuildConfig(config_path=config_path, output_path=output_path)
 
 
 def active_mask_from_rasters(
@@ -192,54 +180,7 @@ def assign_materials(
     return materials
 
 
-def _points_to_grid_yaml(
-    points: tuple[StationPoint, ...],
-    grid: Grid,
-    active_mask: np.ndarray,
-    output_path: Path,
-) -> Path:
-    if not points:
-        LOG.info("No points found; skipping points YAML output")
-        return output_path
-
-    ny = int(grid.el_dims[1])
-    nx = int(grid.el_dims[0])
-    step_x = float(grid.step[0])
-    step_y = float(grid.step[1])
-    grid_x0 = float(grid.origin[0]) + 0.5 * step_x
-    grid_y0 = float(grid.origin[1]) + step_y * ny - 0.5 * step_y
-
-    coords = np.vstack([point.coords_local for point in points]).astype(float)
-    cols = np.rint((coords[:, 0] - grid_x0) / step_x).astype(int)
-    rows = np.rint((grid_y0 - coords[:, 1]) / step_y).astype(int)
-
-    assert cols.min() >= 0 and cols.max() < nx, "Point X extent outside grid"
-    assert rows.min() >= 0 and rows.max() < ny, "Point Y extent outside grid"
-    assert np.all(active_mask[rows, cols]), "Some points fall outside active model domain"
-
-    entries = []
-    for point, row, col in zip(points, rows, cols, strict=False):
-        entries.append(
-            {
-                "name": point.name,
-                "row": int(row),
-                "col": int(col),
-                "row_1based": int(row) + 1,
-                "col_1based": int(col) + 1,
-            }
-        )
-
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump({"points": entries}, handle, sort_keys=False)
-    LOG.info("Saved points grid indices to %s", output_path)
-    return output_path
-
-
-def build_modflow_grid(
-    config_path: Path, output_path: Path, points_output_path: Path | None = None
-) -> Path:
+def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     model_inputs = ModelInputs.from_yaml(config_path)
     grid = model_inputs.grid
 
@@ -266,8 +207,6 @@ def build_modflow_grid(
     )
     assert output_path.exists(), f"Grid output not created: {output_path}"
     LOG.info("Saved grid materials to %s", output_path)
-    if points_output_path is not None:
-        _points_to_grid_yaml(model_inputs.points, grid, active_mask, points_output_path)
     return output_path
 
 
@@ -290,11 +229,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
     build_config = BuildConfig.from_yaml(args.config, args.output)
-    build_modflow_grid(
-        build_config.config_path,
-        build_config.output_path,
-        build_config.points_output_path,
-    )
+    build_modflow_grid(build_config.config_path, build_config.output_path)
 
 
 if __name__ == "__main__":

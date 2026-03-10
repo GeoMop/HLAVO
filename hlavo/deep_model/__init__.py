@@ -14,7 +14,6 @@ from .qgis_reader import (
     ModelInputs,
     QgisProjectReader,
     RasterLayer,
-    StationPoint,
     write_vtk_surfaces,
 )
 
@@ -26,7 +25,6 @@ __all__ = [
     "ModelInputs",
     "QgisProjectReader",
     "write_vtk_surfaces",
-    "StationPoint",
     "BuildConfig",
     "active_mask_from_rasters",
     "assign_materials",
