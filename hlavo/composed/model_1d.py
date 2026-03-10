@@ -42,7 +42,7 @@ class Model1D:
         6. Initializes the UKF with estimated measurement covariance.
         """
         print("self.kalman.measurements_config ", self.kalman.measurements_config)
-        noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_zarr_data(
+        measurements_xarray = load_zarr_data(
             self.kalman.train_measurements_struc,
             self.kalman.test_measurements_struc,
             zarr_dir=self.kalman.measurements_config["zarr_dir"],
@@ -50,37 +50,47 @@ class Model1D:
             measurements_config=self.kalman.measurements_config
         )
 
-        exit()
+        self.measurements_xarray = measurements_xarray
+
+        #@TODO: single probe_id (position) per Model1D (per process?)
+        #@TODO: what is  meas flag?
+        #@TODO: how to calculate ukf.R - meas covariance mat?
 
 
+        moisture_meas = measurements_xarray["moisture"]
 
-        noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
-            self.kalman.train_measurements_struc,
-            self.kalman.test_measurements_struc,
-            data_csv=self.kalman.measurements_config["measurements_file"],
-            measurements_config=self.kalman.measurements_config
-        )
+        print("moisture_meas ", moisture_meas)
 
-        precipitation_list = []
-        for (time_prec, precipitation) in meas_model_iter_flux:
-            precipitation_list.extend([precipitation] * time_prec)
-        self.kalman.measurements_config["precipitation_list"] = precipitation_list
 
-        noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps = \
-            self.kalman.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag, timestamps)
+        # noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
+        #     self.kalman.train_measurements_struc,
+        #     self.kalman.test_measurements_struc,
+        #     data_csv=self.kalman.measurements_config["measurements_file"],
+        #     measurements_config=self.kalman.measurements_config
+        # )
+        #
+        # precipitation_list = []
+        # for (time_prec, precipitation) in meas_model_iter_flux:
+        #     precipitation_list.extend([precipitation] * time_prec)
+        # self.kalman.measurements_config["precipitation_list"] = precipitation_list
+        #
+        # noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps = \
+        #     self.kalman.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag, timestamps)
+        #
+        # sample_variance = np.nanvar(noisy_measurements, axis=0)
+        # measurement_noise_covariance = np.diag(sample_variance)
 
-        sample_variance = np.nanvar(noisy_measurements, axis=0)
-        measurement_noise_covariance = np.diag(sample_variance)
+        # self.measurements = noisy_measurements
+        # self.measurement_state_flag_sampled = measurement_state_flag_sampled
+        # self.measurements_timestamps = meas_model_iter_timestamps
+        # self.precipitation_flux_measurements = meas_model_iter_flux
 
-        self.measurements = noisy_measurements
-        self.measurement_state_flag_sampled = measurement_state_flag_sampled
-        self.measurements_timestamps = meas_model_iter_timestamps
-        self.precipitation_flux_measurements = meas_model_iter_flux
+        # assert len(self.measurements) == len(self.measurements_timestamps) == len(self.measurement_state_flag_sampled) == len(self.precipitation_flux_measurements)
+        #
+        # self.kalman.results.times_measurements = np.cumsum(meas_model_iter_time)
+        # self.kalman.results.precipitation_flux_measurements = meas_model_iter_flux
 
-        assert len(self.measurements) == len(self.measurements_timestamps) == len(self.measurement_state_flag_sampled) == len(self.precipitation_flux_measurements)
 
-        self.kalman.results.times_measurements = np.cumsum(meas_model_iter_time)
-        self.kalman.results.precipitation_flux_measurements = meas_model_iter_flux
 
         return self.kalman.set_kalman_filter(measurement_noise_covariance)
 
@@ -95,6 +105,9 @@ class Model1D:
             - self.measurements_timestamps is sorted
             - timestamps are datetime objects
         """
+
+
+
 
         i0 = bisect_left(self.measurements_timestamps, start_time)
         i1 = bisect_right(self.measurements_timestamps, stop_time)

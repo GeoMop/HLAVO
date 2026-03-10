@@ -548,7 +548,7 @@ class KalmanFilter:
 
         return ukf
 
-    def kalman_step(self, ukf, start_time, target_time, measurements, measurements_state_flag, precipitation_flux, pressure_at_bottom):
+    def kalman_step(self, ukf, start_time, target_time, measurements_xarray, precipitation_flux, pressure_at_bottom):
         """
         Run ONE UKF predict/update step.
         Intended to be called from the 1D model step().
@@ -559,6 +559,8 @@ class KalmanFilter:
 
         iter_duration = target_time - start_time
         iter_minutes = int(iter_duration.total_seconds() // 60)
+
+        #@TODO: encode measurements_xarray
 
         assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
 

@@ -64,7 +64,7 @@ def load_zarr_data(train_measurements_struc, test_measurements_struc, zarr_dir, 
     print(ds.dataset)
 
 
-    exit()
+    return ds.dataset
 
 
     min_idx = 0

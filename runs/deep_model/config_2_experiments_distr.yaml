@@ -35,7 +35,9 @@ model_config:
       - 0.35
       - 6
 measurements_config:
-  measurements_file: /storage/liberec3-tul/home/martin_spetlik/HLAVO_distr/runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
+  measurements_file: /home/martin/Documents/HLAVO/runs/column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
+  zarr_dir: /home/martin/Documents/HLAVO/tests/ingress/moist_profile/test_storage
+  scheme_file: /home/martin/Documents/HLAVO/hlavo/ingress/moist_profile/profile_schema.yaml
   measurements_time_step: 5
   probe: "pr2"
   model_time_step: 0.025 #2.5e-2
