@@ -26,6 +26,8 @@ import sys
 import argparse
 from datetime import datetime
 from pathlib import Path
+
+import numpy as np
 from dask.distributed import Client, LocalCluster, get_client, Queue
 from model_1d import Model1D
 from model_3d import Model3D
@@ -35,7 +37,7 @@ def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue
     """
     Entry function running on a Dask worker.
     """
-    model = Model1D(idx=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path, seed=seed)
+    model = Model1D(site_id=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path, seed=seed)
     return model.run_loop(start_datetime, end_datetime, queue_name_in, queue_name_out)
 
 
@@ -57,18 +59,18 @@ def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
         model_1d_config_path = Path(model_1d_config).resolve()
         model_config_content = load_config(model_1d_config_path)
 
-        model_work_dir = os.path.join(work_dir, "model_1d_{}".format(i))
+        model_work_dir = os.path.join(work_dir, "model_1d_{}".format(i+1))
         print("model_work_dir ", model_work_dir)
         os.makedirs(model_work_dir, exist_ok=True)
 
-        q_name_3d_to_1d = f"q-3d-to-1d-{i}"
+        q_name_3d_to_1d = f"q-3d-to-1d-{i+1}"
         Queue(q_name_3d_to_1d, client=client)  # ensure creation
 
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
 
         fut = client.submit(
             model1d_worker_entry,
-            i,
+            i+1,
             start_datetime, end_datetime,
             q_name_3d_to_1d,
             queue_name_1d_to_3d, model_work_dir, model_1d_config_path, seed=deep_model_config["seed"],
@@ -118,8 +120,8 @@ if __name__ == "__main__":
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
-    start_datetime = datetime.fromisoformat(deep_model_config["start_datetime"])
-    end_datetime = datetime.fromisoformat(deep_model_config["end_datetime"])
+    start_datetime = np.datetime64(deep_model_config["start_datetime"])
+    end_datetime = np.datetime64(deep_model_config["end_datetime"])
 
     print("start date time ", start_datetime)
     print("end date time ", end_datetime)

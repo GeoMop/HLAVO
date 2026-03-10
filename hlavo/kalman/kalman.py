@@ -558,24 +558,37 @@ class KalmanFilter:
         #self.model.set_pressure_at_bottom(pressure_at_bottom)
 
         iter_duration = target_time - start_time
-        iter_minutes = int(iter_duration.total_seconds() // 60)
+        iter_minutes = int(iter_duration / np.timedelta64(1, "m"))
 
+        # @TODO: how to deal with encode/decode procedure now?
         #@TODO: encode measurements_xarray
 
-        assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
+        #assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
 
-        for i in range(len(measurements)):
-            measurement = measurements[i]
+        times = measurements_xarray.date_time.values
 
-            # --- Predict ---
+        measurements = []
+        for i in range(len(times)):
+            t = times[i]
+
+            if i == 0:
+                iter_minutes = 0
+            else:
+                iter_minutes = (times[i] - times[i - 1]) / np.timedelta64(1, "m")
+
+            measurement = measurements_xarray.isel(date_time=i)
+
+            #self.train_measurements_struc.decode(measurement)
+
             ukf.predict(
                 iter_duration=iter_minutes,
                 precipitation_flux=precipitation_flux[i]
             )
 
-            # --- Update logic ---
-            if i < len(measurements_state_flag) and measurements_state_flag[i] != 0:
-                print(f"[UKF] Skipping update at timestep {i} (bad measurements)")
+            status = measurements_xarray.site_status.isel(date_time=i).item()
+
+            if not (10 <= status < 20):
+                print(f"[UKF] Skipping update at timestep {i} (invalid status={status})")
             elif np.isnan(measurement).any():
                 print(f"[UKF] Skipping update at timestep {i} (contains NaN)")
             else:
@@ -583,6 +596,8 @@ class KalmanFilter:
 
             print("sum ukf.P ", np.sum(ukf.P))
             print("Estimated State:", ukf.x)
+
+            measurements.append(measurement)
 
         # --- Store results ---
         self.results.times.append(target_time)
@@ -602,9 +617,7 @@ class KalmanFilter:
         self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
         self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
 
-        longitude, latitude = self.get_longitude_latitude()
-
-        return velocity, longitude, latitude
+        return velocity
 
     def run_kalman_filter(self, ukf, noisy_measurements, measurement_state_flag):
         """

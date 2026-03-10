@@ -1,16 +1,18 @@
+import numpy as np
 from dask.distributed import Queue
 from hlavo.kalman.kalman import KalmanFilter
 from hlavo.ingress.moist_profile.load_data import load_pr2_data, load_odyssey_data, preprocess_data, get_measurements, get_precipitations, load_data
 from hlavo.ingress.moist_profile.load_zarr_data import load_zarr_data
 from bisect import bisect_left, bisect_right
+from data_1d_to_3d import Data1DTo3D
 
 # ---------------------------------------------------------------------------
 # 1D model class
 # ---------------------------------------------------------------------------
 
 class Model1D:
-    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config_path=None, seed=None):
-        self.idx = idx
+    def __init__(self, site_id, initial_state=0.0, work_dir=None, kalman_config_path=None, seed=None):
+        self.site_id = site_id
         self.state = initial_state
 
         print("workdir ", work_dir)
@@ -47,19 +49,21 @@ class Model1D:
             self.kalman.test_measurements_struc,
             zarr_dir=self.kalman.measurements_config["zarr_dir"],
             scheme_file=self.kalman.measurements_config["scheme_file"],
-            measurements_config=self.kalman.measurements_config
-        )
+            measurements_config=self.kalman.measurements_config)
 
-        self.measurements_xarray = measurements_xarray
+        self.measurements_dataset = measurements_xarray.sel(site_id=self.site_id)
 
-        #@TODO: single probe_id (position) per Model1D (per process?)
-        #@TODO: what is  meas flag?
+        print("type(self.measurements_dataset) ", type(self.measurements_dataset))
+
+
         #@TODO: how to calculate ukf.R - meas covariance mat?
-
 
         moisture_meas = measurements_xarray["moisture"]
 
         print("moisture_meas ", moisture_meas)
+
+        print("measurements_xarray.latitude ", measurements_xarray.latitude)
+
 
 
         # noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
@@ -79,44 +83,39 @@ class Model1D:
         #
         # sample_variance = np.nanvar(noisy_measurements, axis=0)
         # measurement_noise_covariance = np.diag(sample_variance)
-
+        #
         # self.measurements = noisy_measurements
         # self.measurement_state_flag_sampled = measurement_state_flag_sampled
         # self.measurements_timestamps = meas_model_iter_timestamps
         # self.precipitation_flux_measurements = meas_model_iter_flux
-
+        #
         # assert len(self.measurements) == len(self.measurements_timestamps) == len(self.measurement_state_flag_sampled) == len(self.precipitation_flux_measurements)
         #
         # self.kalman.results.times_measurements = np.cumsum(meas_model_iter_time)
         # self.kalman.results.precipitation_flux_measurements = meas_model_iter_flux
 
 
+        kalman_R_matrix = self._calculate_kalman_R_matrix()
 
-        return self.kalman.set_kalman_filter(measurement_noise_covariance)
+        return self.kalman.set_kalman_filter(kalman_R_matrix)
 
-
-    def get_measurement_for_time(self, start_time, stop_time):
+    def _calculate_kalman_R_matrix(self) -> np.ndarray:
         """
-        Retrieve all measurements and flags within a time window:
-            start_time <= timestamp <= stop_time
-
-        Uses binary search (bisect) for O(log n) boundary lookup.
-        Assumes:
-            - self.measurements_timestamps is sorted
-            - timestamps are datetime objects
+        Construct the measurement noise covariance matrix R for Kalman
+        :return: Diagonal covariance matrix of size (num measurements depths, num measurements depths).
         """
+        num_meas_per_probe = len(self.measurements_dataset["depth_level"])
+        return np.eye(num_meas_per_probe)
 
+    def get_measurement_for_time(self, start_time: np.datetime64, stop_time: np.datetime64):
+        """
+        Retrieve measurements within a specified time window.
 
-
-
-        i0 = bisect_left(self.measurements_timestamps, start_time)
-        i1 = bisect_right(self.measurements_timestamps, stop_time)
-
-        selected_measurements = self.measurements[i0:i1]
-        selected_measurements_flags = self.measurement_state_flag_sampled[i0:i1]
-
-        return selected_measurements, selected_measurements_flags
-
+        :param numpy.datetime64 start_time: Inclusive start of the time window.
+        :param numpy.datetime64 stop_time: Inclusive end of the time window.
+        :return: Subset of the measurement dataset containing all variables for the selected time range.
+        """
+        return self.measurements_dataset.sel(date_time=slice(start_time, stop_time))
 
     def get_precipitation_for_time(self, start_time, stop_time):
         """
@@ -124,9 +123,27 @@ class Model1D:
         Uses the same slicing logic as measurement retrieval to ensure
         temporal alignment.
         """
-        i0 = bisect_left(self.measurements_timestamps, start_time)
-        i1 = bisect_right(self.measurements_timestamps, stop_time)
-        return self.kalman.results.precipitation_flux_measurements[i0:i1]
+        # i0 = bisect_left(self.measurements_timestamps, start_time)
+        # i1 = bisect_right(self.measurements_timestamps, stop_time)
+
+        return self.kalman.measurements_config["precipitation_list"] #@TODO: RM ASAP
+
+        #return self.kalman.results.precipitation_flux_measurements[i0:i1]
+
+    def get_long_lat(self, target_time: np.datetime64) -> tuple[float, float]:
+        """
+        Retrieve longitude and latitude for the site at the specified time.
+
+        :param numpy.datetime64 target_time: Timestamp for which the site coordinates should be retrieved.
+        :return: Tuple containing (longitude, latitude) in decimal degrees.
+        """
+
+        meas_at_target_time = self.measurements_dataset.sel(date_time=target_time)
+
+        longitude = meas_at_target_time.longitude.compute().item()
+        latitude = meas_at_target_time.latitude.compute().item()
+
+        return longitude, latitude
 
 
     def step(self, start_time, target_time, pressure_at_bottom):
@@ -138,18 +155,21 @@ class Model1D:
         3. Retrieve aligned precipitation flux.
         4. Execute one Kalman step.
         """
-        print(f"[1D {self.idx}] step at t={target_time}")
+        print(f"[1D {self.site_id}] step at t={target_time}")
 
         # measurement must come from somewhere meaningful
-        measurements, measurements_flag = self.get_measurement_for_time(start_time, target_time)
-        precipitation_flux = self.get_precipitation_for_time(start_time, target_time)
+        measurements = self.get_measurement_for_time(start_time, target_time)
+        precipitation_flux = self.get_precipitation_for_time(start_time, target_time)[:measurements.sizes["date_time"]] #@TODO: refactor
 
         darcy_velocity = None
         if len(measurements) > 0:
-            darcy_velocity = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements,
-                                               measurements_flag, precipitation_flux, pressure_at_bottom)
+            darcy_velocity = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements, precipitation_flux, pressure_at_bottom)
 
-        return darcy_velocity
+        longitude, latitude = self.get_long_lat(target_time)
+
+        return Data1DTo3D(date_time=target_time, site_id=self.site_id,
+                   longitude=longitude, latitude=latitude, velocity=darcy_velocity)
+
 
     def run_loop(self, t_start, t_end, queue_name_in, queue_name_out):
         """
@@ -165,9 +185,9 @@ class Model1D:
             target_time, data = q_in.get() # How target time gets into Queue?    # blocks
             print("current time:{}, target time: {}".format(current_time, target_time))
 
-            contribution = self.step(current_time, target_time, data) #@TODO: Why we need contribution?
-            q_out.put((self.idx, target_time, contribution))
-            print(f"[1D {self.idx}] sent contribution={contribution} at t={target_time}")
+            data_1d_to_3d = self.step(current_time, target_time, data) #@TODO: Why we need contribution?
+            q_out.put(data_1d_to_3d)
+            #print(f"[1D {self.idx}] sent contribution={contribution} at t={target_time}")
 
             current_time = target_time
 

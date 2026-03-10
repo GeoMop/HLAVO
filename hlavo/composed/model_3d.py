@@ -1,3 +1,4 @@
+import numpy as np
 from dask.distributed import get_client, Queue
 from datetime import datetime, timedelta
 from hlavo.kalman.kalman import KalmanFilter
@@ -10,7 +11,7 @@ from bisect import bisect_left, bisect_right
 # ---------------------------------------------------------------------------
 
 class Model3D:
-    def __init__(self, n_1d, initial_state=0.0, initial_time=0.0, base_dt=timedelta(minutes=5)):
+    def __init__(self, n_1d, initial_state=0.0, initial_time=0.0, base_dt=timedelta(minutes=120)):
         self.n_1d = n_1d
         self.state = initial_state
         #self.time = initial_time
@@ -51,6 +52,9 @@ class Model3D:
         print("current time ", current_time)
         print("end date time ", end_datetime)
 
+        print("current time ", type(current_time))
+        print("end date time ", type(end_datetime))
+
         while current_time < end_datetime:
             dt = self.choose_dt(current_time, end_datetime)
             print("dt ", dt)
@@ -58,7 +62,10 @@ class Model3D:
                 print("[3D] dt <= 0, stopping to avoid infinite loop.")
                 break
 
-            target_time = current_time + dt
+            dt_np = np.timedelta64(int(dt.total_seconds()), "s")
+
+            target_time = current_time + dt_np
+            print("type(target_time) ", type(target_time))
             print(f"\n[3D] === Step: t={current_time} -> t={target_time} ===")
             print(f"[3D] current state={self.state}")
 
