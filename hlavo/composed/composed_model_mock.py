@@ -40,7 +40,7 @@ class Model1D:
         self.state = initial_state
 
         self.kalman = KalmanFilter.from_config(work_dir, kalman_config, verbose=False)
-        self.ukf = self._prepare_kalman_measurements()
+        self.ukf = self.prepare_kalman_measurements()
 
         #kalman_filter.run() # load measurements
 
