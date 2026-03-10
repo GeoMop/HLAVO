@@ -33,6 +33,7 @@ from pathlib import Path
 from dask.distributed import Client, LocalCluster, get_client, Queue
 from hlavo.kalman.kalman import KalmanFilter
 from hlavo.ingress.moist_profile.load_data import load_pr2_data, load_odyssey_data, preprocess_data, get_measurements, get_precipitations, load_data
+from hlavo.ingress.moist_profile.load_zarr_data import load_zarr_data
 from bisect import bisect_left, bisect_right
 
 # ---------------------------------------------------------------------------
@@ -72,6 +73,19 @@ class Model1D:
         5. Stores aligned arrays used during runtime slicing.
         6. Initializes the UKF with estimated measurement covariance.
         """
+        print("self.kalman.measurements_config ", self.kalman.measurements_config)
+        noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_zarr_data(
+            self.kalman.train_measurements_struc,
+            self.kalman.test_measurements_struc,
+            zarr_dir=self.kalman.measurements_config["zarr_dir"],
+            scheme_file=self.kalman.measurements_config["scheme_file"],
+            measurements_config=self.kalman.measurements_config
+        )
+
+        exit()
+
+
+
         noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
             self.kalman.train_measurements_struc,
             self.kalman.test_measurements_struc,
@@ -334,6 +348,7 @@ def load_config(config_path):
     with config_path.open("r") as f:
         config_dict = yaml.safe_load(f)
     return config_dict
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
