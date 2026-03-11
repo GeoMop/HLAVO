@@ -8,7 +8,7 @@ import attrs
 import numpy as np
 import yaml
 
-from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
@@ -183,6 +183,21 @@ def assign_materials(
 def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     model_inputs = ModelInputs.from_yaml(config_path)
     grid = model_inputs.grid
+    boundary_origin = np.asarray(model_inputs.boundary.origin, dtype=float)
+
+    grid_xy_min = grid.origin[:2].astype(float)
+    grid_xy_max = grid_xy_min + grid.step[:2].astype(float) * grid.el_dims[:2].astype(float)
+    grid_corners_local = np.asarray([grid_xy_min, grid_xy_max], dtype=float)
+    grid_corners_global = grid_corners_local + boundary_origin[None, :]
+    origin_global = np.asarray(
+        [grid.origin[0] + boundary_origin[0], grid.origin[1] + boundary_origin[1], grid.origin[2]],
+        dtype=float,
+    )
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs(5514, 4326, always_xy=True)
+    lon, lat = transformer.transform(grid_corners_global[:, 0], grid_corners_global[:, 1])
+    grid_corners_lonlat = np.column_stack([lon, lat]).astype(float)
 
     active_mask = active_mask_from_boundary(model_inputs.boundary, grid)
     full_active = np.ones_like(active_mask, dtype=bool)
@@ -201,6 +216,12 @@ def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
         x_nodes=grid.x_nodes,
         y_nodes=grid.y_nodes,
         z_nodes=grid.z_nodes,
+        boundary_origin=boundary_origin,
+        origin_global=origin_global,
+        grid_corners_local=grid_corners_local,
+        grid_corners_global=grid_corners_global,
+        grid_corners_lonlat=grid_corners_lonlat,
+        lonlat_epsg=4326,
         active_mask=active_mask,
         materials=materials,
         layer_names=np.asarray([r.name for r in rasters_bottom_up], dtype=object),

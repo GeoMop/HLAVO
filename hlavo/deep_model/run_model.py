@@ -695,6 +695,28 @@ def _resolve_executable(exe_name: str) -> Path | None:
     return Path(resolved) if resolved else None
 
 
+def _append_grid_lonlat_to_nam(
+    nam_path: Path, grid_corners_lonlat: np.ndarray, epsg: int = 4326
+) -> None:
+    assert grid_corners_lonlat.shape == (2, 2), "grid_corners_lonlat must be 2x2"
+    sw = grid_corners_lonlat[0]
+    ne = grid_corners_lonlat[1]
+    marker = "Grid SW corner lon/lat"
+    lines = [
+        f"# {marker} (EPSG:{epsg}): {sw[1]:.6f}, {sw[0]:.6f}",
+        f"# Grid NE corner lon/lat (EPSG:{epsg}): {ne[1]:.6f}, {ne[0]:.6f}",
+    ]
+
+    content = nam_path.read_text(encoding="utf-8")
+    if marker in content:
+        return
+    existing = content.splitlines()
+    insert_at = 1 if existing and existing[0].startswith("#") else 0
+    updated = existing[:insert_at] + lines + existing[insert_at:]
+    ending = "\n" if content.endswith("\n") else ""
+    nam_path.write_text("\n".join(updated) + ending, encoding="utf-8")
+
+
 def _elf_machine(path: Path) -> int | None:
     with path.open("rb") as handle:
         if handle.read(4) != b"\x7fELF":
@@ -775,6 +797,10 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     valid = materials_mf >= 0
     hk[valid] = conductivity_values[materials_mf[valid]]
 
+    grid_corners_lonlat = grid_data.get("grid_corners_lonlat")
+    assert grid_corners_lonlat is not None, "grid_corners_lonlat missing from grid data"
+    lonlat_epsg = int(grid_data.get("lonlat_epsg", 4326))
+
     workdir = run_config.workspace
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -838,6 +864,10 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     )
 
     sim.write_simulation()
+    _append_grid_lonlat_to_nam(workdir / "mfsim.nam", grid_corners_lonlat, lonlat_epsg)
+    _append_grid_lonlat_to_nam(
+        workdir / f"{run_config.sim_name}.nam", grid_corners_lonlat, lonlat_epsg
+    )
     success, buffer = sim.run_simulation()
     assert success, "Modflow6 did not terminate successfully"
     LOG.info("Modflow6 run complete")
