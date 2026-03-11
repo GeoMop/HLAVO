@@ -152,7 +152,6 @@ class Grid:
 
 
 @attrs.define(frozen=True)
-@attrs.define(frozen=True)
 class ModelInputs:
     """In-memory representation of boundary and raster inputs."""
 
