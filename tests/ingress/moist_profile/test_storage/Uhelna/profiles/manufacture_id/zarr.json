@@ -1,6 +1,6 @@
 {
   "shape": [
-    3
+    2
   ],
   "data_type": {
     "name": "fixed_length_utf32",
@@ -12,7 +12,7 @@
     "name": "regular",
     "configuration": {
       "chunk_shape": [
-        3
+        1
       ]
     }
   },
@@ -47,7 +47,7 @@
     "source_unit": null
   },
   "dimension_names": [
-    "probe_id"
+    "site_id"
   ],
   "zarr_format": 3,
   "node_type": "array",

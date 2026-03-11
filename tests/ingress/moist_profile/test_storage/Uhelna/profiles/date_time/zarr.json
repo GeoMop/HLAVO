@@ -1,13 +1,13 @@
 {
   "shape": [
-    2556
+    2568
   ],
   "data_type": "int64",
   "chunk_grid": {
     "name": "regular",
     "configuration": {
       "chunk_shape": [
-        2556
+        2568
       ]
     }
   },
@@ -60,7 +60,7 @@
       "hour"
     ],
     "sorted": "None",
-    "units": "hours since 2025-01-06 10:00:00",
+    "units": "hours since 2025-01-06 00:00:00",
     "calendar": "proleptic_gregorian"
   },
   "dimension_names": [
