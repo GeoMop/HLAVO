@@ -20,15 +20,16 @@ def _process_water_level_sheet(df_read, sheetname):
         "FINAL záměr (m)": "water_depth",
         "FINAL hladina (m nm)": "water_level"
     })
+
+    # convert values of date_time column to datetime64[min]
+    df_read["date_time"] = pd.to_datetime(df_read["date_time"]).dt.floor("min")
+
     df_read["well_id_orig"] = sheetname
     df_read["well_id"] = df_read["well_id_orig"].values.astype("str")
     df = df_read[["well_id", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
 
     # remove rows contains NaN values of water_level
     df = df.dropna(subset=["water_level"])
-
-    # convert values of date_time column to datetime64[min]
-    df["date_time"] = pd.to_datetime(df["date_time"]).dt.floor("min")
 
     df.attrs["units"] = {"water_depth ": "m", "water_level": "m above see level"}
 
@@ -46,6 +47,59 @@ def _prepare_default_filepaths(file_paths):
         file_paths = {script_path / f for f in defautl_files}
     return file_paths
 
+
+"""
+Return dictionary of pairs of sheet names in excel files and its according well ids in section file.
+"""
+def _sheet_names_dictionary():
+    dict = {
+        "1420_19 (Mw)" : "19",
+        "1420_20 (Nd)" : "20",
+        "1420_21 (Mw)" : "21",
+        "1420_22 (Mw)" : "22",
+        "1420_22B (Q)" : "22B" ,
+        "1420_23 (Mw)" : "23",
+        "1420_23B (Q)" : "23B",
+        "1420_24 (Pw)" : "24",
+        "1420_24B (Q)" : "24B",
+        "1420_25 (Nd)" : "25",
+        "1420_1 (Nd)" : "1",
+        "1420_2 (Nd)" : "2",
+        "1420_3 (Nd)" : "3",
+        "1420_4 (Ng)" : "4",
+        "1420_5 (Nd)" : "5",
+        "1420_6 (Nd)" : "6",
+        "1420_7 (Ng)" : "7",
+        "6413_8 (Krystalinikum)" : "8",
+        "1430_9 (Q)" : "9",
+        "1430_10 (Nd)" : "10",
+        "1430_10A (Nd)" : "10A",
+        "1430_11 (Nd)" : "11",
+        "1430_13 (Nd)" : "13",
+        "1430_15 (Nd)" : "15",
+        "1430_16 (Nd)" : "16",
+        "1420_17 (Nd)" : "17",
+        "1420_18 (Nd)" : "18",
+        "H-3 (Pw)" : "H-3",
+        "H-4 (Pw)" : "H-4",
+        "H-6 (Pw)" : "H-6",
+        "H-9 (Pw)" : "H-9",
+        "H-2a (Mw)" : "H-2a",
+        "H-4a (Mw)" : "H-4a",
+        "H-7a (Mw)" : "H-7a",
+        "H-8a (Mw)" : "H-8a",
+        "H-3b (Nd)" : "H-3b",
+        "H-5b (Nd)" : "H-5b",
+        "H-6b (Nd)" : "H-6b",
+        "GI-1 (Q)" : "GI-1",
+        "GI-2 (Q)" : "GI-2",
+        "GI-3 (Q)" : "GI-3",
+        "JA-1 (Nd)" : "JA-1",
+        "Uh-2 (Q)" : "UH-2"
+    }
+    return dict
+
+
 """
 Read water level data from set of excel files (*.xls, *.xlsx ...).
 
@@ -57,6 +111,8 @@ def read_water_level(file_paths=None):
 
     # List of DataFrames of sheets with required data format
     dfs = []
+    # List of processed sheets in all processed files
+    processed_sheets = []
 
     for xls_file in file_paths:
         print(f"Processing of file: {xls_file}")
@@ -68,12 +124,26 @@ def read_water_level(file_paths=None):
             df = pd.read_excel(xls, sheet_name=sheet)
             clmns = df.columns.values.tolist()
 
-            if (clmns[0] == "m nm OB :") and (clmns[2] == "záměr (m)"):
-                print("  ... processing")
+            try:
                 df_sheet = _process_water_level_sheet(df, sheetname=sheet)
-                dfs.append(df_sheet)
+            except Exception as e:
+                print("  ... sheet is not in required data format>")
+                print(f"      {e}")
             else:
-                print("  ... sheet is not in required data format")
+                dfs.append(df_sheet)
+                processed_sheets.append(sheet)
+                print("  ... sheet successfully processed")
+
+    #processed_sheets = processed_sheets.values.astype("str")
+    full_name_map = _sheet_names_dictionary();
+    # test if all values of full_name_map dictionary exist as sheet in set of excel files
+    expected = set(full_name_map.values())
+    missing = expected - set(processed_sheets)
+    # TypeError: unsupported operand type(s) for -: 'set' and 'list'
+    if missing:
+        print("Following sheets were not processed or doesn't exist:")
+        for name in sorted(missing):
+            print(f" - {name}")
 
     if dfs:  # test empty list
         final_df = pd.concat(dfs, ignore_index=True)
@@ -157,20 +227,19 @@ def read_sections(section_file, sheetname, water_level_file_paths=None):
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
 
-    water_level_file_paths = _prepare_default_filepaths(water_level_file_paths)
-    # List of borehole names used in
-    borehole_water_level_names = []
-    for xls_file in water_level_file_paths:
-        xls = pd.ExcelFile(xls_file)
-        for sheet in xls.sheet_names:
-            df_in = pd.read_excel(xls, sheet_name=sheet)
-            clmns = df_in.columns.values.tolist()
-            if (clmns[0] == "m nm OB :") and (clmns[2] == "záměr (m)"):
-                borehole_water_level_names.append(sheet)
-    print(f"Sheets in water level files: {borehole_water_level_names}")
-    print("Values of column full_name:")
-    print(df['borehole_full_name'].to_string(index=False))
-    # add columns  ‘borehole_id’ (name of sheet in file with water levels), ‘confirmed’ -  0, 1
+    # add borehole_id - according name of sheet in excel file if exists
+    full_name_map = _sheet_names_dictionary();
+    df["borehole_id"] = df["borehole_full_name"].map(full_name_map)
+    df["confirmed"] = df["borehole_id"].notna().astype(int)
+
+    # test if all values of full_name_map dictionary exist in dataframe
+    expected = set(full_name_map.values())
+    used = set(df["borehole_id"].dropna())
+    missing = expected - used
+    if missing:
+        print("Following sheet names are not contained in section list:")
+        for name in sorted(missing):
+            print(f" - {name}")
 
     # split more intervals to separate rows
     df["interval"] = df["interval"].str.split(";")
@@ -218,7 +287,12 @@ def read_sections(section_file, sheetname, water_level_file_paths=None):
 Perform pandas.DataFrame data to CSV file.
 """
 def csv_output(csv_file, df):
-    df.to_csv(path_or_buf=csv_file, header=True, mode='w')
+    script_dir = Path(__file__).parent
+    workdir = script_dir / "workdir"
+    workdir.mkdir(exist_ok=True)
+
+    full_path = workdir / csv_file
+    df.to_csv(path_or_buf=full_path, header=True, mode='w')
 
 
 """
