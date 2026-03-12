@@ -1,7 +1,7 @@
 {
   "shape": [
-    2556,
-    3,
+    2568,
+    2,
     5
   ],
   "data_type": "float64",
@@ -9,8 +9,8 @@
     "name": "regular",
     "configuration": {
       "chunk_shape": [
-        1278,
-        3,
+        2568,
+        1,
         5
       ]
     }
@@ -48,7 +48,7 @@
   },
   "dimension_names": [
     "date_time",
-    "probe_id",
+    "site_id",
     "depth_level"
   ],
   "zarr_format": 3,

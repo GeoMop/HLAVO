@@ -1,15 +1,15 @@
 {
   "shape": [
-    2556,
-    3
+    2568,
+    2
   ],
   "data_type": "int32",
   "chunk_grid": {
     "name": "regular",
     "configuration": {
       "chunk_shape": [
-        2556,
-        3
+        2568,
+        1
       ]
     }
   },
@@ -39,13 +39,13 @@
     "unit": null,
     "type": "int32",
     "range": null,
-    "description": "Estimated location ID according to the table of possible locations. Including the lab.",
-    "df_col": "location_id",
+    "description": "Integer status code of the site: positive - ok, negative - data invalid.",
+    "df_col": "site_status",
     "source_unit": null
   },
   "dimension_names": [
     "date_time",
-    "probe_id"
+    "site_id"
   ],
   "zarr_format": 3,
   "node_type": "array",
