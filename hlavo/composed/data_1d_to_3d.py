@@ -1,3 +1,12 @@
-from hlavo.composed.composed_protocol import Data1DTo3D
+import numpy as np
+from dataclasses import dataclass
+from typing import Any
 
-__all__ = ["Data1DTo3D"]
+
+@dataclass(slots=True)
+class Data1DTo3D:
+    date_time: np.datetime64['m']
+    site_id: int
+    longitude: float
+    latitude: float
+    velocity: Any # Units not yet known
