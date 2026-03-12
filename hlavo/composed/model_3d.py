@@ -5,6 +5,7 @@ from hlavo.kalman.kalman import KalmanFilter
 from hlavo.ingress.moist_profile.load_data import load_pr2_data, load_odyssey_data, preprocess_data, get_measurements, get_precipitations, load_data
 from hlavo.ingress.moist_profile.load_zarr_data import load_zarr_data
 from bisect import bisect_left, bisect_right
+from hlavo.composed.data_3d_to_1d import Data3DTo1D
 
 # ---------------------------------------------------------------------------
 # 3D model class
@@ -71,9 +72,10 @@ class Model3D:
 
             # send to 1D
             for i in range(self.n_1d):
-                data_for_i = self.state + i  # dummy placeholder
-                print(f"[3D] sending to 1D {i}: t={target_time}, data={data_for_i}")
-                q_3d_to_1d[i].put((target_time, data_for_i))
+                data_for_i = self.state + i + 1 # dummy placeholder
+                print(f"[3D] sending to 1D {i+1}: t={target_time}, data={data_for_i}")
+                data_to_1d = Data3DTo1D(site_id=i+1, date_time=target_time, pressure_head=data_for_i)
+                q_3d_to_1d[i].put((target_time, data_to_1d))
 
             # receive contributions
             contributions = [None] * self.n_1d

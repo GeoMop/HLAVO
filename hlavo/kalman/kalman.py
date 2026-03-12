@@ -548,7 +548,7 @@ class KalmanFilter:
 
         return ukf
 
-    def kalman_step(self, ukf, start_time, target_time, measurements_xarray, precipitation_flux, pressure_at_bottom):
+    def kalman_step(self, ukf, measurements_dataset, precipitation_flux, pressure_at_bottom):
         """
         Run ONE UKF predict/update step.
         Intended to be called from the 1D model step().
@@ -557,42 +557,51 @@ class KalmanFilter:
 
         #self.model.set_pressure_at_bottom(pressure_at_bottom)
 
-        iter_duration = target_time - start_time
-        iter_minutes = int(iter_duration / np.timedelta64(1, "m"))
+        #iter_duration = target_time - start_time
+        #iter_minutes = int(iter_duration / np.timedelta64(1, "m"))
 
         # @TODO: how to deal with encode/decode procedure now?
         #@TODO: encode measurements_xarray
 
         #assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
 
-        times = measurements_xarray.date_time.values
+        meas_times = measurements_dataset.date_time.values
+
+        parflow_model_time_step = self.kalman_config["model_time_step"]
 
         measurements = []
-        for i in range(len(times)):
-            t = times[i]
+        for i in range(1, len(meas_times)):
+            target_time = meas_times[i]
 
-            if i == 0:
-                iter_minutes = 0
-            else:
-                iter_minutes = (times[i] - times[i - 1]) / np.timedelta64(1, "m")
+            print("target time ", target_time)
 
-            measurement = measurements_xarray.isel(date_time=i)
+            iter_minutes = (meas_times[i] - meas_times[i - 1]) / np.timedelta64(1, "m")
+
+            print("iter_minutes ", iter_minutes)
+
+            print("sensor_depth  ", measurements_dataset.sensor_depth.compute().values)
+
 
             #self.train_measurements_struc.decode(measurement)
+
+            measurement = measurements_dataset.isel(date_time=i)
+            print("measurement ", measurement)
+            encoded_train_measurements = self.train_measurements_struc.encode(measurement)
+
+            print("encoded_train_measurements ", encoded_train_measurements)
 
             ukf.predict(
                 iter_duration=iter_minutes,
                 precipitation_flux=precipitation_flux[i]
             )
 
-            status = measurements_xarray.site_status.isel(date_time=i).item()
-
+            status = measurements_dataset.site_status.isel(date_time=i).item()
             if not (10 <= status < 20):
                 print(f"[UKF] Skipping update at timestep {i} (invalid status={status})")
-            elif np.isnan(measurement).any():
+            elif np.isnan(encoded_train_measurements).any():
                 print(f"[UKF] Skipping update at timestep {i} (contains NaN)")
             else:
-                ukf.update(measurement)
+                ukf.update(encoded_train_measurements)
 
             print("sum ukf.P ", np.sum(ukf.P))
             print("Estimated State:", ukf.x)

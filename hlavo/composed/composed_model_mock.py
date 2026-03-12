@@ -29,8 +29,8 @@ from pathlib import Path
 
 import numpy as np
 from dask.distributed import Client, LocalCluster, get_client, Queue
-from model_1d import Model1D
-from model_3d import Model3D
+from hlavo.composed.model_1d import Model1D
+from hlavo.composed.model_3d import Model3D
 
 
 def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, kalman_config_path, seed=123):

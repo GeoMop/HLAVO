@@ -4,7 +4,7 @@ from hlavo.kalman.kalman import KalmanFilter
 from hlavo.ingress.moist_profile.load_data import load_pr2_data, load_odyssey_data, preprocess_data, get_measurements, get_precipitations, load_data
 from hlavo.ingress.moist_profile.load_zarr_data import load_zarr_data
 from bisect import bisect_left, bisect_right
-from data_1d_to_3d import Data1DTo3D
+from hlavo.composed.data_1d_to_3d import Data1DTo3D
 
 # ---------------------------------------------------------------------------
 # 1D model class
@@ -14,6 +14,8 @@ class Model1D:
     def __init__(self, site_id, initial_state=0.0, work_dir=None, kalman_config_path=None, seed=None):
         self.site_id = site_id
         self.state = initial_state
+
+        self.measurements_dataset = None
 
         print("workdir ", work_dir)
         print("kalman config path ", kalman_config_path)
@@ -55,7 +57,6 @@ class Model1D:
 
         print("type(self.measurements_dataset) ", type(self.measurements_dataset))
 
-
         #@TODO: how to calculate ukf.R - meas covariance mat?
 
         moisture_meas = measurements_xarray["moisture"]
@@ -94,18 +95,9 @@ class Model1D:
         # self.kalman.results.times_measurements = np.cumsum(meas_model_iter_time)
         # self.kalman.results.precipitation_flux_measurements = meas_model_iter_flux
 
-
-        kalman_R_matrix = self._calculate_kalman_R_matrix()
+        kalman_R_matrix = Model1D.calculate_kalman_R_matrix(len(self.measurements_dataset["depth_level"]))
 
         return self.kalman.set_kalman_filter(kalman_R_matrix)
-
-    def _calculate_kalman_R_matrix(self) -> np.ndarray:
-        """
-        Construct the measurement noise covariance matrix R for Kalman
-        :return: Diagonal covariance matrix of size (num measurements depths, num measurements depths).
-        """
-        num_meas_per_probe = len(self.measurements_dataset["depth_level"])
-        return np.eye(num_meas_per_probe)
 
     def get_measurement_for_time(self, start_time: np.datetime64, stop_time: np.datetime64):
         """
@@ -163,7 +155,7 @@ class Model1D:
 
         darcy_velocity = None
         if len(measurements) > 0:
-            darcy_velocity = self.kalman.kalman_step(self.ukf, start_time, target_time, measurements, precipitation_flux, pressure_at_bottom)
+            darcy_velocity = self.kalman.kalman_step(self.ukf, measurements, precipitation_flux, pressure_at_bottom)
 
         longitude, latitude = self.get_long_lat(target_time)
 
@@ -182,11 +174,13 @@ class Model1D:
         current_time = t_start
 
         while current_time < t_end:
-            target_time, data = q_in.get() # How target time gets into Queue?    # blocks
+            target_time, data_to_1d = q_in.get() # How target time gets into Queue?    # blocks
             print("current time:{}, target time: {}".format(current_time, target_time))
 
-            data_1d_to_3d = self.step(current_time, target_time, data) #@TODO: Why we need contribution?
-            q_out.put(data_1d_to_3d)
+            assert self.site_id == data_to_1d.site_id
+
+            data_to_3d = self.step(current_time, target_time, data_to_1d.pressure_head) #@TODO: Why we need contribution?
+            q_out.put(data_to_3d)
             #print(f"[1D {self.idx}] sent contribution={contribution} at t={target_time}")
 
             current_time = target_time
@@ -194,3 +188,12 @@ class Model1D:
         self.kalman.save_results()
         print(f"[1D {self.idx}] finished loop at t={current_time} (t_end={t_end})")
         return f"1D model {self.idx} done; final state={self.state}"
+
+
+    @staticmethod
+    def calculate_kalman_R_matrix(num_meas_per_probe) -> np.ndarray:
+        """
+        Construct the measurement noise covariance matrix R for Kalman
+        :return: Diagonal covariance matrix of size (num measurements depths, num measurements depths).
+        """
+        return np.eye(num_meas_per_probe)
