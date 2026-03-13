@@ -2,7 +2,7 @@
 # Update paths to match your environment.
 
 qgis_project_path: "/home/jb/GIS/uhelna_all.qgs"  # example: /data/gis/uhelna_all.qgz
-boundary_layer_name: "domain_around_mine"     # example: JB_extended_domain
+boundary_layer_name: "domain_with_mine"     # example: JB_extended_domain
 raster_group_name: "HG model layers"          # example: HG model layers
 
 grid_output_path: "grid_materials.npz"
@@ -13,7 +13,7 @@ meshsteps:
   z: 10.0   # example: 1.0
 
 model:
-  model_name: "around_mine_coarse"
+  model_name: "with_mine_coarse"
   workspace: "model"
   sim_name: "uhelna"
   exe_name: "mf6"
