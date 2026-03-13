@@ -156,72 +156,99 @@ def add_sensor_depth(df: pl.DataFrame, depths: list[float], *, depth_col: str = 
     )
 
 
-def load_locations_csv(
-    path: str,
-    *,
-    date_col: str = "date",
-    time_col: str = "time",
-    uid_col: str = "loggerUid",
-    lat_col: str = "latitude",
-    lon_col: str = "longitude",
-    dt_col_out: str = "loc_datetime",
-) -> pl.DataFrame:
-    """
-    Reads locations CSV like:
-      date,time,loggerUid,latitude,longitude
-      2025-04-29,11:32:16,U01,50.863565,14.889853
-
-    Returns a DataFrame with columns:
-      loggerUid, loc_datetime, latitude, longitude
-    """
-    df = pl.read_csv(path)
-
-    df = df.with_columns(
-        # build a single datetime column
-        pl.concat_str([pl.col(date_col), pl.col(time_col)], separator=" ")
-          .str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S", strict=True)
-          .alias(dt_col_out),
-
-        pl.col(lat_col).cast(pl.Float64),
-        pl.col(lon_col).cast(pl.Float64),
-    ).select([uid_col, dt_col_out, lat_col, lon_col])
-
-    # join_asof requires sorting
-    return df.sort([uid_col, dt_col_out])
-
-
 def add_location_to_measurements(
-    measurements: pl.DataFrame,
-    locations: pl.DataFrame,
-    *,
-    meas_uid_col: str = "probe_id",
-    meas_dt_col: str = "date_time",
-    loc_uid_col: str = "loggerUid",
-    loc_dt_col: str = "loc_datetime",
+    df_meas: pl.DataFrame,
+    df_sites: pl.DataFrame
 ) -> pl.DataFrame:
     """
-    Adds latitude/longitude to each measurement row based on:
-    - same loggerUid
-    - latest location timestamp <= measurement timestamp
+        Add site_id/latitude/longitude onto measurements using df_sites as an assignment timeline.
+
+        Behavior:
+        - When a probe_id (U*) is assigned to a site, the mapping applies forward in time
+        - When an 'X' is found for that site, it UNASSIGNS the currently assigned probe
+          from that moment onward (including that timestamp)
     """
-    # join_asof requires both sides sorted by the join keys
-    meas_sorted = measurements.sort([meas_uid_col, meas_dt_col])
-    loc_sorted = locations.sort([loc_uid_col, loc_dt_col])
 
-    return meas_sorted.join_asof(
-        loc_sorted,
-        left_on=meas_dt_col,
-        right_on=loc_dt_col,
-        by_left=meas_uid_col,
-        by_right=loc_uid_col,
-        strategy="backward",  # last known location at/before measurement time
-    ).drop(loc_dt_col)  # optional: drop loc_datetime after join
+    # 1) For rows where df_sites.probe_id == "X", determine which probe it cancels:
+    #    it's the last seen non-X probe_id in that site up to that time.
+    sites = df_sites.sort(["site_id", "datetime"]).with_columns(
+        active_probe=(
+            pl.when((pl.col("probe_id").is_not_null()) & (pl.col("probe_id") != "X"))
+            .then(pl.col("probe_id"))
+            .otherwise(None)
+            .forward_fill()
+            .over("site_id")
+        )
+    )
+
+    # 2) Build probe event timeline:
+    #    - assign events for U* rows (event_probe = probe_id)
+    #    - unassign events for X rows (event_probe = active_probe)
+    assign_events = (
+        sites
+        .filter(pl.col("probe_id").is_not_null() & (pl.col("probe_id") != "X"))
+        .select(
+            pl.col("datetime").alias("event_dt"),
+            pl.col("probe_id").alias("event_probe"),
+            "site_id", "latitude", "longitude", "site_status",
+            pl.lit(False).alias("is_unassign"),
+        )
+    )
+
+    unassign_events = (
+        sites
+        .filter((pl.col("probe_id") == "X") & pl.col("active_probe").is_not_null())
+        .select(
+            pl.col("datetime").alias("event_dt"),
+            pl.col("active_probe").alias("event_probe"),
+            pl.lit(None).cast(pl.Int64).alias("site_id"),
+            pl.lit(None).cast(pl.Float64).alias("latitude"),
+            pl.lit(None).cast(pl.Float64).alias("longitude"),
+            pl.lit(0).cast(pl.Int64).alias("site_status"),
+            pl.lit(True).alias("is_unassign"),
+        )
+    )
+
+    events = (
+        pl.concat([assign_events, unassign_events], how="vertical")
+        # If there are multiple events with same (probe, time),
+        # make sure UNASSIGN wins for exact matches.
+        .with_columns(priority=pl.when(pl.col("is_unassign")).then(2).otherwise(1))
+        .sort(["event_probe", "event_dt", "priority"])
+        .unique(subset=["event_probe", "event_dt"], keep="last")
+        .drop("priority")
+        .sort(["event_probe", "event_dt"])
+    )
+
+    # 3) Asof-join measurements to the latest event for that probe
+    meas_sorted = df_meas.sort(["probe_id", "date_time"])
+
+    out = (
+        meas_sorted.join_asof(
+            events,
+            left_on="date_time",
+            right_on="event_dt",
+            by_left="probe_id",
+            by_right="event_probe",
+            strategy="backward",
+        )
+        # set zero site_id wherever null - means probe is not used
+        # .with_columns(site_id=pl.col("site_id").cast(pl.Int64).fill_null(0))
+        # keep only measurements assigned to a site
+        .filter(pl.col("site_id").is_not_null())
+        # drop auxiliary columns
+        .drop(["event_dt", "is_unassign"])
+    )
+
+    return out
 
 
-def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) -> pl.DataFrame:
+def extract_df(file_path: str | Path, df_sites,
+               *, read_csv_kwargs: dict | None = None) -> pl.DataFrame | None:
     """
     Read a single CSV file into a Polars DataFrame, extract sensor_id from the filename,
     and add it as a new column.
+    Returns None if no data found in CSV (no dateTime column).
     """
     p = Path(file_path)
     name = p.name
@@ -235,6 +262,11 @@ def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) ->
     kwargs = read_csv_kwargs or {}
     # dateTime: 06-01-2025 11:00:00
     df = pl.read_csv(p, **kwargs)
+
+    # test due to empty files (no data):
+    if "dateTime" not in df.columns:
+        return None
+
     df = df.with_columns( pl.col("dateTime")
         .str.strptime(pl.Datetime, format="%d-%m-%Y %H:%M:%S", strict=True)
         .alias("dateTime")
@@ -251,12 +283,8 @@ def extract_df(file_path: str | Path, *, read_csv_kwargs: dict | None = None) ->
     df = df.with_columns(pl.lit("Odyssey").alias("probe_model"))
     # add permeability column with zeros
     df = df.with_columns(pl.lit(0.0).alias("permeability"))
-    df = df.with_columns(pl.lit(0).alias("location_id"))
-
 
     # add latitude, longitude
-    loc = load_locations_csv("location_in_time.csv")
-    # print(loc)
-    df = add_location_to_measurements(df, loc)
+    df = add_location_to_measurements(df, df_sites)
 
     return df

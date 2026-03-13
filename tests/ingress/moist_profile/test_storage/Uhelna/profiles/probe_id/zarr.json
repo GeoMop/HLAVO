@@ -1,6 +1,7 @@
 {
   "shape": [
-    3
+    2568,
+    2
   ],
   "data_type": {
     "name": "fixed_length_utf32",
@@ -12,7 +13,8 @@
     "name": "regular",
     "configuration": {
       "chunk_shape": [
-        3
+        2568,
+        1
       ]
     }
   },
@@ -44,16 +46,11 @@
     "range": null,
     "description": "Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes.",
     "df_col": "probe_id",
-    "source_unit": null,
-    "composed": [
-      "probe_id"
-    ],
-    "chunk_size": 512,
-    "step_limits": "any_new",
-    "sorted": []
+    "source_unit": null
   },
   "dimension_names": [
-    "probe_id"
+    "date_time",
+    "site_id"
   ],
   "zarr_format": 3,
   "node_type": "array",
