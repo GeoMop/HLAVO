@@ -486,6 +486,9 @@ class ToyProblem(AbstractModel):
 
         #return model_params_new_values
 
+    def set_pressure_at_bottom(self, pressure_at_bottom):
+        self._run.Patch.bottom.BCPressure.alltime.Value = pressure_at_bottom
+
     def save_pressure(self, image_file):
         cwd = settings.get_working_directory()
         settings.set_working_directory(self._workdir)
