@@ -30,40 +30,6 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def _resolve_existing_file(path_value, workdir, config_path):
-        path = Path(path_value).expanduser()
-        if path.is_absolute():
-            if path.exists():
-                return path
-            raise FileNotFoundError(path)
-
-        candidates = [Path.cwd() / path]
-        if config_path is not None:
-            config_parent = Path(config_path).expanduser().resolve().parent
-            candidates.append(config_parent / path)
-            for parent in config_parent.parents:
-                candidates.append(parent / path)
-        if workdir is not None:
-            workdir_path = Path(workdir).expanduser().resolve()
-            candidates.append(workdir_path / path)
-            for parent in workdir_path.parents:
-                candidates.append(parent / path)
-
-        seen = set()
-        for candidate in candidates:
-            candidate_resolved = candidate.resolve()
-            if candidate_resolved in seen:
-                continue
-            seen.add(candidate_resolved)
-            if candidate_resolved.exists():
-                return candidate_resolved
-
-        candidate_list = "\n".join(f"  - {c}" for c in seen)
-        raise FileNotFoundError(
-            f"Could not resolve path '{path_value}'. Tried:\n{candidate_list}"
-        )
-
-    @staticmethod
     def from_config(workdir, config_path, verbose=False):
         """
         Create a KalmanFilter from a YAML configuration file.
@@ -73,17 +39,8 @@ class KalmanFilter:
         :param verbose: Whether to print verbose runtime logs
         :return: Configured KalmanFilter instance
         """
-        config_path = Path(config_path).expanduser().resolve()
         with config_path.open("r") as f:
             config_dict = yaml.safe_load(f)
-        measurements_config = config_dict.get("measurements_config", {})
-        if "measurements_file" in measurements_config:
-            measurements_file = KalmanFilter._resolve_existing_file(
-                measurements_config["measurements_file"],
-                workdir=workdir,
-                config_path=config_path,
-            )
-            measurements_config["measurements_file"] = str(measurements_file)
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):
