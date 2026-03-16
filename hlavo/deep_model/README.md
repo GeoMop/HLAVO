@@ -2,14 +2,27 @@
 
 State on 11.2.2026
 
-## Main script execution
+## Main workflow
 
+1. Build grid/layers/material IDs from GIS and write base MODFLOW input files (infrequent):
+```
+python build_modflow_grid.py --config <config_file>
+```
+2. Add material parameters from YAML (frequent tuning/calibration):
+```
+python add_material_parameters.py --config <config_file>
+```
+3. Run MODFLOW and create visualization outputs:
 ```
 python run_model.py --config <config_file>
 ```
-There are two yaml config files provided - the `coarse_config.yaml` may be outdated.
 
-It reads data from GIS files, write a Modflow model (under `model` folder), runs it and creates outputs for ParaView and some plots in `model/plots`.
+`run_model.py` now expects both `grid_output_path` and `material_parameters_output_path`
+to exist (produced by steps 1 and 2).
+
+Material parameters in config are grouped by `materials`:
+- `materials.all` is required and contains defaults plus all former `unsat` parameters.
+- other entries (`sand`, `clay`, ...) define only `layers`, `horizontal_conductivity`, `vertical_conductivity`.
 
 
 

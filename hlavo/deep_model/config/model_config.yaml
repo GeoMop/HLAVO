@@ -6,6 +6,7 @@ boundary_layer_name: "domain_around_mine"     # example: JB_extended_domain
 raster_group_name: "HG model layers"          # example: HG model layers
 
 grid_output_path: "grid_materials.npz"
+material_parameters_output_path: "material_parameters.npz"
 
 meshsteps:
   x: 40.0  # example: 25.0
@@ -24,17 +25,54 @@ model:
     quantities: [head, hk, idomain, materials, velocity, q, velocity_magnitude, active]
     include_inactive: false
     z_scale: 1.0
-  recharge_rate: 0.0001  # 0.1 mm/day in m/day
   drain_conductance: 1.0
-  conductivity_default: 1.0e-6
   simulation_days: 1.0
   stress_periods_days: [1.0]
-  # Either provide conductivities in the bottom-up order of HG model layers
-  # or map by layer name.
-  # conductivities: [1.0e-5, 1.0e-6]
-  # conductivity_by_layer:
-  #   relief: 1.0e-5
-  #   Q1_top: 1.0e-6
+
+# Material groups for parameter assignment.
+# layers: GIS names of bottom interfaces in HG model layers group.
+materials:
+  all:
+    layers: []
+    horizontal_conductivity: 1.0e-6
+    vertical_conductivity: 1.0e-6
+    porosity: 0.30
+    vG_n: 2.0
+    vG_alpha: 1.0
+    recharge_rate: 0.0001  # 0.1 mm/day in m/day
+    vks: 1.0e-6
+    thtr: 0.05
+    thts: 0.3
+    thti: 0.2
+    eps: 3.5
+    surfdep: 0.0
+    pet: 0.0
+    extdp: 1.0
+    extwc: 0.1
+    ha: 0.0
+    hroot: 0.0
+    rootact: 0.0
+    ntrailwaves: 7
+    nwavesets: 40
+    simulate_et: false
+    unsat_etwc: false
+    unsat_etae: false
+    simulate_gwseep: true
+    hydraulic_conductivity: 1.0e-6
+    specific_yield: 0.1
+    specific_storage: 1.0e-5
+    initial_head_offset: -1.0
+    perlen: 1.0
+    nstp: 1
+    tsmult: 1.0
+  sand:
+    layers: ["relief"]
+    horizontal_conductivity: 1.0e-5
+    vertical_conductivity: 1.0e-5
+  clay:
+    layers: ["Q1_top"]
+    horizontal_conductivity: 1.0e-7
+    vertical_conductivity: 1.0e-7
 
 plots:
   enabled: true
@@ -48,32 +86,3 @@ plots:
   # Optional fixed indices for cross-sections (0-based). If omitted, the mid index is used.
   # xsection_y_index: 80
   # xsection_x_index: 60
-
-unsat:
-  recharge_rate: 0.0001  # 0.1 mm/day in m/day
-  vks: 1.0e-6
-  thtr: 0.05
-  thts: 0.3
-  thti: 0.2
-  eps: 3.5
-  surfdep: 0.0
-  pet: 0.0
-  extdp: 1.0
-  extwc: 0.1
-  ha: 0.0
-  hroot: 0.0
-  rootact: 0.0
-  ntrailwaves: 7
-  nwavesets: 40
-  simulate_et: false
-  unsat_etwc: false
-  unsat_etae: false
-  simulate_gwseep: true
-  hydraulic_conductivity: 1.0e-6
-  vertical_conductivity: 1.0e-6
-  specific_yield: 0.1
-  specific_storage: 1.0e-5
-  initial_head_offset: -1.0
-  perlen: 1.0
-  nstp: 1
-  tsmult: 1.0

@@ -6,17 +6,17 @@ import os
 import platform
 import shutil
 import struct
+import tempfile
 from pathlib import Path
 
 import attrs
 import numpy as np
 import yaml
 
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
+
 import flopy
 from flopy.utils import postprocessing
-
-from build_modflow_grid import build_modflow_grid, raster_to_full_grid
-from qgis_reader import ModelInputs
 
 LOG = logging.getLogger(__name__)
 
@@ -30,12 +30,10 @@ class RunConfig:
     exe_name: str
     recharge_rate: float
     drain_conductance: float
-    conductivity_default: float
-    conductivity_by_layer: dict[str, float] | None
-    conductivities: tuple[float, ...] | None
     simulation_days: float
     stress_periods_days: tuple[float, ...]
-    output_grid_path: Path
+    grid_output_path: Path
+    material_parameters_path: Path
     paraview_output_path: Path
     paraview_materials_output_path: Path
     paraview_quantities: tuple[str, ...]
@@ -71,7 +69,6 @@ class RunConfig:
         exe_name = str(model_raw.get("exe_name", "mf6"))
         recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
         drain_conductance = float(model_raw.get("drain_conductance", 1.0))
-        conductivity_default = float(model_raw.get("conductivity_default", 1e-6))
         simulation_days = model_raw.get("simulation_days")
         if simulation_days is not None:
             simulation_days = float(simulation_days)
@@ -107,25 +104,21 @@ class RunConfig:
         )
         run_workspace = base_workspace / model_name
 
-        conductivity_by_layer = model_raw.get("conductivity_by_layer")
-        if conductivity_by_layer is not None:
-            assert isinstance(conductivity_by_layer, dict), "conductivity_by_layer must be a mapping"
-            conductivity_by_layer = {
-                str(key): float(value) for key, value in conductivity_by_layer.items()
-            }
-
-        conductivities = model_raw.get("conductivities")
-        if conductivities is not None:
-            assert isinstance(conductivities, (list, tuple)), "conductivities must be a list"
-            conductivities = tuple(float(value) for value in conductivities)
-
         output_grid_raw = raw.get("grid_output_path")
         if output_grid_raw:
-            output_grid_path = Path(str(output_grid_raw))
-            if not output_grid_path.is_absolute():
-                output_grid_path = run_workspace / output_grid_path
+            grid_output_path = Path(str(output_grid_raw))
+            if not grid_output_path.is_absolute():
+                grid_output_path = run_workspace / grid_output_path
         else:
-            output_grid_path = run_workspace / "grid_materials.npz"
+            grid_output_path = run_workspace / "grid_materials.npz"
+
+        material_parameters_raw = raw.get("material_parameters_output_path")
+        if material_parameters_raw:
+            material_parameters_path = Path(str(material_parameters_raw))
+            if not material_parameters_path.is_absolute():
+                material_parameters_path = run_workspace / material_parameters_path
+        else:
+            material_parameters_path = run_workspace / "material_parameters.npz"
 
         paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
         if paraview_raw:
@@ -196,12 +189,10 @@ class RunConfig:
             exe_name=exe_name,
             recharge_rate=recharge_rate,
             drain_conductance=drain_conductance,
-            conductivity_default=conductivity_default,
-            conductivity_by_layer=conductivity_by_layer,
-            conductivities=conductivities,
             simulation_days=simulation_days,
             stress_periods_days=stress_periods_days,
-            output_grid_path=output_grid_path,
+            grid_output_path=grid_output_path,
+            material_parameters_path=material_parameters_path,
             paraview_output_path=paraview_output_path,
             paraview_materials_output_path=paraview_materials_output_path,
             paraview_quantities=paraview_quantities,
@@ -219,29 +210,6 @@ class RunConfig:
             plot_xsection_y_index=plot_xsection_y_index,
             plot_xsection_x_index=plot_xsection_x_index,
         )
-
-
-def _layer_conductivities(
-    layer_names: list[str],
-    conductivity_by_layer: dict[str, float] | None,
-    conductivities: tuple[float, ...] | None,
-    default_value: float,
-) -> np.ndarray:
-    if conductivity_by_layer is not None:
-        values = []
-        for name in layer_names:
-            assert name in conductivity_by_layer, f"Missing conductivity for layer {name}"
-            values.append(float(conductivity_by_layer[name]))
-        return np.asarray(values, dtype=float)
-
-    if conductivities is not None:
-        assert len(conductivities) == len(layer_names), (
-            "conductivities length must match number of layers"
-        )
-        return np.asarray(conductivities, dtype=float)
-
-    LOG.warning("No layer conductivities provided, using default %s", default_value)
-    return np.full(len(layer_names), float(default_value), dtype=float)
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
@@ -639,54 +607,6 @@ def _write_cross_section_plots(
     LOG.info("Saved Y-section plot to %s", ysec_path)
 
 
-def _materials_from_rasters_per_column(
-    rasters: tuple["RasterLayer", ...],
-    grid: "Grid",
-    active_mask: np.ndarray,
-    top: np.ndarray,
-) -> np.ndarray:
-    ny = int(grid.el_dims[1])
-    nx = int(grid.el_dims[0])
-    nz = int(grid.el_dims[2])
-    z_step = float(grid.step[2])
-
-    z_centers = top[None, :, :] - z_step * (np.arange(nz, dtype=float)[:, None, None] + 0.5)
-    materials = np.full((nz, ny, nx), -1, dtype=int)
-
-    last_top = top - z_step * nz
-    last_id = np.zeros((ny, nx), dtype=int)
-    last_id[~active_mask] = -1
-
-    rasters_bottom_up = tuple(reversed(rasters))
-    for i_layer, raster in enumerate(rasters_bottom_up):
-        layer_full = raster_to_full_grid(raster, grid)
-        layer_data = np.ma.filled(layer_full, np.nan)
-        layer_mask = np.ma.getmaskarray(layer_full)
-
-        valid = active_mask & (~layer_mask) & (layer_data > last_top)
-        if not np.any(valid):
-            LOG.debug("Layer %s has no valid updates", raster.name)
-            continue
-
-        condition = (
-            (z_centers >= last_top[None, :, :])
-            & (z_centers < layer_data[None, :, :])
-            & valid[None, :, :]
-        )
-        materials = np.where(condition, last_id[None, :, :], materials)
-
-        last_top[valid] = layer_data[valid]
-        last_id[valid] = i_layer
-        LOG.debug(
-            "Assigned layer %s (index %s) to %s cells (per-column)",
-            raster.name,
-            i_layer,
-            int(condition.sum()),
-        )
-
-    return materials
-
-
 def _resolve_executable(exe_name: str) -> Path | None:
     candidate = Path(exe_name)
     if candidate.is_file():
@@ -754,48 +674,41 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     )
     _assert_mf6_compatible(exe_path)
 
-    model_inputs = ModelInputs.from_yaml(run_config.config_path)
-    grid_output_path = build_modflow_grid(run_config.config_path, run_config.output_grid_path)
-    grid_data = _grid_arrays_from_npz(grid_output_path)
+    assert run_config.grid_output_path.exists(), (
+        f"Grid NPZ not found: {run_config.grid_output_path}. "
+        f"Run: python build_modflow_grid.py --config {run_config.config_path}"
+    )
+    assert run_config.material_parameters_path.exists(), (
+        f"Material parameters NPZ not found: {run_config.material_parameters_path}. "
+        f"Run: python add_material_parameters.py --config {run_config.config_path}"
+    )
 
-    grid = model_inputs.grid
-    nx = int(grid.el_dims[0])
-    ny = int(grid.el_dims[1])
+    grid_data = _grid_arrays_from_npz(run_config.grid_output_path)
+    model_data = _grid_arrays_from_npz(run_config.material_parameters_path)
+
+    el_dims = np.asarray(grid_data["el_dims"], dtype=int)
+    assert el_dims.size == 3, "el_dims must contain 3 values"
+    nx = int(el_dims[0])
+    ny = int(el_dims[1])
+    nz = int(el_dims[2])
+    step = np.asarray(grid_data["step"], dtype=float)
+    assert step.size == 3, "step must contain 3 values"
 
     active_mask = grid_data["active_mask"].astype(bool)
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
 
-    z_nodes = grid_data["z_nodes"].astype(float)
-    nz = int(grid.el_dims[2])
-    assert z_nodes.size == nz + 1, "z_nodes size mismatch"
-
-    top_raster = model_inputs.rasters[0]
-    top_full = raster_to_full_grid(top_raster, grid)
-    top = np.ma.filled(top_full, z_nodes[-1]).astype(float)
-
-    z_step = float(grid.step[2])
-    # Build per-column botm from local top so layer 1 always has thickness z_step.
-    # This avoids deactivating columns when the global botm sits above the local top.
-    botm = top[None, :, :] - z_step * (np.arange(1, nz + 1, dtype=float)[:, None, None])
-
-    idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
-    materials = _materials_from_rasters_per_column(
-        model_inputs.rasters, grid, active_mask, top
-    )
+    top = np.asarray(model_data["top"], dtype=float)
+    botm = np.asarray(model_data["botm"], dtype=float)
+    materials = np.asarray(model_data["materials"], dtype=int)
+    idomain = np.asarray(model_data["idomain"], dtype=int)
+    kh = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
+    kv = np.asarray(model_data["kv"] if "kv" in model_data else model_data.get("k33", kh), dtype=float)
+    assert top.shape == (ny, nx), "top shape mismatch"
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
     assert materials.shape == (nz, ny, nx), "materials shape mismatch"
-
-    layer_names = [r.name for r in reversed(model_inputs.rasters)]
-    conductivity_values = _layer_conductivities(
-        layer_names,
-        run_config.conductivity_by_layer,
-        run_config.conductivities,
-        run_config.conductivity_default,
-    )
-
-    materials_mf = materials[::-1, :, :]
-    hk = np.full((nz, ny, nx), run_config.conductivity_default, dtype=float)
-    valid = materials_mf >= 0
-    hk[valid] = conductivity_values[materials_mf[valid]]
+    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
+    assert kh.shape == (nz, ny, nx), "kh shape mismatch"
+    assert kv.shape == (nz, ny, nx), "kv shape mismatch"
 
     grid_corners_lonlat = grid_data.get("grid_corners_lonlat")
     assert grid_corners_lonlat is not None, "grid_corners_lonlat missing from grid data"
@@ -826,8 +739,8 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         nlay=nz,
         nrow=ny,
         ncol=nx,
-        delr=float(grid.step[0]),
-        delc=float(grid.step[1]),
+        delr=float(step[0]),
+        delc=float(step[1]),
         top=top,
         botm=botm,
         idomain=idomain,
@@ -842,9 +755,10 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
     icelltype = np.zeros(nz, dtype=int)
     icelltype[0] = 1
-    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=hk, save_specific_discharge=True)
+    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=kh, k33=kv, save_specific_discharge=True)
 
-    recharge = np.where(active_mask, run_config.recharge_rate, 0.0)
+    recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
+    recharge = np.where(active_mask, recharge_rate, 0.0)
     flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge)
 
     top_active = active_mask & (idomain[0] > 0)
@@ -888,7 +802,7 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         run_config.paraview_output_path,
         grid_data,
         head,
-        hk,
+        kh,
         qx,
         qy,
         qz,
@@ -925,7 +839,9 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build grid and run Modflow6.")
+    parser = argparse.ArgumentParser(
+        description="Run Modflow6 and visualization from prebuilt grid and material parameter files."
+    )
     parser.add_argument(
         "--config",
         type=Path,
