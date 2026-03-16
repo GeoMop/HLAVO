@@ -156,6 +156,7 @@ base_run_docker() {
     workdir="$img_workspace"
   fi
 
+  MSYS_NO_PATHCONV=1 \
   docker run --rm \
     ${tty_arg} \
     --user "$(id -u):$(id -g)" \
@@ -180,6 +181,7 @@ base_run_codex() {
     workdir="$img_workspace"
   fi
 
+  MSYS_NO_PATHCONV=1 \
   HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
   BASE_IMAGE="$IMAGE_REF" \
   docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
