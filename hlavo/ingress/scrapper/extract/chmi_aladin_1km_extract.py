@@ -20,9 +20,9 @@ def rename_vars_by_schema(ds: xr.Dataset, metadata: dict, dataset_key: str, sche
 
     root = zf.schema.deserialize(schema_path)
     node = root.groups[dataset_key].ds
-    map = node.source_to_schema_name_map
+    source_map = node.source_to_schema_name_map
 
-    target_name = map.get(source_name)
+    target_name = source_map.get(source_name)
     assert target_name is not None, f"Source variable name '{source_name}' not found in schema mapping for dataset '{dataset_key}'"
 
     if src_var_in_ds == target_name:
@@ -44,11 +44,6 @@ def cut_to_meteo_domain(ds: xr.Dataset, attrs: dict) -> xr.Dataset:
 
     lon_min, lat_min = dom_min
     lon_max, lat_max = dom_max
-
-    domain = {
-        "longitude": (float(lon_min), float(lon_max)),
-        "latitude": (float(lat_min), float(lat_max)),
-    }
 
     lon_vals = ds["longitude"].values
     lat_vals = ds["latitude"].values
@@ -151,9 +146,9 @@ def extractor(payload: bytes, metadata: dict, **kwargs) -> pl.DataFrame | xr.Dat
     if not schema_path:
         raise ValueError("metadata.schema_path is missing")
 
-    dataset_name = metadata.get("dataset_name")
-    if not dataset_name:
-        raise ValueError("metadata.dataset_name is missing")
+    target_node = metadata.get("target_node")
+    if not target_node:
+        raise ValueError("metadata.target_node is missing")
 
     parent_dir = Path(__file__).parent.parent
     schema_path = parent_dir / schema_path
@@ -169,4 +164,4 @@ def extractor(payload: bytes, metadata: dict, **kwargs) -> pl.DataFrame | xr.Dat
         p.write_bytes(data)
         ds = xr.open_dataset(p, engine="cfgrib").load()
 
-    return transform_grib_ds(ds, schema=schema, dataset_key=dataset_name, metadata=metadata, schema_path=schema_path)
+    return transform_grib_ds(ds, schema=schema, dataset_key=target_node, metadata=metadata, schema_path=schema_path)
