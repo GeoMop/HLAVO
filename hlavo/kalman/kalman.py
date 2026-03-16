@@ -30,17 +30,34 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_path, verbose=False):
+    def from_config(workdir, config_source, verbose=False):
         """
-        Create a KalmanFilter from a YAML configuration file.
+        Create a KalmanFilter from YAML configuration source.
 
         :param workdir: Working directory where outputs are written
-        :param config_path: Path to YAML configuration file
+        :param config_source: One of:
+            - pathlib.Path to YAML file
+            - YAML string
+            - config dictionary
         :param verbose: Whether to print verbose runtime logs
         :return: Configured KalmanFilter instance
         """
-        with config_path.open("r") as f:
-            config_dict = yaml.safe_load(f)
+        if isinstance(config_source, dict):
+            config_dict = config_source
+        elif isinstance(config_source, Path):
+            with config_source.open("r", encoding="utf-8") as handle:
+                config_dict = yaml.safe_load(handle)
+        elif isinstance(config_source, str):
+            maybe_path = Path(config_source)
+            if "\n" not in config_source and maybe_path.exists():
+                with maybe_path.open("r", encoding="utf-8") as handle:
+                    config_dict = yaml.safe_load(handle)
+            else:
+                config_dict = yaml.safe_load(config_source)
+        else:
+            raise TypeError(f"Unsupported config_source type: {type(config_source)}")
+
+        assert isinstance(config_dict, dict), "Kalman config must be a mapping"
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):

@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,24 +38,101 @@ import yaml
 from dask.distributed import Client, LocalCluster, Queue, get_client
 from flopy.utils.binaryfile import HeadFile
 
+from hlavo.composed.data_1d_to_3d import Data1DTo3D
+from hlavo.composed.data_3d_to_1d import Data3DTo1D
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman import KalmanFilter
 
 LOG = logging.getLogger(__name__)
 INVALID_HEAD_ABS_THRESHOLD = 1.0e20
+TIME_ORIGIN = np.datetime64("2000-01-01T00:00:00", "ms")
+MILLISECONDS_PER_DAY = 86_400_000.0
+
+
+def model_time_days_to_datetime64(model_time_days: float) -> np.datetime64:
+    milliseconds = int(round(float(model_time_days) * MILLISECONDS_PER_DAY))
+    return TIME_ORIGIN + np.timedelta64(milliseconds, "ms")
+
+
+def datetime64_to_model_time_days(date_time: np.datetime64) -> float:
+    delta_ms = (np.datetime64(date_time, "ms") - TIME_ORIGIN) / np.timedelta64(1, "ms")
+    return float(delta_ms) / MILLISECONDS_PER_DAY
 
 
 class Model1D:
-    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config=None):
+    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config=None, location=None):
         self.idx = idx
         self.state = initial_state
+        self.location = location
+        self.work_dir = Path(work_dir).resolve() if work_dir is not None else None
+        self.kalman_config_path = Path(kalman_config).resolve() if kalman_config is not None else None
         self.kalman = None
         self.ukf = None
         self._rng = np.random.default_rng(seed=10_000 + int(idx))
 
         if kalman_config is not None:
-            self.kalman = KalmanFilter.from_config(work_dir, kalman_config, verbose=False)
-            self.ukf = self.prepare_kalman_measurements()
+            assert self.work_dir is not None
+            assert self.kalman_config_path is not None
+            with self.kalman_config_path.open("r", encoding="utf-8") as handle:
+                main_cfg_data = yaml.safe_load(handle) or {}
+            model_1d_cfg = main_cfg_data.get("model_1d", {})
+            assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
+            required_cfg_keys = ("kalman_config", "model_config", "measurements_config", "postprocess")
+            missing_cfg_keys = [key for key in required_cfg_keys if key not in model_1d_cfg]
+            assert not missing_cfg_keys, (
+                "Main input file must include Kalman sections under model_1d: "
+                f"missing {missing_cfg_keys} in {self.kalman_config_path}"
+            )
+            model_1d_cfg_for_kalman = dict(model_1d_cfg)
+            if "seed" not in model_1d_cfg_for_kalman:
+                assert "seed" in main_cfg_data, (
+                    "Missing required seed for Kalman config. "
+                    "Provide model_1d.seed or top-level seed."
+                )
+                model_1d_cfg_for_kalman["seed"] = main_cfg_data["seed"]
+            model_1d_cfg_yaml = yaml.safe_dump(model_1d_cfg_for_kalman, sort_keys=False)
+            self.kalman = KalmanFilter.from_config(self.work_dir, model_1d_cfg_yaml, verbose=False)
+            if self._resolve_kalman_measurements_file():
+                self.ukf = self.prepare_kalman_measurements()
+
+    def _resolve_kalman_measurements_file(self) -> bool:
+        assert self.kalman is not None
+
+        data_csv_raw = self.kalman.measurements_config.get("measurements_file")
+        if data_csv_raw is None:
+            LOG.info("[1D %s] measurements_file not provided; skipping Kalman preloaded measurements.", self.idx)
+            return False
+
+        data_csv_path = Path(str(data_csv_raw))
+        if data_csv_path.is_absolute():
+            if data_csv_path.exists():
+                self.kalman.measurements_config["measurements_file"] = str(data_csv_path)
+                return True
+            LOG.warning(
+                "[1D %s] measurements_file does not exist (%s); skipping Kalman setup.",
+                self.idx,
+                data_csv_path,
+            )
+            return False
+
+        candidates = []
+        if self.kalman_config_path is not None:
+            candidates.append((self.kalman_config_path.parent / data_csv_path).resolve())
+        if self.work_dir is not None:
+            candidates.append((self.work_dir / data_csv_path).resolve())
+
+        for candidate in candidates:
+            if candidate.exists():
+                self.kalman.measurements_config["measurements_file"] = str(candidate)
+                LOG.info("[1D %s] resolved measurements_file to %s", self.idx, candidate)
+                return True
+
+        LOG.warning(
+            "[1D %s] measurements_file not found for any candidate path (%s); skipping Kalman setup.",
+            self.idx,
+            ", ".join(str(path) for path in candidates) if candidates else str(data_csv_path),
+        )
+        return False
 
     def prepare_kalman_measurements(self):
         assert self.kalman is not None
@@ -91,11 +169,11 @@ class Model1D:
 
         return self.kalman.set_kalman_filter(measurement_noise_covariance)
 
-    def step(self, target_time, data_for_step):
+    def step(self, date_time, data_for_step):
         LOG.info(
-            "[1D %s] step at t=%s, data=%s, current_state=%s",
+            "[1D %s] step at date_time=%s, data=%s, current_state=%s",
             self.idx,
-            target_time,
+            date_time,
             data_for_step,
             self.state,
         )
@@ -109,21 +187,38 @@ class Model1D:
 
         current_time = 0.0
         while current_time < t_end:
-            target_time, data = q_in.get()
-            self.step(target_time, data)
+            msg_in = q_in.get()
+            assert isinstance(msg_in, Data3DTo1D), f"Unexpected 3D->1D payload: {type(msg_in)}"
+            assert msg_in.site_id == self.idx, f"Expected site_id {self.idx}, got {msg_in.site_id}"
+
+            self.step(msg_in.date_time, msg_in.pressure_head)
             # TEMPORARY_MOCK_RECHARGE: replace this random value with real 1D-model
             # recharge result once 1D computation output is wired correctly.
             contribution = float(self._rng.uniform(5.0e-5, 5.0e-4))
-            q_out.put((self.idx, target_time, contribution))
-            LOG.info("[1D %s] sent contribution=%s at t=%s", self.idx, contribution, target_time)
-            current_time = target_time
+            q_out.put(
+                Data1DTo3D(
+                    date_time=msg_in.date_time,
+                    site_id=self.idx,
+                    longitude=float(self.location.longitude),
+                    latitude=float(self.location.latitude),
+                    velocity=contribution,
+                )
+            )
+            LOG.info("[1D %s] sent contribution=%s at date_time=%s", self.idx, contribution, msg_in.date_time)
+            current_time = datetime64_to_model_time_days(msg_in.date_time)
 
         LOG.info("[1D %s] finished loop at t=%s (t_end=%s)", self.idx, current_time, t_end)
         return f"1D model {self.idx} done; final state={self.state}"
 
 
-def model1d_worker_entry(idx, t_end, queue_name_in, queue_name_out, work_dir, kalman_config):
-    model = Model1D(idx=idx, initial_state=0.0, work_dir=work_dir, kalman_config=kalman_config)
+def model1d_worker_entry(idx, t_end, queue_name_in, queue_name_out, work_dir, kalman_config, location):
+    model = Model1D(
+        idx=idx,
+        initial_state=0.0,
+        work_dir=work_dir,
+        kalman_config=kalman_config,
+        location=location,
+    )
     return model.run_loop(t_end, queue_name_in, queue_name_out)
 
 
@@ -138,6 +233,7 @@ class Model1DLocation:
 class Model3DConfig:
     model_name: str
     model_folder: Path
+    work_folder: Path
     time_step_days: float
     executable: str = "mf6"
 
@@ -151,6 +247,14 @@ class Model3DConfig:
         model_folder = Path(str(folder_raw))
         if not model_folder.is_absolute():
             model_folder = (work_dir / model_folder).resolve()
+        assert model_folder.exists(), f"model_3d.folder does not exist: {model_folder}"
+        assert model_folder.is_dir(), f"model_3d.folder must be a directory: {model_folder}"
+
+        work_folder_raw = model_3d.get("work_folder", "runs/composed_mock/3d_models/model_with_mine_work")
+        work_folder = Path(str(work_folder_raw))
+        if not work_folder.is_absolute():
+            work_folder = (work_dir / work_folder).resolve()
+        assert work_folder != model_folder, "model_3d.work_folder must be different from model_3d.folder"
 
         time_step_days = float(model_3d.get("time_step_days", 5.0))
         assert time_step_days > 0.0, "model_3d.time_step_days must be > 0"
@@ -160,6 +264,7 @@ class Model3DConfig:
         return cls(
             model_name=model_name,
             model_folder=model_folder,
+            work_folder=work_folder,
             time_step_days=time_step_days,
             executable=executable,
         )
@@ -172,8 +277,11 @@ class Model3D:
         self.locations_1d = locations_1d
         self.time = initial_time
         self.base_dt = model_3d_cfg.time_step_days
-        self.model_folder = model_3d_cfg.model_folder
+        self.source_model_folder = model_3d_cfg.model_folder
+        self.model_folder = model_3d_cfg.work_folder
         self.model_name = model_3d_cfg.model_name
+
+        self._prepare_model_workspace()
 
         self.dis_file = self.model_folder / f"{self.model_name}.dis"
         self.nam_file = self.model_folder / f"{self.model_name}.nam"
@@ -186,6 +294,16 @@ class Model3D:
         self.lon_sw, self.lat_sw, self.lon_ne, self.lat_ne = self._read_grid_corners(self.nam_file)
         self.active_mask_3d = self._read_active_mask_3d()
         self.cell_owner = None
+
+    def _prepare_model_workspace(self):
+        src = self.source_model_folder
+        dst = self.model_folder
+        assert src.exists(), f"3D source model folder not found: {src}"
+        assert src.is_dir(), f"3D source model folder must be a directory: {src}"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        LOG.info("[3D] copied model workspace: %s -> %s", src, dst)
 
     @staticmethod
     def _read_dis_dimensions(dis_file: Path):
@@ -339,8 +457,13 @@ class Model3D:
         heads = self._sanitize_heads(self._read_last_heads())
         initial_heads = self._heads_to_1d(heads)
         for i in range(self.n_1d):
-            q_3d_to_1d[i].put((self.time, float(initial_heads[i])))
-            LOG.info("[3D] startup push -> 1D %s: t=%s, head=%s", i, self.time, initial_heads[i])
+            msg_out = Data3DTo1D(
+                date_time=model_time_days_to_datetime64(self.time),
+                site_id=i,
+                pressure_head=float(initial_heads[i]),
+            )
+            q_3d_to_1d[i].put(msg_out)
+            LOG.info("[3D] startup push -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, initial_heads[i])
 
         while self.time < t_end:
             dt = self.choose_dt(t_end)
@@ -354,9 +477,12 @@ class Model3D:
             contributions = [None] * self.n_1d
             received = 0
             while received < self.n_1d:
-                idx, t_recv, contrib = q_1d_to_3d.get()
-                LOG.info("[3D] received from 1D %s: t=%s, recharge=%s", idx, t_recv, contrib)
-                contributions[idx] = contrib
+                msg_in = q_1d_to_3d.get()
+                assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
+                idx = int(msg_in.site_id)
+                assert 0 <= idx < self.n_1d, f"site_id out of range: {idx}"
+                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", idx, msg_in.date_time, msg_in.velocity)
+                contributions[idx] = float(msg_in.velocity)
                 received += 1
 
             recharge = self._spread_recharges(contributions)
@@ -369,8 +495,13 @@ class Model3D:
 
             heads_to_1d = self._heads_to_1d(heads)
             for i in range(self.n_1d):
-                q_3d_to_1d[i].put((target_time, float(heads_to_1d[i])))
-                LOG.info("[3D] send head -> 1D %s: t=%s, head=%s", i, target_time, heads_to_1d[i])
+                msg_out = Data3DTo1D(
+                    date_time=model_time_days_to_datetime64(target_time),
+                    site_id=i,
+                    pressure_head=float(heads_to_1d[i]),
+                )
+                q_3d_to_1d[i].put(msg_out)
+                LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, heads_to_1d[i])
 
             self.time = target_time
 
@@ -400,6 +531,7 @@ def setup_models(n_1d, t_end, work_dir, kalman_config, model_3d_cfg, locations_1
             queue_name_1d_to_3d,
             work_dir,
             kalman_config,
+            locations_1d[i],
             pure=False,
         )
         futures_1d.append(fut)
@@ -420,8 +552,10 @@ def setup_models(n_1d, t_end, work_dir, kalman_config, model_3d_cfg, locations_1
 
 
 def _parse_locations(config_data):
-    raw_locations = config_data.get("model_1d", [])
-    assert isinstance(raw_locations, list), "model_1d must be a list"
+    model_1d_cfg = config_data.get("model_1d", {})
+    assert isinstance(model_1d_cfg, dict), "model_1d must be a mapping"
+    raw_locations = model_1d_cfg.get("sites", [])
+    assert isinstance(raw_locations, list), "model_1d.sites must be a list"
 
     locations = []
     for idx, item in enumerate(raw_locations):
@@ -444,7 +578,7 @@ if __name__ == "__main__":
     parser.add_argument("config_file", help="Path to configuration file")
     args = parser.parse_args(sys.argv[1:])
 
-    work_dir = Path(args.work_dir)
+    work_dir = Path(args.work_dir).resolve()
     kalman_config = Path(args.config_file).resolve()
 
     with kalman_config.open("r", encoding="utf-8") as handle:
