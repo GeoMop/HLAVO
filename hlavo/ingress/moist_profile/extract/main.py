@@ -290,13 +290,20 @@ def override_local_storage(schema, storage_path: str | Path | None):
         schema.ds.ATTRS['STORE_URL'] = str(storage_path)
 
 
+def load_schema():
+    load_dotenv("../.env")
+    schema_path = Path("../profile_schema.yaml")
+    schema = zarr_fuse.schema.deserialize(schema_path)
+    return schema
+
+
 def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     """
     :param source_dir: source directory with CSV files from xpert.nz datareports
     :return:
     """
-    load_dotenv("../.env")
-    schema_path = Path("../profile_schema.yaml")
+    schema = load_schema()
+    override_local_storage(schema, storage_path)
 
     df_coords = load_site_coords_csv("site_coords.csv")
     print(df_coords)
@@ -314,9 +321,6 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     print(dfs)
 
     df_lab, dfs_network = split_lab(dfs)
-
-    schema = zarr_fuse.schema.deserialize(schema_path)
-    override_local_storage(schema, storage_path)
 
     root_node = zarr_fuse.open_store(schema)
     print('Store open')
@@ -341,17 +345,21 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
 
 def read_storage(storage_path: str | Path = None):
-    schema_path = Path("../profile_schema.yaml")
-    schema = zarr_fuse.schema.deserialize(schema_path)
+    schema = load_schema()
     override_local_storage(schema, storage_path)
 
     root_node = zarr_fuse.open_store(schema)
-    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
+    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id", "sensor_depth"])
     print(rdf)
 
     # place debug pause here and view pandas dataframe
     rdf_pd = rdf.sort(["site_id", "date_time", "depth_level"]).to_pandas()
     pass
+
+
+def remove_S3_storage():
+    schema = load_schema()
+    zarr_fuse.remove_store(schema)
 
 
 if __name__ == '__main__':
@@ -367,9 +375,13 @@ if __name__ == '__main__':
     #      storage_path=Path("storage_2025"))
     # main(source_dir="../test_empty",
     #      storage_path=Path("storage_empty"))
+
+
     # TO S3
-    main(source_dir="../20260301T224908_dataflow_grab")
-    main(source_dir="../20260301T225923_dataflow_grab")
+    # remove_S3_storage()
+    # main(source_dir="../20260301T224908_dataflow_grab")
+    # main(source_dir="../20260301T225923_dataflow_grab")
+    # read_storage()
 
     # read to check zarr storage
     # read_storage(storage_path=Path("test_storage"))

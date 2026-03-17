@@ -120,6 +120,7 @@ Uhelna:
 
             probe_model:
                 decription: "Type of the moisture profile probe."
+                sorted: [ ] # Unsorted - "discrete" must be unsorted, otherwise interpolation fails
                 range:
                     discrete: ["Odyssey", "PR2"]
 
