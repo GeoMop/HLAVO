@@ -10,10 +10,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-"""
-Process data of one sheet of excel file.
-"""
 def _process_water_level_sheet(df_read, sheetname):
+    """
+    Process data of one sheet of excel file.
+    """
+
     # read data from excel, set required column names
     df_read = df_read.rename(columns={
         df_read.columns[1]: "date_time",
@@ -36,10 +37,10 @@ def _process_water_level_sheet(df_read, sheetname):
     return df
 
 
-"""
-Set default paths to input files if file_paths is not set.
-"""
 def _prepare_default_filepaths(file_paths):
+    """
+    Set default paths to input files if file_paths is not set.
+    """
     if file_paths is None:
         defautl_files = ["./25_09_27_vrty_III.etapa_vše.xlsx", "./25_09_27_vrty_nové_vše.xlsx",
                          "./25_09_27_vrty_staré_vše.xlsx"]
@@ -48,10 +49,10 @@ def _prepare_default_filepaths(file_paths):
     return file_paths
 
 
-"""
-Return dictionary of pairs of sheet names in excel files and its according well ids in section file.
-"""
 def _sheet_names_dictionary():
+    """
+    Return dictionary of pairs of sheet names in excel files and its according well ids in section file.
+    """
     dict = {
         "1420_19 (Mw)" : "19",
         "1420_20 (Nd)" : "20",
@@ -100,13 +101,15 @@ def _sheet_names_dictionary():
     return dict
 
 
-"""
-Read water level data from set of excel files (*.xls, *.xlsx ...).
-
-Param   file_paths    Set of paths to Excel input files
-Returns pandas:DataFrame
-"""
 def read_water_level(file_paths=None):
+    """
+    Process water level data of set of wells and store them into DataFrame.
+    Data is stored in set of excel files (*.xls, *.xlsx ...), each file contains
+    set of sheets of well data.
+
+    Param   file_paths    Set of paths to Excel input files
+    Returns pandas:DataFrame
+    """
     file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
@@ -153,15 +156,17 @@ def read_water_level(file_paths=None):
     return final_df
 
 
-"""
-Read draw data from excel file (*.xls, *.xlsx ...).
-
-Param   xls_file    Path to Excel input file
-Param   sheetname   Name of sheet in xls_file
-Returns pandas:DataFrame
-"""
 def read_draw(xls_file, sheetname):
-    # read data from excel, set required column names
+    """
+    Process water draw data of one well and store them to DataFrame
+    Data is stored in excel file.
+
+    Param   xls_file    Path to Excel input file
+    Param   sheetname   Name of sheet in xls_file
+    Returns pandas:DataFrame
+    """
+
+    #read data from excel, set required column names
     column_map = {
         "MVM1" : "M1",
         "MVM2" : "M2",
@@ -205,10 +210,15 @@ def read_draw(xls_file, sheetname):
     return df_result
 
 
-"""
-Load data from excel file (*.xls, *.xlsx ...).
-"""
-def read_sections(section_file, sheetname, water_level_file_paths=None):
+def read_sections(section_file, sheetname):
+    """
+    Process section data of set of well from excel file and store them
+    to DataFrame.
+
+    Param   xls_file    Path to Excel input file
+    Param   sheetname   Name of sheet in xls_file
+    Returns pandas:DataFrame
+    """
     # read data from excel, set required column names
     column_map = {
         "Vrt_s_kolektorem": "borehole_full_name",
@@ -283,10 +293,10 @@ def read_sections(section_file, sheetname, water_level_file_paths=None):
 
     return df
 
-"""
-Perform pandas.DataFrame data to CSV file.
-"""
 def csv_output(csv_file, df):
+    """
+    Perform pandas.DataFrame data to CSV file.
+    """
     script_dir = Path(__file__).parent
     workdir = script_dir / "workdir"
     workdir.mkdir(exist_ok=True)
@@ -295,11 +305,11 @@ def csv_output(csv_file, df):
     df.to_csv(path_or_buf=full_path, header=True, mode='w')
 
 
-"""
-Perform graph to PDF file.
-TODO rename and add documentation
-"""
 def pdf_plot(pdf_file, df):
+    """
+    Perform graph to PDF file.
+    TODO rename and add documentation
+    """
     ax = df.plot(
         x="date_time",
         y=["water_depth", "water_level"],
