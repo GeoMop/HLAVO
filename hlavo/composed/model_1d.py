@@ -2,7 +2,7 @@ import numpy as np
 from dask.distributed import Queue
 from hlavo.kalman.kalman import KalmanFilter
 from hlavo.ingress.moist_profile.load_data import load_pr2_data, load_odyssey_data, preprocess_data, get_measurements, get_precipitations, load_data
-from hlavo.ingress.moist_profile.load_zarr_data import load_zarr_data
+from hlavo.ingress.moist_profile.load_zarr_data import load_measurments_data, load_meteo_data
 from bisect import bisect_left, bisect_right
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 
@@ -14,23 +14,16 @@ class Model1D:
     def __init__(self, site_id, initial_state=0.0, work_dir=None, kalman_config_path=None, seed=None):
         self.site_id = site_id
         self.state = initial_state
-
         self.measurements_dataset = None
 
-        print("workdir ", work_dir)
-        print("kalman config path ", kalman_config_path)
-
-        # work_dir.mkdir(parents=True, exist_ok=True)
-        # shutil.copy(kalman_config_path, work_dir / kalman_config_path.name)
-        #
-        # kalman_config_path = work_dir / kalman_config_path.name
-        #
-        # print("final kalman config path ", kalman_config_path)
-
         self.kalman = KalmanFilter.from_config(work_dir, kalman_config_path, verbose=False, seed=seed)
+        #self._get_meteo_data()
         self.ukf = self._prepare_kalman_measurements()
 
         #kalman_filter.run() # load measurements
+
+    def _get_meteo_data(self):
+        load_meteo_data(self.kalman.measurements_config["meteo_scheme_file"])
 
     def _prepare_kalman_measurements(self):
         """
@@ -45,13 +38,7 @@ class Model1D:
         5. Stores aligned arrays used during runtime slicing.
         6. Initializes the UKF with estimated measurement covariance.
         """
-        print("self.kalman.measurements_config ", self.kalman.measurements_config)
-        measurements_xarray = load_zarr_data(
-            self.kalman.train_measurements_struc,
-            self.kalman.test_measurements_struc,
-            zarr_dir=self.kalman.measurements_config["zarr_dir"],
-            scheme_file=self.kalman.measurements_config["scheme_file"],
-            measurements_config=self.kalman.measurements_config)
+        measurements_xarray = load_measurments_data(scheme_file=self.kalman.measurements_config["measurements_scheme_file"])
 
         self.measurements_dataset = measurements_xarray.sel(site_id=self.site_id)
 
@@ -62,10 +49,7 @@ class Model1D:
         moisture_meas = measurements_xarray["moisture"]
 
         print("moisture_meas ", moisture_meas)
-
         print("measurements_xarray.latitude ", measurements_xarray.latitude)
-
-
 
         # noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
         #     self.kalman.train_measurements_struc,
@@ -115,12 +99,7 @@ class Model1D:
         Uses the same slicing logic as measurement retrieval to ensure
         temporal alignment.
         """
-        # i0 = bisect_left(self.measurements_timestamps, start_time)
-        # i1 = bisect_right(self.measurements_timestamps, stop_time)
-
         return self.kalman.measurements_config["precipitation_list"] #@TODO: RM ASAP
-
-        #return self.kalman.results.precipitation_flux_measurements[i0:i1]
 
     def get_long_lat(self, target_time: np.datetime64) -> tuple[float, float]:
         """
@@ -129,7 +108,6 @@ class Model1D:
         :param numpy.datetime64 target_time: Timestamp for which the site coordinates should be retrieved.
         :return: Tuple containing (longitude, latitude) in decimal degrees.
         """
-
         meas_at_target_time = self.measurements_dataset.sel(date_time=target_time)
 
         longitude = meas_at_target_time.longitude.compute().item()

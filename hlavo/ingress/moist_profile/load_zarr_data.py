@@ -20,16 +20,7 @@ pr2_a1 = {
 }
 
 
-
-# def load_zarr_data():
-#     zarr_file_path = "/HLAVO/tests/ingress/moist_profile/test_storage"
-#
-#     if os.path.exists(zarr_file_path):
-#         print("location exists")
-#     zarr_file = zarr.open(zarr_file_path, mode='r+')
-
-
-def load_zarr_data(train_measurements_struc, test_measurements_struc, zarr_dir, scheme_file, measurements_config):
+def load_measurments_data(scheme_file):
     """
     Load and prepare sensor measurement data for training and testing.
 
@@ -67,36 +58,12 @@ def load_zarr_data(train_measurements_struc, test_measurements_struc, zarr_dir, 
     return ds.dataset
 
 
-    min_idx = 0
-    max_idx = len(data) - 1
-    measurements_time_step = measurements_config["model_time_step"] * measurements_config["model_n_time_steps_per_iter"]
+def load_meteo_data(scheme_file):
+    scheme_file_path = Path(scheme_file)
+    root = zf.open_store(scheme_file_path)
 
-    data = preprocess_data(data[min_idx:max_idx])
+    print("meteo root ", root)
+    meteo_data = root["chmi_aladin_10m"]
 
-    timestamps = data["DateTime"].to_numpy()
 
-    measurement_state_flag = []
-    if "State" in data:
-        measurement_state_flag = data["State"].to_numpy()
-
-    probe = measurements_config.get("probe")
-    if probe == "pr2":
-        probe_data = load_pr2_data(data)
-    elif probe == "odyssey":
-        probe_data = load_odyssey_data(data)
-    else:
-        raise AttributeError(f"Probe '{probe}' not supported. Use 'pr2' or 'odyssey'.")
-
-    precipitations = get_precipitations(data, time_step=measurements_time_step)
-
-    train_measurements = []
-    test_measurements = []
-
-    for i in range(len(data)):
-        measurement_train = get_measurements(i, train_measurements_struc, probe_data)
-        measurement_test = get_measurements(i, test_measurements_struc, probe_data)
-
-        train_measurements.append(train_measurements_struc.encode(measurement_train))
-        test_measurements.append(test_measurements_struc.encode(measurement_test))
-
-    return train_measurements, test_measurements, precipitations, measurement_state_flag, timestamps
+    print("meteo data ", meteo_data)
