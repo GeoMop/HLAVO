@@ -62,6 +62,8 @@ See node 'chmi_aladin_10m' in [zarr-fuse schema](../ingress/scrapper/schemas/hla
   these data are fixed for given soil type and must be adjusted to seasonality.
   It is possible to use time- and space-dependent vegetation, but I think it makes sense
   only in long-term simulations.
-  TODO: description which types we will use and what parameter value ranges we will consider.
+- IGBP land types applicable for the Uhelna locality: Mixed forests, Grasslands, Croplands, Open or Closed Shrublands 
+- TODO: description of what parameter value ranges we will consider.
 
 ## Seasonal variability control (phenology)
+- The most seasonally variable parameter is LAI. Its values can be obtained e.g. from [MODIS satellite data](https://www.earthdata.nasa.gov/data/catalog/lpcloud-mod15a2h-061).
