@@ -48,7 +48,7 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 - sloupce generované funkcí read_sections
   - well_id                 id vrtu
   - borehole_full_name      celé jméno vrtu ve vstupním souboru (včetně názvu kolektoru)
-  - borehole_id             název tabulky v souboru měření vrtů
+  - sheetname_in_water_file název tabulky v souboru měření hladin vrtů
   - confirmed               indikátor existující tabulky v souboru měření vrtů
   - X                       x-souřadnice vrtu [m]
   - Y                       y-souřadnice vrtu [m]

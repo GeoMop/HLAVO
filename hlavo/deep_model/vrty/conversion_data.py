@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _process_water_level_sheet(df_read, sheetname):
+def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
     """
     Process data of one sheet of excel file.
     """
@@ -30,7 +30,8 @@ def _process_water_level_sheet(df_read, sheetname):
 
     df_read["well_id_orig"] = sheetname
     df_read["well_id"] = df_read["well_id_orig"].values.astype("str")
-    df = df_read[["well_id", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
+    df_read["well_in_section_file"] = well_in_section_file
+    df = df_read[["well_id", "well_in_section_file", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
 
     # remove rows contains NaN values of water_level
     df = df.dropna(subset=["water_level"])
@@ -57,49 +58,49 @@ def _sheet_names_dictionary():
     Return dictionary of pairs of sheet names in excel files and its according well ids in section file.
     """
     dict = {
-        "1420_19 (Mw)" : "19",
-        "1420_20 (Nd)" : "20",
-        "1420_21 (Mw)" : "21",
-        "1420_22 (Mw)" : "22",
-        "1420_22B (Q)" : "22B" ,
-        "1420_23 (Mw)" : "23",
-        "1420_23B (Q)" : "23B",
-        "1420_24 (Pw)" : "24",
-        "1420_24B (Q)" : "24B",
-        "1420_25 (Nd)" : "25",
-        "1420_1 (Nd)" : "1",
-        "1420_2 (Nd)" : "2",
-        "1420_3 (Nd)" : "3",
-        "1420_4 (Ng)" : "4",
-        "1420_5 (Nd)" : "5",
-        "1420_6 (Nd)" : "6",
-        "1420_7 (Ng)" : "7",
-        "6413_8 (Krystalinikum)" : "8",
-        "1430_9 (Q)" : "9",
-        "1430_10 (Nd)" : "10",
-        "1430_10A (Nd)" : "10A",
-        "1430_11 (Nd)" : "11",
-        "1430_13 (Nd)" : "13",
-        "1430_15 (Nd)" : "15",
-        "1430_16 (Nd)" : "16",
-        "1420_17 (Nd)" : "17",
-        "1420_18 (Nd)" : "18",
-        "H-3 (Pw)" : "H-3",
-        "H-4 (Pw)" : "H-4",
-        "H-6 (Pw)" : "H-6",
-        "H-9 (Pw)" : "H-9",
-        "H-2a (Mw)" : "H-2a",
-        "H-4a (Mw)" : "H-4a",
-        "H-7a (Mw)" : "H-7a",
-        "H-8a (Mw)" : "H-8a",
-        "H-3b (Nd)" : "H-3b",
-        "H-5b (Nd)" : "H-5b",
-        "H-6b (Nd)" : "H-6b",
-        "GI-1 (Q)" : "GI-1",
-        "GI-2 (Q)" : "GI-2",
-        "GI-3 (Q)" : "GI-3",
-        "JA-1 (Nd)" : "JA-1",
-        "Uh-2 (Q)" : "UH-2"
+        "19": "1420_19",
+        "20" : "1420_20",
+        "21" : "1420_21",
+        "22" : "1420_22",
+        "22B" : "1420_22B" ,
+        "23" : "1420_23",
+        "23B" : "1420_23B",
+        "24" : "1420_24",
+        "24B" : "1420_24B",
+        "25" : "1420_25",
+        "1" : "1420_1",
+        "2" : "1420_2",
+        "3" : "1420_3",
+        "4" : "1420_4",
+        "5" : "1420_5",
+        "6" : "1420_6",
+        "7" : "1420_7",
+        "8" : "6413_8",
+        "9" : "1430_9",
+        "10" : "1430_10",
+        "10A" : "1430_10A",
+        "11" : "1430_11",
+        "13" : "1430_13",
+        "15" : "1430_15",
+        "16" : "1430_16",
+        "17" : "1420_17",
+        "18" : "1420_18",
+        "H-3" : "H-3",
+        "H-4" : "H-4",
+        "H-6" : "H-6",
+        "H-9" : "H-9",
+        "H-2a" : "H-2a",
+        "H-4a" : "H-4a",
+        "H-7a" : "H-7a",
+        "H-8a" : "H-8a",
+        "H-3b" : "H-3b",
+        "H-5b" : "H-5b",
+        "H-6b" : "H-6b",
+        "GI-1" : "GI-1",
+        "GI-2" : "GI-2",
+        "GI-3" : "GI-3",
+        "JA-1" : "JA-1",
+        "UH-2" : "Uh-2"
     }
     return dict
 
@@ -123,6 +124,9 @@ def read_water_level(file_paths=None):
     # List of processed sheets in all processed files
     processed_sheets = []
 
+    # map well_id in section file to sheetname in water level files
+    full_name_map = _sheet_names_dictionary();
+
     for xls_file in file_paths:
         logger.info("Processing of file: %s", xls_file)
         # List of file sheets
@@ -134,7 +138,7 @@ def read_water_level(file_paths=None):
             clmns = df.columns.values.tolist()
 
             try:
-                df_sheet = _process_water_level_sheet(df, sheetname=sheet)
+                df_sheet = _process_water_level_sheet(df, sheetname=sheet, well_in_section_file=full_name_map.get(sheet))
             except Exception as e:
                 logger.exception("message")
             else:
@@ -142,10 +146,8 @@ def read_water_level(file_paths=None):
                 processed_sheets.append(sheet)
                 logger.info("  ... sheet successfully processed")
 
-    #processed_sheets = processed_sheets.values.astype("str")
-    full_name_map = _sheet_names_dictionary();
     # test if all values of full_name_map dictionary exist as sheet in set of excel files
-    expected = set(full_name_map.values())
+    expected = set(full_name_map.keys())
     missing = expected - set(processed_sheets)
     # TypeError: unsupported operand type(s) for -: 'set' and 'list'
     if missing:
@@ -249,14 +251,23 @@ def read_sections(section_file, sheetname):
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
 
-    # add borehole_id - according name of sheet in excel file if exists
+    # add sheetname_in_water_file - according name of sheet in excel file if exists
     full_name_map = _sheet_names_dictionary();
-    df["borehole_id"] = df["borehole_full_name"].map(full_name_map)
-    df["confirmed"] = df["borehole_id"].notna().astype(int)
+    r_full_name_map = dict((v, k) for k, v in full_name_map.items())
+    df["sheetname_in_water_file"] = df["well_id"].map(r_full_name_map)
+    df["confirmed"] = df["sheetname_in_water_file"].notna().astype(int)
+
+    expected = ( df["well_id"].str.strip() + " (" + df["collector"].str.strip() + ")" )
+    invalid_mask = df["borehole_full_name"].str.strip() != expected
+    for idx, row in df.loc[invalid_mask].iterrows():
+        logger.warning(
+            "Invalid value of 'borehole_full_name' in row %s: 'well_id''='%s', 'collector'='%s', 'borehole_full_name'='%s', expected='%s'",
+            idx, row["well_id"], row["collector"], row["borehole_full_name"], expected.loc[idx],
+        )
 
     # test if all values of full_name_map dictionary exist in dataframe
-    expected = set(full_name_map.values())
-    used = set(df["borehole_id"].dropna())
+    expected = set(full_name_map.keys())
+    used = set(df["sheetname_in_water_file"].dropna())
     missing = expected - used
     if missing:
         warn_msg = "Following sheet names are not contained in section list\n"
