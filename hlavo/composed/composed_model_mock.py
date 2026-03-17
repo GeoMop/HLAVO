@@ -71,27 +71,9 @@ class Model1D:
         self._rng = np.random.default_rng(seed=10_000 + int(idx))
 
         if kalman_config is not None:
-            assert self.work_dir is not None
-            assert self.kalman_config_path is not None
             with self.kalman_config_path.open("r", encoding="utf-8") as handle:
                 main_cfg_data = yaml.safe_load(handle) or {}
-            model_1d_cfg = main_cfg_data.get("model_1d", {})
-            assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
-            required_cfg_keys = ("kalman_config", "model_config", "measurements_config", "postprocess")
-            missing_cfg_keys = [key for key in required_cfg_keys if key not in model_1d_cfg]
-            assert not missing_cfg_keys, (
-                "Main input file must include Kalman sections under model_1d: "
-                f"missing {missing_cfg_keys} in {self.kalman_config_path}"
-            )
-            model_1d_cfg_for_kalman = dict(model_1d_cfg)
-            if "seed" not in model_1d_cfg_for_kalman:
-                assert "seed" in main_cfg_data, (
-                    "Missing required seed for Kalman config. "
-                    "Provide model_1d.seed or top-level seed."
-                )
-                model_1d_cfg_for_kalman["seed"] = main_cfg_data["seed"]
-            model_1d_cfg_yaml = yaml.safe_dump(model_1d_cfg_for_kalman, sort_keys=False)
-            self.kalman = KalmanFilter.from_config(self.work_dir, model_1d_cfg_yaml, verbose=False)
+            self.kalman = KalmanFilter.from_config(self.work_dir, main_cfg_data, verbose=False)
             if self._resolve_kalman_measurements_file():
                 self.ukf = self.prepare_kalman_measurements()
 

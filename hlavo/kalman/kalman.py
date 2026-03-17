@@ -58,6 +58,13 @@ class KalmanFilter:
             raise TypeError(f"Unsupported config_source type: {type(config_source)}")
 
         assert isinstance(config_dict, dict), "Kalman config must be a mapping"
+        if "model_1d" in config_dict:
+            model_1d_cfg = config_dict["model_1d"]
+            assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
+            normalized = dict(model_1d_cfg)
+            if "seed" not in normalized and "seed" in config_dict:
+                normalized["seed"] = config_dict["seed"]
+            config_dict = normalized
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):
