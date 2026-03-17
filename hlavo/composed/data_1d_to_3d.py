@@ -10,4 +10,3 @@ class Data1DTo3D:
     longitude: float
     latitude: float
     velocity: Any # Units not yet known
-
