@@ -8,6 +8,9 @@ import sys
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _process_water_level_sheet(df_read, sheetname):
@@ -110,6 +113,9 @@ def read_water_level(file_paths=None):
     Param   file_paths    Set of paths to Excel input files
     Returns pandas:DataFrame
     """
+
+    logging.basicConfig(level=logging.INFO)
+
     file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
@@ -118,24 +124,23 @@ def read_water_level(file_paths=None):
     processed_sheets = []
 
     for xls_file in file_paths:
-        print(f"Processing of file: {xls_file}")
+        logger.info("Processing of file: %s", xls_file)
         # List of file sheets
         xls = pd.ExcelFile(xls_file)
 
         for sheet in xls.sheet_names:
-            print(f" Reading of sheet: {sheet}")
+            logger.info(" Reading of sheet: %s", sheet)
             df = pd.read_excel(xls, sheet_name=sheet)
             clmns = df.columns.values.tolist()
 
             try:
                 df_sheet = _process_water_level_sheet(df, sheetname=sheet)
             except Exception as e:
-                print("  ... sheet is not in required data format>")
-                print(f"      {e}")
+                logger.exception("message")
             else:
                 dfs.append(df_sheet)
                 processed_sheets.append(sheet)
-                print("  ... sheet successfully processed")
+                logger.info("  ... sheet successfully processed")
 
     #processed_sheets = processed_sheets.values.astype("str")
     full_name_map = _sheet_names_dictionary();
@@ -144,9 +149,10 @@ def read_water_level(file_paths=None):
     missing = expected - set(processed_sheets)
     # TypeError: unsupported operand type(s) for -: 'set' and 'list'
     if missing:
-        print("Following sheets were not processed or doesn't exist:")
+        warn_msg = "Following sheets were not processed or doesn't exist\n"
         for name in sorted(missing):
-            print(f" - {name}")
+            warn_msg = warn_msg + " - " + name + "\n"
+        logger.warning("%s", warn_msg)
 
     if dfs:  # test empty list
         final_df = pd.concat(dfs, ignore_index=True)
@@ -166,6 +172,8 @@ def read_draw(xls_file, sheetname):
     Returns pandas:DataFrame
     """
 
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Processing draw data from file %s", xls_file)
     #read data from excel, set required column names
     column_map = {
         "MVM1" : "M1",
@@ -206,6 +214,7 @@ def read_draw(xls_file, sheetname):
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
 
     df_result.attrs["units"] = {"cum_draw ": "m^3"}
+    logger.info(" ... draw data completely processed")
 
     return df_result
 
@@ -219,6 +228,9 @@ def read_sections(section_file, sheetname):
     Param   sheetname   Name of sheet in xls_file
     Returns pandas:DataFrame
     """
+
+    logging.basicConfig(level=logging.INFO)
+
     # read data from excel, set required column names
     column_map = {
         "Vrt_s_kolektorem": "borehole_full_name",
@@ -247,9 +259,10 @@ def read_sections(section_file, sheetname):
     used = set(df["borehole_id"].dropna())
     missing = expected - used
     if missing:
-        print("Following sheet names are not contained in section list:")
+        warn_msg = "Following sheet names are not contained in section list\n"
         for name in sorted(missing):
-            print(f" - {name}")
+            warn_msg = warn_msg + " - " + name + "\n"
+        logger.warning("%s", warn_msg)
 
     # split more intervals to separate rows
     df["interval"] = df["interval"].str.split(";")
@@ -268,23 +281,26 @@ def read_sections(section_file, sheetname):
     invalid_mask_interval = df["interval_min"] >= df["interval_max"]
     invalid_rows_interval = df[invalid_mask_interval]
     for idx in invalid_rows_interval.index:
-        print(f"Invalid interval at row {idx}: min={df.at[idx, 'interval_min']}, max={df.at[idx, 'interval_max']}")
+        logger.warning("Invalid interval at row %s: min=%s, max=%s", idx, df.at[idx, 'interval_min'], df.at[idx, 'interval_max'])
 
     invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
     invalid_rows_from = df[invalid_mask_from]
     for idx in invalid_rows_from.index:
-        print(f"Invalid \'Z_OD\' value at row {idx}: Z_OD={df.at[idx, 'Z_OD']}, Z={df.at[idx, 'Z']}, DO={df.at[idx, 'DO']}. It should be \'Z_OD = Z - DO\'")
+        logger.warning("Invalid \'Z_OD\' value at row %s: Z_OD=%s, Z=%s, DO=%s. It should be \'Z_OD = Z - DO\'",
+                       idx, df.at[idx, 'Z_OD'], df.at[idx, 'Z'], df.at[idx, 'DO'])
 
     invalid_mask_to = df["Z_DO"] == df["Z"] - df["OD"]
     invalid_rows_to = df[invalid_mask_to]
     for idx in invalid_rows_to.index:
-        print(f"Invalid \'Z_DO\' value at row {idx}: Z_DO={df.at[idx, 'Z_DO']}, Z={df.at[idx, 'Z']}, OD={df.at[idx, 'OD']}. It should be \'Z_DO = Z - OD\'")
+        logger.warning("Invalid \'Z_DO\' value at row %s: Z_DO=%s, Z=%s, OD=%s. It should be \'Z_DO = Z - OD\'",
+                       idx, df.at[idx, 'Z_DO'], df.at[idx, 'Z'], df.at[idx, 'OD'])
 
     expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
     expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
     invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
     for idx, row in df.loc[invalid_mask_interval].iterrows():
-        print(f"Invalid \'OD - DO\' interval at row {idx}: OD={row['OD']}, expected={expected_from.loc[idx]}; DO={row['DO']}, expected={expected_to.loc[idx]}")
+        logger.warning("Invalid \'OD - DO\' interval at row %s: OD=%s, expected=%s; DO=%s, expected=%s",
+                       idx, row['OD'], expected_from.loc[idx], row['DO'], expected_to.loc[idx])
 
     # remove unnecessary columns
     df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
