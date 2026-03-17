@@ -63,16 +63,34 @@ Uhelna:
                 coords: ["date_time", "well_id"]
 
             borehole_full_name:
+                type: str[32]
+                description: "Well full name (including collector)."
                 coords: ["well_id"]
             borehole_id:
+                type: str[16]
+                description: "Sheetname in file of measure data"
                 coords: ["well_id"]
             confirmed:
+                type: int1
+                description: "Sign of existing sheetname in file of measured data"
                 coords: ["well_id"]
             X:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "X-coord of well."
                 coords: ["well_id"]
             Y:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Y-coord of well."
                 coords: ["well_id"]
             Z:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Z-coord of well."
                 coords: ["well_id"]
             collector:
                 coords: ["well_id"]
