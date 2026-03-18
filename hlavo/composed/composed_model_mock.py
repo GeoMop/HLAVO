@@ -21,156 +21,31 @@ The times should be passed as the np.datetime64[ms] objects in order to
 keep relation to the date time series of the measurements.
 
 """
+import os
 import sys
 import argparse
-import numpy as np
+from datetime import datetime
 from pathlib import Path
+
+import numpy as np
 from dask.distributed import Client, LocalCluster, get_client, Queue
-from hlavo.kalman.kalman import KalmanFilter
-from hlavo.ingress.moist_profile.load_data import load_data
+from hlavo.composed.model_1d import Model1D
+from hlavo.composed.model_3d import Model3D
 
 
-# ---------------------------------------------------------------------------
-# 1D model class
-# ---------------------------------------------------------------------------
-
-class Model1D:
-    def __init__(self, idx, initial_state=0.0, work_dir=None, kalman_config={}):
-        self.idx = idx
-        self.state = initial_state
-
-        self.kalman = KalmanFilter.from_config(work_dir, kalman_config, verbose=False)
-        self.ukf = self._prepare_kalman_measurements()
-
-        #kalman_filter.run() # load measurements
-
-    def prepare_kalman_measurements(self):
-        noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag = load_data(
-            self.kalman.train_measurements_struc,
-            self.kalman.test_measurements_struc,
-            data_csv=self.kalman.measurements_config["measurements_file"],
-            measurements_config=self.kalman.measurements_config
-        )
-
-        precipitation_list = []
-        for (time_prec, precipitation) in meas_model_iter_flux:
-            precipitation_list.extend([precipitation] * time_prec)
-        self.kalman.measurements_config["precipitation_list"] = precipitation_list
-
-        noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux = \
-            self.kalman.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag)
-
-        sample_variance = np.nanvar(noisy_measurements, axis=0)
-        measurement_noise_covariance = np.diag(sample_variance)
-
-        self.kalman.results.times_measurements = np.cumsum(meas_model_iter_time)
-        self.kalman.results.precipitation_flux_measurements = meas_model_iter_flux
-
-        return self.set_kalman_filter(measurement_noise_covariance)
-
-    def step(self, target_time, data_for_step):
-        print(f"[1D {self.idx}] step at t={target_time}, "
-              f"data={data_for_step}, current_state={self.state}")
-        self.state += data_for_step
-        print(f"[1D {self.idx}] new state={self.state}")
-        return self.state
-
-    def run_loop(self, t_end, queue_name_in, queue_name_out):
-        """
-        Input queue processing loop for the 1D model.
-        """
-        #client = get_client()
-        q_in = Queue(queue_name_in)       # correct API
-        q_out = Queue(queue_name_out)
-
-        current_time = 0.0
-
-        while current_time < t_end:
-            target_time, data = q_in.get()     # blocks
-            contribution = self.step(target_time, data) # # call kalman, meas - neni ve fronte, musi se odnekud nacist
-            q_out.put((self.idx, target_time, contribution))
-            print(f"[1D {self.idx}] sent contribution={contribution} at t={target_time}")
-
-            current_time = target_time
-
-        print(f"[1D {self.idx}] finished loop at t={current_time} (t_end={t_end})")
-        return f"1D model {self.idx} done; final state={self.state}"
-
-
-def model1d_worker_entry(idx, t_end, queue_name_in, queue_name_out, work_dir, kalman_config):
+def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, kalman_config_path, seed=123):
     """
     Entry function running on a Dask worker.
     """
-    model = Model1D(idx=idx, initial_state=0.0, work_dir=work_dir, kalman_config=kalman_config)
-    return model.run_loop(t_end, queue_name_in, queue_name_out)
-
-
-# ---------------------------------------------------------------------------
-# 3D model class
-# ---------------------------------------------------------------------------
-
-class Model3D:
-    def __init__(self, n_1d, initial_state=0.0, initial_time=0.0, base_dt=1.0):
-        self.n_1d = n_1d
-        self.state = initial_state
-        self.time = initial_time
-        self.base_dt = base_dt
-
-    def choose_dt(self, t_end):
-        remaining = t_end - self.time
-        return max(min(self.base_dt, remaining), 0.0)
-
-    def step(self, target_time, contributions):
-        print(f"[3D] step to t={target_time}, "
-              f"current_state={self.state}, contributions={contributions}")
-        total_contrib = sum(contributions)
-        self.state += total_contrib
-        self.time = target_time
-        print(f"[3D] new state={self.state}")
-        return self.state
-
-    def run_loop(self, t_end, queue_names_out_to_1d, queue_name_in_from_1d):
-        client = get_client()
-        q_3d_to_1d = [Queue(name) for name in queue_names_out_to_1d]
-        q_1d_to_3d = Queue(queue_name_in_from_1d)
-
-        while self.time < t_end:
-            dt = self.choose_dt(t_end)
-            if dt <= 0.0:
-                print("[3D] dt <= 0, stopping to avoid infinite loop.")
-                break
-
-            target_time = self.time + dt
-            print(f"\n[3D] === Step: t={self.time} -> t={target_time} ===")
-            print(f"[3D] current state={self.state}")
-
-            # send to 1D
-            for i in range(self.n_1d):
-                data_for_i = self.state + i  # dummy placeholder
-                print(f"[3D] sending to 1D {i}: t={target_time}, data={data_for_i}")
-                q_3d_to_1d[i].put((target_time, data_for_i))
-
-            # receive contributions
-            contributions = [None] * self.n_1d
-            received = 0
-
-            while received < self.n_1d:
-                idx, t_recv, contrib = q_1d_to_3d.get()
-                print(f"[3D] received from 1D {idx}: t={t_recv}, contrib={contrib}")
-                contributions[idx] = contrib
-                received += 1
-
-            self.step(target_time, contributions)
-
-        print(f"[3D] finished time loop at t={self.time} (t_end={t_end}), state={self.state}")
-        return self.state
+    model = Model1D(site_id=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path, seed=seed)
+    return model.run_loop(start_datetime, end_datetime, queue_name_in, queue_name_out)
 
 
 # ---------------------------------------------------------------------------
 # Setup function
 # ---------------------------------------------------------------------------
 
-def setup_models(n_1d, t_end, work_dir, kalman_config):
+def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
     client = get_client()
 
     queue_names_3d_to_1d = []
@@ -179,26 +54,35 @@ def setup_models(n_1d, t_end, work_dir, kalman_config):
     queue_name_1d_to_3d = "q-1d-to-3d"
     Queue(queue_name_1d_to_3d, client=client)  # ensure creation
 
-    for i in range(n_1d):
-        q_name_3d_to_1d = f"q-3d-to-1d-{i}"
+    for i, model_1d_config in enumerate(deep_model_config["1d_models"]):
+        print('model_1d_config ', model_1d_config)
+        model_1d_config_path = Path(model_1d_config).resolve()
+        model_config_content = load_config(model_1d_config_path)
+
+        model_work_dir = os.path.join(work_dir, "model_1d_{}".format(i+1))
+        print("model_work_dir ", model_work_dir)
+        os.makedirs(model_work_dir, exist_ok=True)
+
+        q_name_3d_to_1d = f"q-3d-to-1d-{i+1}"
         Queue(q_name_3d_to_1d, client=client)  # ensure creation
 
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
 
         fut = client.submit(
             model1d_worker_entry,
-            i,
-            t_end,
+            i+1,
+            start_datetime, end_datetime,
             q_name_3d_to_1d,
-            queue_name_1d_to_3d, work_dir, kalman_config,
+            queue_name_1d_to_3d, model_work_dir, model_1d_config_path, seed=deep_model_config["seed"],
             pure=False,
         )
         futures_1d.append(fut)
         print(f"[SETUP] Submitted Model1D idx={i}")
 
-    model_3d = Model3D(n_1d=n_1d)
+
+    model_3d = Model3D(n_1d=i+1)
     final_state_3d = model_3d.run_loop(
-        t_end,
+        start_datetime, end_datetime,
         queue_names_out_to_1d=queue_names_3d_to_1d,
         queue_name_in_from_1d=queue_name_1d_to_3d,
     )
@@ -214,23 +98,38 @@ def setup_models(n_1d, t_end, work_dir, kalman_config):
 # Main
 # ---------------------------------------------------------------------------
 
+def load_config(config_path):
+    import yaml
+    with config_path.open("r") as f:
+        config_dict = yaml.safe_load(f)
+    return config_dict
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('work_dir', help='Path to work dir')
     parser.add_argument('config_file', help='Path to configuration file')
+
     args = parser.parse_args(sys.argv[1:])
 
     work_dir = Path(args.work_dir)
-    kalman_config = Path(args.config_file).resolve()
+    deep_model_config_path = Path(args.config_file).resolve()
+
+    deep_model_config = load_config(deep_model_config_path)
 
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
-    n_1d = 3
-    t_end = 5.0
+    start_datetime = np.datetime64(deep_model_config["start_datetime"])
+    end_datetime = np.datetime64(deep_model_config["end_datetime"])
 
-    final_state = setup_models(n_1d, t_end, work_dir, kalman_config)
+    print("start date time ", start_datetime)
+    print("end date time ", end_datetime)
+
+    if end_datetime <= start_datetime:
+        raise ValueError("end-datetime must be after start-datetime")
+
+    final_state = setup_models(work_dir, start_datetime, end_datetime, deep_model_config)
     print("\n[MAIN] Final 3D state:", final_state)
 
     client.close()
