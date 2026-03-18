@@ -3,8 +3,7 @@
 # author:   David Flanderka
 
 import sys
-sys.path.append('../../../hlavo/deep_model/vrty')
-import well_data
+from hlavo.ingress import well_data
 
 
 def main(args):
