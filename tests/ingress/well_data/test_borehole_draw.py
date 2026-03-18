@@ -7,7 +7,7 @@ from hlavo.ingress import well_data
 
 
 def main(args):
-    defaults = ["../../../hlavo/deep_model/vrty/25_09_27_Odbery_Uhelna.xlsx", "List1", "borehole_water_draw_out.csv"]
+    defaults = ["../hlavo/ingress/well_data/25_09_27_Odbery_Uhelna.xlsx", "List1", "borehole_water_draw_out.csv"]
     xls_file, sheetname, csv_output = (args + defaults)[:3]
 
     excel_df = well_data.read_draw(xls_file, sheetname)
