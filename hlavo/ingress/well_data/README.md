@@ -37,10 +37,11 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 
     matplotlib, grafy průběhů odběru a hladin -> PDF
     
-## Formát tabulek generovaných funkcemi skriptu
+## Formát tabulek generovaných funkcemi skriptu well_data.py
 
 - sloupce generované funkcí read_water_level
   - well_id                 id vrtu
+  - well_in_section_file    název vrtu v souboru seznamu vrtů
   - date_time               datum a čas měření
   - water_depth             hloubka hladiny vody [m]
   - water_level             nadmořská výška hladiny vody [m nm]

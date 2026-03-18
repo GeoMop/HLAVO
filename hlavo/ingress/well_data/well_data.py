@@ -7,7 +7,6 @@
 import sys
 from pathlib import Path
 import pandas as pd
-import matplotlib.pyplot as plt
 import logging
 
 logger = logging.getLogger(__name__)
@@ -330,26 +329,6 @@ def csv_output(csv_file, df):
 
     full_path = workdir / csv_file
     df.to_csv(path_or_buf=full_path, header=True, mode='w')
-
-
-def pdf_plot(pdf_file, df):
-    """
-    Perform graph to PDF file.
-    TODO rename and add documentation
-    """
-    ax = df.plot(
-        x="date_time",
-        y=["water_depth", "water_level"],
-        figsize=(10, 5)
-    )
-
-    ax.set_xlabel("Date")
-    ax.set_ylabel("water level [m]")
-    ax.grid(True)
-
-    plt.tight_layout()
-    plt.savefig(pdf_file)
-    plt.close()
 
 
 def main():
