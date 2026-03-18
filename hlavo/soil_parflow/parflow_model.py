@@ -1,6 +1,9 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
 
+import shutil
+import os
+import xarray as xr
 from parflow import Run
 from parflow.tools import settings
 from parflow.tools.io import write_pfb
@@ -368,13 +371,143 @@ class ToyProblem(AbstractModel):
         self._run.Geom.domain.Porosity.Type = "PFBFile"
         self._run.Geom.domain.Porosity.FileName = filename
 
-    def run(self, init_pressure, precipitation_value, state_params=None, start_time=0, stop_time=20, time_step=0.025, working_dir=None):
-        import shutil
-        import os
+    def prepare_clm(self, working_dir, ds):
+        # We assume these files exist in current dir.
+        # They should be either generated runtime or stored somewhere globally.
+        # shutil.copy("drv_clmin.dat", working_dir / "drv_clmin.dat")
+        shutil.copy("drv_vegm.dat", working_dir / "drv_vegm.dat")
+        shutil.copy("drv_vegp.dat", working_dir / "drv_vegp.dat")
+
+        # Create subdirectories necessary for Parflow/CLM coupling.
+        for dir in [
+            "qflx_evap_grnd",
+            "eflx_lh_tot",
+            "qflx_evap_tot",
+            "qflx_tran_veg",
+            "correct_output",
+            "qflx_infl",
+            "swe_out",
+            "eflx_lwrad_out",
+            "t_grnd",
+            "diag_out",
+            "qflx_evap_soi",
+            "eflx_soil_grnd",
+            "eflx_sh_tot",
+            "qflx_evap_veg",
+            "qflx_top_soil",
+        ]:
+            os.makedirs(working_dir / dir)
+
+        # Create main CLM parameter file drv_clmin.dat
+        start=ds.time[0].dt
+        end=ds.time[-1].dt
+        drv_clmin_params = dict(
+            # CLM Domain (Read into 1D drv_module variables) :
+            maxt=       1,      # Maximum tiles per grid (originally 3; changed it, because we have one type per cell)
+            #mina        0.05,   # Min grid area for tile (%)
+            udef=       -9999., # Undefined value
+            #vclass      2,      # Vegetation Classification Scheme (1=UMD,2=IGBP,etc.) NOT the index
+
+            # CLM Files (Read into 1D drv_module variables):
+            vegtf=      "drv_vegm.dat",     # Vegetation Tile Specification File
+            vegpf=      "drv_vegp.dat",     # Vegetation Type Parameter
+            #metf1d=     self._run.Solver.CLM.MetFileName,
+            outf1d=     "clm.output.txt",   # CLM output file
+            poutf1d=    "clm.param.out.dat",# CLM 1D Parameter Output File
+            rstf=       "clm.rst.",         # CLM active restart file
+
+            startcode=  2,                     # 1=restart file,2=defined
+            sss=        start.second.item(),   # Starting Second
+            smn=        start.minute.item(),   # Starting Minute
+            shr=        start.hour.item(),     # Starting Hour
+            sda=        start.day.item(),      # Starting Day
+            smo=        start.month.item(),    # Starting Month
+            syr=        start.year.item(),     # Starting Year
+
+            ess=        end.second.item(),     # Ending Second
+            emn=        end.minute.item(),     # Ending Minute
+            ehr=        end.hour.item(),       # Ending Hour
+            eda=        end.day.item(),        # Ending Day
+            emo=        end.month.item(),      # Ending Month
+            eyr=        end.year.item(),       # Ending Year
+
+            # IC Source: (1) restart file, (2) drv_clmin.dat (this file)
+            clm_ic=     2,               # 1=restart file,2=defined CLM Initial Condition Source
+
+            # CLM initial conditions (1-D) : used in drv_clmini.f90_
+            t_ini=      ds.air_temperature_2m[0,0].values.item(), # Initial temperature [K]
+            #h2osno_ini= 0.,                                       # Initial snow cover, water equivalent [mm]
+        )
+        with open(working_dir / "drv_clmin.dat", "w") as f:
+            f.write("\n".join(f"{name:20} {value}" for name,value in drv_clmin_params.items()))
+
+
+
+        # Prepare file with meteorological data for CLM.
+        stop_time = ds.time_interval / np.timedelta64(1, 's')
+        time_step = ds.time_step / np.timedelta64(1, 's')
+        # For each field we comment on the meaning in CLM and add instruction
+        # on how to get the value from chmi_aladin_10m data.
+        clm_met_data = {
+            # Downward Visible or Short-Wave radiation [W/m2].
+            # surface_solar_radiation_downwards [J/m2] / time_step [s]
+            "DSWR": ds.surface_solar_radiation_downwards / time_step,
+
+            # Downward Infa-Red or Long-Wave radiation [W/m2].
+            # surface_thermal_radiation_downwards [J/m2] / time_step [s]
+            "DLWR": ds.surface_thermal_radiation_downwards / time_step,
+
+            # Precipitation rate [mm/s].
+            # precipitation_amount_accum [kg/m2] / water_density [kg/m3] / total_time [s] * 1000 [mm/m]
+            # Note: Here we probably need some else field than the total amount since forecast start.
+            "APCP": ds.precipitation_amount_accum / 1000 / stop_time * 1000,
+
+            # Air temperature [K].
+            # air_temperature_2m
+            "Temp": ds.air_temperature_2m,
+
+            # West-to-East or U-component of wind [m/s].
+            # -wind_speed_10m * cos(wind_from_direction_10m * pi/180)
+            "UGRD": -ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
+
+            # South-to-North or V-component of wind [m/s].
+            # -wind_speed_10m * sin(wind_from_direction_10m * pi/180)
+            "VGRD": -ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
+
+            # Atmospheric pressure [Pa].
+            # air_pressure_at_sea_level
+            # Note: Can we get the pressure at current terrain level?
+            "Press": ds.air_pressure_at_sea_level,
+
+            # Water-vapor specific humidity [kg/kg].
+            # relative_humidity_2m
+            "SPFH": ds.relative_humidity_2m,
+        }
+        with open(working_dir / self._run.Solver.CLM.MetFileName, "w") as f:
+            for i,time in enumerate(ds.time.values):
+                f.write( " ".join(str(v[0,i].item()) for v in ds.data_vars.values()) + "\n")
+
+
+
+    def run(self,
+            init_pressure,
+            precipitation_value=0,
+            state_params=None,
+            start_time=0, stop_time=20, time_step=0.025,
+            met_data:xr.Dataset=None,
+            working_dir=None):
         if working_dir is None:
             working_dir = self._workdir
         shutil.rmtree(working_dir)
         os.makedirs(working_dir)
+
+        if self._run.Solver.LSM == "CLM":
+            # set time interval and step from meteorological dataset
+            start_time = 0
+            stop_time = met_data.time_interval / np.timedelta64(1, 'h')
+            time_step = met_data.time_step / np.timedelta64(1, 'h')
+            precipitation_value = 0 # precipitation is computed by CLM
+            self.prepare_clm(working_dir, met_data)
 
         if state_params is not None:
             self.set_dynamic_params(state_params)
