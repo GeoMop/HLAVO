@@ -4,7 +4,7 @@ ATTRS:
     S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
     #  note:  STORE_URL: "s3://<bucket>>/<zarr_storage>"
 #    STORE_URL: "s3://hlavo-release/profiles.zarr"
-    STORE_URL: "s3://hlavo-testing/profiles_test.zarr"
+    STORE_URL: "s3://hlavo-testing/profiles.zarr"
 #    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
 
 
@@ -94,7 +94,7 @@ Uhelna:
                 
         COORDS:
             date_time:
-                unit: { tick: "h", tz: "UTC" }
+                unit: { tick: "m", tz: "UTC" }
                 description: "Time coordinate"
 #                df_col: "timestamp"
 #                source_unit: { tick: "s", tz: "CET" }
@@ -103,7 +103,7 @@ Uhelna:
                 #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
                 #allow_inserts: False  # This is currently only supported and default value.
                 #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
-                step_limits: [1, 12, "h"]
+                step_limits: [15, 15, "m"]
                 # None - no limits add all new coordinates out of existing range.
                 # scalar - regular grid with this step size (use units to convert string values
                 # [min, max] - regular grid with this step size (TODO)
