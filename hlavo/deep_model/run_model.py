@@ -16,7 +16,6 @@ import yaml
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
 
 import flopy
-from flopy.utils import postprocessing
 
 LOG = logging.getLogger(__name__)
 
@@ -29,6 +28,7 @@ class RunConfig:
     sim_name: str
     exe_name: str
     recharge_rate: float
+    recharge_series_m_per_day: tuple[float, ...] | None
     drain_conductance: float
     simulation_days: float
     stress_periods_days: tuple[float, ...]
@@ -45,11 +45,17 @@ class RunConfig:
     plot_active_mask_name: str
     plot_idomain_name: str
     plot_head_name: str
+    plot_groundwater_surface_name: str
+    plot_groundwater_change_name: str
+    plot_hydrograph_name: str
+    plot_xsection_x_times_name: str
+    plot_xsection_y_times_name: str
     plot_velocity_name: str
     plot_xsection_x_name: str
     plot_xsection_y_name: str
     plot_xsection_y_index: int | None
     plot_xsection_x_index: int | None
+    plot_xsection_depth_window: float
 
     @staticmethod
     def from_yaml(config_path: Path, workspace: Path | None = None) -> "RunConfig":
@@ -68,6 +74,17 @@ class RunConfig:
         sim_name = str(model_raw.get("sim_name", "uhelna"))
         exe_name = str(model_raw.get("exe_name", "mf6"))
         recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
+        recharge_series_raw = model_raw.get("recharge_series_m_per_day")
+        if recharge_series_raw is not None:
+            assert isinstance(recharge_series_raw, (list, tuple)), (
+                "model.recharge_series_m_per_day must be a list"
+            )
+            recharge_series_m_per_day = tuple(float(value) for value in recharge_series_raw)
+            assert all(np.isfinite(value) for value in recharge_series_m_per_day), (
+                "model.recharge_series_m_per_day must contain finite values"
+            )
+        else:
+            recharge_series_m_per_day = None
         drain_conductance = float(model_raw.get("drain_conductance", 1.0))
         simulation_days = model_raw.get("simulation_days")
         if simulation_days is not None:
@@ -97,6 +114,10 @@ class RunConfig:
             total = float(sum(stress_periods_days))
             assert np.isclose(total, simulation_days, rtol=1e-6, atol=1e-6), (
                 "Sum of model.stress_periods_days must equal model.simulation_days"
+            )
+        if recharge_series_m_per_day is not None:
+            assert len(recharge_series_m_per_day) == len(stress_periods_days), (
+                "model.recharge_series_m_per_day length must match stress periods"
             )
 
         base_workspace = Path(workspace) if workspace is not None else Path(
@@ -171,6 +192,19 @@ class RunConfig:
         plot_active_mask_name = str(plot_raw.get("active_mask_name", "grid_active_mask.png"))
         plot_idomain_name = str(plot_raw.get("idomain_name", "idomain_top.png"))
         plot_head_name = str(plot_raw.get("head_name", "head_groundplan.png"))
+        plot_groundwater_surface_name = str(
+            plot_raw.get("groundwater_surface_name", "groundwater_surface.png")
+        )
+        plot_groundwater_change_name = str(
+            plot_raw.get("groundwater_change_name", "groundwater_change.png")
+        )
+        plot_hydrograph_name = str(plot_raw.get("hydrograph_name", "groundwater_hydrograph.png"))
+        plot_xsection_x_times_name = str(
+            plot_raw.get("xsection_x_times_name", "groundwater_x_section_times.png")
+        )
+        plot_xsection_y_times_name = str(
+            plot_raw.get("xsection_y_times_name", "groundwater_y_section_times.png")
+        )
         plot_velocity_name = str(plot_raw.get("velocity_name", "velocity_groundplan.png"))
         plot_xsection_x_name = str(plot_raw.get("xsection_x_name", "materials_x_section.png"))
         plot_xsection_y_name = str(plot_raw.get("xsection_y_name", "materials_y_section.png"))
@@ -180,6 +214,8 @@ class RunConfig:
         plot_xsection_x_index = plot_raw.get("xsection_x_index")
         if plot_xsection_x_index is not None:
             plot_xsection_x_index = int(plot_xsection_x_index)
+        plot_xsection_depth_window = float(plot_raw.get("xsection_depth_window", 40.0))
+        assert plot_xsection_depth_window > 0.0, "plots.xsection_depth_window must be > 0"
 
         return RunConfig(
             config_path=config_path,
@@ -188,6 +224,7 @@ class RunConfig:
             sim_name=sim_name,
             exe_name=exe_name,
             recharge_rate=recharge_rate,
+            recharge_series_m_per_day=recharge_series_m_per_day,
             drain_conductance=drain_conductance,
             simulation_days=simulation_days,
             stress_periods_days=stress_periods_days,
@@ -204,11 +241,17 @@ class RunConfig:
             plot_active_mask_name=plot_active_mask_name,
             plot_idomain_name=plot_idomain_name,
             plot_head_name=plot_head_name,
+            plot_groundwater_surface_name=plot_groundwater_surface_name,
+            plot_groundwater_change_name=plot_groundwater_change_name,
+            plot_hydrograph_name=plot_hydrograph_name,
+            plot_xsection_x_times_name=plot_xsection_x_times_name,
+            plot_xsection_y_times_name=plot_xsection_y_times_name,
             plot_velocity_name=plot_velocity_name,
             plot_xsection_x_name=plot_xsection_x_name,
             plot_xsection_y_name=plot_xsection_y_name,
             plot_xsection_y_index=plot_xsection_y_index,
             plot_xsection_x_index=plot_xsection_x_index,
+            plot_xsection_depth_window=plot_xsection_depth_window,
         )
 
 
@@ -457,6 +500,7 @@ def _write_plan_view_plots(
     idomain: np.ndarray,
     materials: np.ndarray,
     top: np.ndarray,
+    botm: np.ndarray,
 ) -> None:
     if not run_config.plot_enabled:
         return
@@ -506,6 +550,19 @@ def _write_plan_view_plots(
     plt.close()
     LOG.info("Saved head plot to %s", head_path)
 
+    groundwater_surface = _groundwater_surface_from_head(head, idomain, top, botm)
+    plt.figure(figsize=(8, 6))
+    img = plt.imshow(groundwater_surface, origin="upper", extent=extent, cmap="cividis")
+    plt.title("Groundwater Surface Elevation (Plan View)")
+    plt.xlabel("X (local)")
+    plt.ylabel("Y (local)")
+    plt.colorbar(img, label="Groundwater surface Z")
+    plt.tight_layout()
+    gw_surface_path = plot_dir / run_config.plot_groundwater_surface_name
+    plt.savefig(gw_surface_path, dpi=run_config.plot_dpi)
+    plt.close()
+    LOG.info("Saved groundwater surface plot to %s", gw_surface_path)
+
     velocity_plan = np.where(idomain[0] > 0, np.sqrt(qx[0] ** 2 + qy[0] ** 2), np.nan)
     x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
     y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
@@ -538,7 +595,33 @@ def _write_plan_view_plots(
         grid_data,
         materials,
         top,
+        groundwater_surface,
     )
+
+
+def _groundwater_surface_from_head(
+    head: np.ndarray,
+    idomain: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+) -> np.ndarray:
+    assert head.ndim == 3 and idomain.ndim == 3 and botm.ndim == 3
+    nz, ny, nx = head.shape
+    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
+    assert top.shape == (ny, nx), "top shape mismatch"
+
+    water_table = np.full((ny, nx), np.nan, dtype=float)
+    for k in range(nz):
+        layer_active = idomain[k] > 0
+        layer_top = top if k == 0 else botm[k - 1]
+        layer_bot = botm[k]
+        layer_head = np.asarray(head[k], dtype=float)
+        saturated = layer_active & np.isfinite(layer_head) & (layer_head > layer_bot)
+        assign = np.isnan(water_table) & saturated
+        if np.any(assign):
+            water_table[assign] = np.minimum(layer_head[assign], layer_top[assign])
+    return water_table
 
 
 def _write_cross_section_plots(
@@ -546,6 +629,7 @@ def _write_cross_section_plots(
     grid_data: dict[str, np.ndarray],
     materials: np.ndarray,
     top: np.ndarray,
+    groundwater_surface: np.ndarray,
 ) -> None:
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
@@ -567,6 +651,7 @@ def _write_cross_section_plots(
     # X-direction cross-section at fixed Y index.
     materials_x = materials[:, y_index, :]
     top_line_x = top[y_index, :]
+    gw_line_x = groundwater_surface[y_index, :]
     z_edges_center = top_line_x[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
     z_edges = np.empty((nz + 1, nx + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
@@ -576,9 +661,16 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(x_edges, z_edges, materials_x, shading="auto", cmap="tab20")
+    x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
+    plt.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
+    z_top_x = float(np.nanmax(top_line_x))
+    z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
+    z_pad_x = 0.05 * run_config.plot_xsection_depth_window
+    plt.ylim(z_bottom_x, z_top_x + z_pad_x)
     plt.title(f"Materials X-Section (y index {y_index})")
     plt.xlabel("X (local)")
     plt.ylabel("Z")
+    plt.legend(loc="best")
     plt.tight_layout()
     xsec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
     plt.savefig(xsec_path, dpi=run_config.plot_dpi)
@@ -588,6 +680,7 @@ def _write_cross_section_plots(
     # Y-direction cross-section at fixed X index.
     materials_y = materials[:, :, x_index]
     top_line_y = top[:, x_index]
+    gw_line_y = groundwater_surface[:, x_index]
     z_edges_center = top_line_y[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
     z_edges = np.empty((nz + 1, ny + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
@@ -597,9 +690,16 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(y_edges, z_edges, materials_y, shading="auto", cmap="tab20")
+    y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
+    plt.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
+    z_top_y = float(np.nanmax(top_line_y))
+    z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
+    z_pad_y = 0.05 * run_config.plot_xsection_depth_window
+    plt.ylim(z_bottom_y, z_top_y + z_pad_y)
     plt.title(f"Materials Y-Section (x index {x_index})")
     plt.xlabel("Y (local)")
     plt.ylabel("Z")
+    plt.legend(loc="best")
     plt.tight_layout()
     ysec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
     plt.savefig(ysec_path, dpi=run_config.plot_dpi)
@@ -755,11 +855,26 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
     icelltype = np.zeros(nz, dtype=int)
     icelltype[0] = 1
+    specific_yield = float(model_data["specific_yield"]) if "specific_yield" in model_data else 0.1
+    specific_storage = float(model_data["specific_storage"]) if "specific_storage" in model_data else 1.0e-5
+    flopy.mf6.ModflowGwfsto(
+        gwf,
+        iconvert=icelltype,
+        ss=specific_storage,
+        sy=specific_yield,
+        transient={iper: True for iper in range(len(run_config.stress_periods_days))},
+    )
     flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=kh, k33=kv, save_specific_discharge=True)
 
-    recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
-    recharge = np.where(active_mask, recharge_rate, 0.0)
-    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge)
+    if run_config.recharge_series_m_per_day is not None:
+        recharge_rates = run_config.recharge_series_m_per_day
+    else:
+        recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
+        recharge_rates = tuple([recharge_rate] * len(run_config.stress_periods_days))
+    recharge_spd = {
+        iper: np.where(active_mask, float(rate), 0.0) for iper, rate in enumerate(recharge_rates)
+    }
+    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge_spd)
 
     top_active = active_mask & (idomain[0] > 0)
     top_rows, top_cols = np.where(top_active)
@@ -788,59 +903,10 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     if buffer:
         LOG.debug("Modflow6 output: %s", "\n".join(buffer))
 
-    head_path = workdir / f"{run_config.sim_name}.hds"
-    assert head_path.exists(), f"Head output not found: {head_path}"
-    head = flopy.utils.binaryfile.HeadFile(str(head_path)).get_data()
-    assert head.shape == (nz, ny, nx), "Head output shape mismatch"
-    budget_path = workdir / f"{run_config.sim_name}.cbc"
-    assert budget_path.exists(), f"Budget output not found: {budget_path}"
-    cbc = flopy.utils.CellBudgetFile(str(budget_path))
-    spdis = cbc.get_data(text="SPDIS")
-    assert spdis, "Specific discharge (SPDIS) not found in budget file"
-    qx, qy, qz = postprocessing.get_specific_discharge(spdis[0], gwf)
-    _export_results_to_paraview(
-        run_config.paraview_output_path,
-        grid_data,
-        head,
-        kh,
-        qx,
-        qy,
-        qz,
-        idomain,
-        materials,
-        top,
-        botm,
-        run_config.paraview_quantities,
-        run_config.paraview_include_inactive,
-        run_config.paraview_z_scale,
-    )
-    _export_materials_to_paraview(
-        run_config.paraview_materials_output_path,
-        grid_data,
-        materials,
-        active_mask,
-        top,
-        botm,
-        run_config.paraview_quantities,
-        run_config.paraview_include_inactive,
-        run_config.paraview_z_scale,
-    )
-    _write_plan_view_plots(
-        run_config,
-        grid_data,
-        active_mask,
-        head,
-        qx,
-        qy,
-        idomain,
-        materials,
-        top,
-    )
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Modflow6 and visualization from prebuilt grid and material parameter files."
+        description="Run Modflow6 from prebuilt grid and material parameter files."
     )
     parser.add_argument(
         "--config",

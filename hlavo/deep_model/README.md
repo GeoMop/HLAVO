@@ -12,13 +12,25 @@ python build_modflow_grid.py --config <config_file>
 ```
 python add_material_parameters.py --config <config_file>
 ```
-3. Run MODFLOW and create visualization outputs:
+3. Run MODFLOW:
 ```
 python run_model.py --config <config_file>
 ```
+4. Create Paraview and plot visualizations:
+```
+python visualize_results.py --config <config_file>
+```
 
-`run_model.py` now expects both `grid_output_path` and `material_parameters_output_path`
-to exist (produced by steps 1 and 2).
+`run_model.py` and `visualize_results.py` both expect `grid_output_path` and
+`material_parameters_output_path` to exist (produced by steps 1 and 2).
+The plot outputs now include a groundwater-surface elevation map.
+Cross-sections can be zoomed to the upper part via `plots.xsection_depth_window`.
+Temporal visualization includes:
+- groundwater change map (`groundwater_change_name`)
+- groundwater hydrograph at selected cell (`hydrograph_name`)
+- X/Y section groundwater profiles for initial/mid/final times (`xsection_*_times_name`)
+
+For long-term setup with visible level changes, use `config/model_longterm.yaml`.
 
 Material parameters in config are grouped by `materials`:
 - `materials.all` is required and contains defaults plus all former `unsat` parameters.

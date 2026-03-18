@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import attrs
-import flopy
 import numpy as np
 import yaml
 
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
+
+import flopy
 from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
