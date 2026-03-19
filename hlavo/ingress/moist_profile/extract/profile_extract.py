@@ -190,7 +190,7 @@ def add_location_to_measurements(
         .select(
             pl.col("datetime").alias("event_dt"),
             pl.col("probe_id").alias("event_probe"),
-            "site_id", "latitude", "longitude",
+            "site_id", "latitude", "longitude", "site_status",
             pl.lit(False).alias("is_unassign"),
         )
     )
@@ -204,6 +204,7 @@ def add_location_to_measurements(
             pl.lit(None).cast(pl.Int64).alias("site_id"),
             pl.lit(None).cast(pl.Float64).alias("latitude"),
             pl.lit(None).cast(pl.Float64).alias("longitude"),
+            pl.lit(0).cast(pl.Int64).alias("site_status"),
             pl.lit(True).alias("is_unassign"),
         )
     )
@@ -285,6 +286,5 @@ def extract_df(file_path: str | Path, df_sites,
 
     # add latitude, longitude
     df = add_location_to_measurements(df, df_sites)
-    df = df.with_columns(pl.lit(0).alias("site_status"))
 
     return df
