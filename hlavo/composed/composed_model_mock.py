@@ -24,20 +24,46 @@ keep relation to the date time series of the measurements.
 import os
 import sys
 import argparse
-from datetime import datetime
 from pathlib import Path
-
 import numpy as np
 from dask.distributed import Client, LocalCluster, get_client, Queue
 from hlavo.composed.model_1d import Model1D
 from hlavo.composed.model_3d import Model3D
 
+###
+# Process paths
+###
 
-def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, kalman_config_path, seed=123):
+def relative_to_absolute_paths(config_dict, base_dir: Path):
+    if isinstance(config_dict, dict):
+        for k, v in config_dict.items():
+            if isinstance(v, str) and k.endswith(("_file", "_path", "_dir")):
+                p = Path(v)
+                if not p.is_absolute():
+                    config_dict[k] = (base_dir / p).resolve()
+            else:
+                relative_to_absolute_paths(v, base_dir)
+
+    elif isinstance(config_dict, list):
+        for i, v in enumerate(config_dict):
+            if isinstance(v, str):
+                # optional: only resolve if needed
+                p = Path(v)
+                if not p.is_absolute():
+                    config_dict[i] = (base_dir / p).resolve()
+            else:
+                relative_to_absolute_paths(v, base_dir)
+
+    return config_dict
+
+
+
+
+def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue_name_out, work_dir, model_kalman_config_dict, seed=123):
     """
     Entry function running on a Dask worker.
     """
-    model = Model1D(site_id=idx, initial_state=0.0, work_dir=work_dir, kalman_config_path=kalman_config_path, seed=seed)
+    model = Model1D(site_id=idx, initial_state=0.0, work_dir=work_dir, model_kalman_config_dict=model_kalman_config_dict, seed=seed)
     return model.run_loop(start_datetime, end_datetime, queue_name_in, queue_name_out)
 
 
@@ -45,7 +71,7 @@ def model1d_worker_entry(idx, start_datetime, end_datetime, queue_name_in, queue
 # Setup function
 # ---------------------------------------------------------------------------
 
-def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
+def setup_models(work_dir, config_dir, start_datetime, end_datetime, deep_model_config):
     client = get_client()
 
     queue_names_3d_to_1d = []
@@ -55,9 +81,10 @@ def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
     Queue(queue_name_1d_to_3d, client=client)  # ensure creation
 
     for i, model_1d_config in enumerate(deep_model_config["1d_models"]):
-        print('model_1d_config ', model_1d_config)
-        model_1d_config_path = Path(model_1d_config).resolve()
-        model_config_content = load_config(model_1d_config_path)
+        model_1d_config_path = config_dir / Path(model_1d_config)
+        model_kalman_config_dict = load_config(model_1d_config_path)
+
+        model_kalman_config_dict = relative_to_absolute_paths(model_kalman_config_dict, config_dir)
 
         model_work_dir = os.path.join(work_dir, "model_1d_{}".format(i+1))
         print("model_work_dir ", model_work_dir)
@@ -73,7 +100,7 @@ def setup_models(work_dir, start_datetime, end_datetime, deep_model_config):
             i+1,
             start_datetime, end_datetime,
             q_name_3d_to_1d,
-            queue_name_1d_to_3d, model_work_dir, model_1d_config_path, seed=deep_model_config["seed"],
+            queue_name_1d_to_3d, model_work_dir, model_kalman_config_dict, seed=deep_model_config["seed"],
             pure=False,
         )
         futures_1d.append(fut)
@@ -113,15 +140,16 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
 
     work_dir = Path(args.work_dir)
-    deep_model_config_path = Path(args.config_file).resolve()
+    composed_config_path = Path(args.config_file).resolve()
+    config_dir = composed_config_path.parent
 
-    deep_model_config = load_config(deep_model_config_path)
+    composed_config = load_config(composed_config_path)
 
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
-    start_datetime = np.datetime64(deep_model_config["start_datetime"])
-    end_datetime = np.datetime64(deep_model_config["end_datetime"])
+    start_datetime = np.datetime64(composed_config["start_datetime"])
+    end_datetime = np.datetime64(composed_config["end_datetime"])
 
     print("start date time ", start_datetime)
     print("end date time ", end_datetime)
@@ -129,7 +157,7 @@ if __name__ == "__main__":
     if end_datetime <= start_datetime:
         raise ValueError("end-datetime must be after start-datetime")
 
-    final_state = setup_models(work_dir, start_datetime, end_datetime, deep_model_config)
+    final_state = setup_models(work_dir, config_dir, start_datetime, end_datetime, composed_config)
     print("\n[MAIN] Final 3D state:", final_state)
 
     client.close()

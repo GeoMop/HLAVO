@@ -20,6 +20,9 @@ from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
 import threading
 from datetime import datetime
+import xarray as xr
+import pandas as pd
+
 
 ######
 # Unscented Kalman Filter for Parflow model
@@ -31,17 +34,19 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_path, verbose=False, seed=None):
+    def from_config(workdir, config_path=None, config_dict=None, verbose=False, seed=None):
         """
         Create a KalmanFilter from a YAML configuration file.
 
         :param workdir: Working directory where outputs are written
         :param config_path: Path to YAML configuration file
+        :param config_dict: Configuration dictionary
         :param verbose: Whether to print verbose runtime logs
         :return: Configured KalmanFilter instance
         """
-        with config_path.open("r") as f:
-            config_dict = yaml.safe_load(f)
+        if config_dict is None:
+            with config_path.open("r") as f:
+                config_dict = yaml.safe_load(f)
         if seed is not None:
             config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
@@ -77,10 +82,11 @@ class KalmanFilter:
         self.lock = threading.Lock()
 
         # Expand rainfall schedule into a per-timestep list
-        precipitation_list = []
-        for (time_prec, precipitation) in self.measurements_config['rain_periods']:
-            precipitation_list.extend([precipitation] * time_prec)
-        self.measurements_config["precipitation_list"] = precipitation_list
+        if "rain_periods" in self.measurements_config:
+            precipitation_list = []
+            for (time_prec, precipitation) in self.measurements_config['rain_periods']:
+                precipitation_list.extend([precipitation] * time_prec)
+            self.measurements_config["precipitation_list"] = precipitation_list
 
         self.results = KalmanResults(
             workdir, nodes_z, self.state_struc,
@@ -367,7 +373,7 @@ class KalmanFilter:
     #####################
     ### Kalman filter ###
     #####################
-    def state_transition_function(self, state_vec, dt, iter_duration, precipitation_flux):
+    def state_transition_function(self, state_vec, dt, iter_duration, precipitation_flux=None, met_data=None):
         """
         UKF state transition function: advance model state over one iteration.
 
@@ -377,6 +383,7 @@ class KalmanFilter:
         :param dt: UKF dt parameter (not used directly when iter_duration provided)
         :param iter_duration: Physical duration of this iteration (model time)
         :param precipitation_flux: Precipitation flux applied during this iteration
+        :param met_data: xarray dataset of meteo data
         :return: Encoded next state vector
         """
         print("dt: ", dt, "iter duration time: ", iter_duration)
@@ -397,12 +404,21 @@ class KalmanFilter:
         et_per_time = 0  # placeholder for ET computation
         iter_duration = float(iter_duration)
 
-        self.model.run(
-            init_pressure=pressure_data, precipitation_value=precipitation_flux,
-            state_params=state, start_time=0, stop_time=iter_duration,
-            time_step=self.kalman_config["model_time_step"],
-            working_dir=parflow_working_dir
-        )
+        if met_data is not None:
+            self.model.run(
+                init_pressure=pressure_data, met_data=met_data,
+                state_params=state, start_time=0, stop_time=iter_duration,
+                time_step=self.kalman_config["model_time_step"],
+                working_dir=parflow_working_dir
+            )
+        else:
+            assert precipitation_flux is not None
+            self.model.run(
+                init_pressure=pressure_data, precipitation_value=precipitation_flux,
+                state_params=state, start_time=0, stop_time=iter_duration,
+                time_step=self.kalman_config["model_time_step"],
+                working_dir=parflow_working_dir
+            )
 
         state["pressure_field"] = self.model.get_data(current_time_step=iter_duration, data_name="pressure")
 
@@ -548,14 +564,273 @@ class KalmanFilter:
 
         return ukf
 
-    def kalman_step(self, ukf, measurements_dataset, precipitation_flux, pressure_at_bottom):
+
+    def align_meteo_to_measurements(self, meteo_ds: xr.Dataset, meas_ds: xr.Dataset) -> xr.Dataset:
+        """
+        Align meteorological dataset to measurement time grid.
+
+        Performs:
+        - Linear interpolation of continuous variables
+        - Handling of accumulated variables
+          (convert to rate → interpolate → re-accumulate)
+
+        :param meteo_ds: Meteorological dataset with coarse time resolution (e.g. hourly)
+        :param meas_ds: Measurement dataset defining target time grid (e.g. 15-min)
+        :return: Meteo dataset aligned to measurement time grid
+        """
+        # Extract target time coordinate
+        target_time = meas_ds["date_time"]
+
+        # Define variable groups
+        continuous_vars = [
+            "air_pressure_at_sea_level",
+            "surface_temperature",
+            "wind_from_direction_10m",
+            "wet_bulb_temperature_2m",
+            "cloud_fraction",
+            "cloud_fraction_low",
+            "cloud_fraction_medium",
+            "cloud_fraction_high",
+            "surface_direct_solar_radiation_downwards",
+        ]
+
+        accum_vars = [
+            "precipitation_amount_accum",
+            "snowfall_amount_accum",
+        ]
+
+        # Keep only variables present in dataset
+        continuous_vars = [v for v in continuous_vars if v in meteo_ds]
+        accum_vars = [v for v in accum_vars if v in meteo_ds]
+
+        # ------------------------------------------------------------------
+        # Interpolate continuous variables
+        # ------------------------------------------------------------------
+        print("target time ", target_time)
+        meteo_cont_interp = meteo_ds[continuous_vars].interp(date_time=target_time)
+
+        print("meteo_cont_interp.date_time.values ", meteo_cont_interp.date_time.values)
+
+        # ------------------------------------------------------------------
+        # Process accumulated variables
+        # ------------------------------------------------------------------
+        meteo_accum_interp = []
+
+        print("meteo_ds.date_time ", meteo_ds.date_time)
+
+        if accum_vars:
+            rate_ds = {}
+            for var in accum_vars:
+                diff = meteo_ds[var].diff("date_time")
+
+                dt = (
+                        meteo_ds["date_time"].diff("date_time")
+                        / np.timedelta64(1, "s")
+                )
+
+                # ensure identical coordinates
+                dt = dt.assign_coords(date_time=diff["date_time"])
+
+                rate = diff / dt
+
+                # create first timestamp explicitly
+                first_time = meteo_ds["date_time"].values[0]
+
+                first_value = rate.isel(date_time=0)
+
+                first_value = first_value.assign_coords(
+                    date_time=first_time
+                )
+
+                rate = xr.concat([first_value, rate], dim="date_time")
+
+                rate_ds[var] = rate
+
+            rate_ds = xr.Dataset(rate_ds)
+
+            print("rate ds", rate_ds.date_time)
+
+            # Interpolate rate to target time grid
+            rate_interp = rate_ds.interp(date_time=target_time)
+
+            time = target_time.values
+
+            dt_seconds = np.diff(time) / np.timedelta64(1, "s")
+
+            dt_target = xr.DataArray(
+                np.concatenate(([dt_seconds[0]], dt_seconds)),
+                dims=["date_time"],
+                coords={"date_time": time}
+            )
+
+            accum_interp = {}
+
+            for var in accum_vars:
+                # Reconstruct accumulation from interpolated rate
+                accum = (rate_interp[var] * dt_target).cumsum("date_time")
+                # Ensure no NaNs at start
+                accum = accum.fillna(0)
+                accum_interp[var] = accum
+
+            meteo_accum_interp = xr.Dataset(accum_interp)
+
+        # ------------------------------------------------------------------
+        # Merge continuous and accumulated variables
+        # ------------------------------------------------------------------
+        datasets_to_merge = [meteo_cont_interp]
+
+        print("datasets_to_merge ", datasets_to_merge)
+        print("meteo_accum_interp ", meteo_accum_interp)
+
+        if accum_vars:
+            datasets_to_merge.append(meteo_accum_interp)
+
+        meteo_final = xr.merge(datasets_to_merge)
+
+        # Ensure exact coordinate alignment
+        meteo_final = meteo_final.assign_coords(
+            date_time=("date_time", target_time.values)
+        )
+
+        # Update dataset attributes
+        meteo_final = meteo_final.assign_attrs(
+            **meteo_ds.attrs,
+            time_step=(target_time[1] - target_time[0]).values,
+            time_interval=(target_time[-1] - target_time[0]).values,
+        )
+
+        return meteo_final
+
+
+    def resample_meteo_to_model_timestep(self, meteo_ds: xr.Dataset,
+                                         model_time_step: pd.Timedelta) -> xr.Dataset:
+        """
+        Resample meteorological dataset to a fixed model time step.
+
+        Handles:
+        - continuous variables via linear interpolation
+        - accumulated variables via rate → interpolation → re-accumulation
+
+        :param meteo_ds: Input dataset with datetime coordinate
+        :param model_time_step: Target time step
+        :return: Resampled dataset
+        """
+
+        # ------------------------------------------------------------------
+        # Clean time coordinate (mandatory)
+        # ------------------------------------------------------------------
+        meteo_ds = meteo_ds.sortby("date_time")
+
+        _, idx = np.unique(meteo_ds.date_time.values, return_index=True)
+        meteo_ds = meteo_ds.isel(date_time=np.sort(idx))
+
+        # ------------------------------------------------------------------
+        # Build new time grid
+        # ------------------------------------------------------------------
+        time = meteo_ds.date_time.values
+
+        new_time = pd.date_range(
+            start=time[0],
+            end=time[-1],
+            freq=model_time_step
+        )
+
+        # ------------------------------------------------------------------
+        # Define variable groups
+        # ------------------------------------------------------------------
+        accum_vars = [
+            "precipitation_amount_accum",
+            "snowfall_amount_accum",
+        ]
+
+        accum_vars = [v for v in accum_vars if v in meteo_ds]
+        cont_vars = [v for v in meteo_ds.data_vars if v not in accum_vars]
+
+        # ------------------------------------------------------------------
+        # 1. Continuous → interpolate directly
+        # ------------------------------------------------------------------
+        ds_cont = meteo_ds[cont_vars].interp(date_time=new_time)
+
+        # ------------------------------------------------------------------
+        # 2. Accumulated → rate → interpolate → re-accumulate
+        # ------------------------------------------------------------------
+        ds_accum = {}
+
+        if accum_vars:
+            time_np = meteo_ds.date_time.values
+
+            # compute dt (seconds)
+            dt = np.diff(time_np) / np.timedelta64(1, "s")
+
+            dt_da = xr.DataArray(
+                dt,
+                dims=["date_time"],
+                coords={"date_time": time_np[1:]}
+            )
+
+            for var in accum_vars:
+                # --- step 1: compute rate
+                diff = meteo_ds[var].diff("date_time")
+                rate = diff / dt_da
+
+                # --- step 2: restore full coordinate safely
+                rate = rate.reindex(
+                    date_time=meteo_ds.date_time,
+                    method="bfill"
+                )
+
+                # --- step 3: interpolate rate
+                rate_interp = rate.interp(date_time=new_time)
+
+                # --- step 4: integrate on new grid
+                new_time_np = new_time.values
+                dt_new = np.diff(new_time_np) / np.timedelta64(1, "s")
+
+                dt_new_da = xr.DataArray(
+                    np.concatenate(([dt_new[0]], dt_new)),
+                    dims=["date_time"],
+                    coords={"date_time": new_time_np}
+                )
+
+                accum = (rate_interp * dt_new_da).cumsum("date_time")
+
+                # ensure start value is zero (or original start if needed)
+                accum = accum.fillna(0)
+
+                ds_accum[var] = accum
+
+        ds_accum = xr.Dataset(ds_accum) if ds_accum else xr.Dataset()
+
+        # ------------------------------------------------------------------
+        # Merge everything
+        # ------------------------------------------------------------------
+        ds_final = xr.merge([ds_cont, ds_accum])
+
+        # ------------------------------------------------------------------
+        # Final attributes
+        # ------------------------------------------------------------------
+        ds_final = ds_final.assign_attrs(
+            **meteo_ds.attrs,
+            time_step=model_time_step,
+            time_interval=new_time[-1] - new_time[0],
+        )
+
+        return ds_final
+
+
+    def kalman_step(self, ukf, measurements_dataset, meteo_data, pressure_at_bottom):
         """
         Run ONE UKF predict/update step.
         Intended to be called from the 1D model step().
         """
         print("RUN kalman step, process id:", os.getpid())
 
-        #self.model.set_pressure_at_bottom(pressure_at_bottom)
+        print("meas dset ", measurements_dataset.date_time.values)
+        print("meteo data ", meteo_data.date_time.values)
+
+        #meteo_data = self.align_meteo_to_measurements(meteo_data, measurements_dataset)
+
+        self.model.set_pressure_at_bottom(pressure_at_bottom)
 
         #iter_duration = target_time - start_time
         #iter_minutes = int(iter_duration / np.timedelta64(1, "m"))
@@ -565,22 +840,19 @@ class KalmanFilter:
 
         #assert len(measurements) == len(measurements_state_flag) == len(precipitation_flux)
 
-        meas_times = measurements_dataset.date_time.values
+        meteo_times = meteo_data.date_time.values
 
-        parflow_model_time_step = self.kalman_config["model_time_step"]
+
+        parflow_model_time_step = self.kalman_config["model_time_step"] # fraction of an hour
+        model_time_step = pd.Timedelta(hours=parflow_model_time_step)
 
         measurements = []
-        for i in range(1, len(meas_times)):
-            target_time = meas_times[i]
+        for i in range(1, len(meteo_times)):
+            target_time = meteo_times[i]
 
             print("target time ", target_time)
 
-            iter_minutes = (meas_times[i] - meas_times[i - 1]) / np.timedelta64(1, "m")
-
-            print("iter_minutes ", iter_minutes)
-
-            print("sensor_depth  ", measurements_dataset.sensor_depth.compute().values)
-
+            iter_minutes = (meteo_times[i] - meteo_times[i - 1]) / np.timedelta64(1, "m")
 
             #self.train_measurements_struc.decode(measurement)
 
@@ -590,12 +862,20 @@ class KalmanFilter:
 
             print("encoded_train_measurements ", encoded_train_measurements)
 
+            met_data = meteo_data.sel(date_time=slice(meteo_times[i - 1], meteo_times[i]))
+
+            met_data_resampled = self.resample_meteo_to_model_timestep(met_data, model_time_step)
+
+            print("measurement ", measurement)
+            print("met_data ", met_data)
+            print("met data resampled ", met_data_resampled)
+
             ukf.predict(
                 iter_duration=iter_minutes,
-                precipitation_flux=precipitation_flux[i]
+                met_data=met_data_resampled
             )
 
-            status = measurements_dataset.site_status.isel(date_time=i).item()
+            status = measurements_dataset.site_status.isel(date_time=i).values.item()
             if not (10 <= status < 20):
                 print(f"[UKF] Skipping update at timestep {i} (invalid status={status})")
             elif np.isnan(encoded_train_measurements).any():
@@ -609,7 +889,7 @@ class KalmanFilter:
             measurements.append(measurement)
 
         # --- Store results ---
-        self.results.times.append(target_time)
+        self.results.times.append(meteo_times[-1])
         self.results.ukf_x.append(ukf.x.copy())
         self.results.ukf_P.append(ukf.P.copy())
         self.results.measurement_in.append(measurements)

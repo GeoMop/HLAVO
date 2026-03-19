@@ -35,6 +35,17 @@ class ToyProblem(AbstractModel):
         # Check if the directory exists
         assert parflow_path.is_dir(), f"The PARFLOW_DIR environment variable is set, but the directory does not exist: {parflow_path}"
 
+        if config.get("use_clm", False):
+            assert "clm_files" in config
+            self._clm_files = config["clm_files"]
+            self.configure_clm()
+
+
+    def configure_clm(self):
+        # Setup CLM
+        self._run.Solver.LSM = "CLM"
+        self._run.Solver.CLM.MetForcing = "1D"
+
     def get_nodes_z(self):
         """
         Grid nodes
@@ -375,8 +386,8 @@ class ToyProblem(AbstractModel):
         # We assume these files exist in current dir.
         # They should be either generated runtime or stored somewhere globally.
         # shutil.copy("drv_clmin.dat", working_dir / "drv_clmin.dat")
-        shutil.copy("drv_vegm.dat", working_dir / "drv_vegm.dat")
-        shutil.copy("drv_vegp.dat", working_dir / "drv_vegp.dat")
+        shutil.copy(self._clm_files["drv_vegm_file"], working_dir / pathlib.Path("drv_vegm.dat"))
+        shutil.copy(self._clm_files["drv_vegp_file"], working_dir / pathlib.Path("drv_vegp.dat"))
 
         # Create subdirectories necessary for Parflow/CLM coupling.
         for dir in [
@@ -396,11 +407,12 @@ class ToyProblem(AbstractModel):
             "qflx_evap_veg",
             "qflx_top_soil",
         ]:
-            os.makedirs(working_dir / dir)
+            os.makedirs(working_dir / pathlib.Path(dir))
 
         # Create main CLM parameter file drv_clmin.dat
-        start=ds.time[0].dt
-        end=ds.time[-1].dt
+        start=ds.date_time[0].dt
+        end=ds.date_time[-1].dt
+
         drv_clmin_params = dict(
             # CLM Domain (Read into 1D drv_module variables) :
             maxt=       1,      # Maximum tiles per grid (originally 3; changed it, because we have one type per cell)
@@ -435,9 +447,13 @@ class ToyProblem(AbstractModel):
             clm_ic=     2,               # 1=restart file,2=defined CLM Initial Condition Source
 
             # CLM initial conditions (1-D) : used in drv_clmini.f90_
-            t_ini=      ds.air_temperature_2m[0,0].values.item(), # Initial temperature [K]
+            t_ini=      ds.air_temperature_2m[0].values.item(), # Initial temperature [K]
             #h2osno_ini= 0.,                                       # Initial snow cover, water equivalent [mm]
         )
+
+
+
+
         with open(working_dir / "drv_clmin.dat", "w") as f:
             f.write("\n".join(f"{name:20} {value}" for name,value in drv_clmin_params.items()))
 
@@ -496,6 +512,7 @@ class ToyProblem(AbstractModel):
             start_time=0, stop_time=20, time_step=0.025,
             met_data:xr.Dataset=None,
             working_dir=None):
+
         if working_dir is None:
             working_dir = self._workdir
         shutil.rmtree(working_dir)
@@ -508,6 +525,8 @@ class ToyProblem(AbstractModel):
             time_step = met_data.time_step / np.timedelta64(1, 'h')
             precipitation_value = 0 # precipitation is computed by CLM
             self.prepare_clm(working_dir, met_data)
+
+
 
         if state_params is not None:
             self.set_dynamic_params(state_params)
