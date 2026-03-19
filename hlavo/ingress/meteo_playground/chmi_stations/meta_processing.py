@@ -240,6 +240,21 @@ def build_station_dataframe(
     return df
 
 
+def filter_active_today(df):
+    """
+    Keep only stations active on today's local date based on BEGIN_DATE/END_DATE.
+    """
+    if df.empty:
+        return df.copy()
+
+    begin_dates = pd.to_datetime(df["BEGIN_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    end_dates = pd.to_datetime(df["END_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    today = pd.Timestamp.now(tz="Europe/Prague").date()
+
+    is_active = begin_dates.le(today) & (end_dates.ge(today) | end_dates.isna())
+    return df.loc[is_active].reset_index(drop=True)
+
+
 # -----------------------------
 # main: call subscripts
 # -----------------------------
@@ -248,6 +263,7 @@ def main():
     meta1_path = "meta1.json"
     meta2_path = "meta2.json"
     output_csv = "stations_nearby.csv"
+    active_output_csv = "stations_nearby_active.csv"
     quantity_defs_path = "quantity_definitions.json"  # <--- new output file
 
     # reference location & radius (example: somewhere near Cheb)
@@ -295,6 +311,10 @@ def main():
     # 5) output to CSV
     df.to_csv(output_csv, index=False, encoding="utf-8")
     print(f"Written {len(df)} stations to {output_csv}")
+
+    active_df = filter_active_today(df)
+    active_df.to_csv(active_output_csv, index=False, encoding="utf-8")
+    print(f"Written {len(active_df)} active stations to {active_output_csv}")
 
 
 if __name__ == "__main__":
