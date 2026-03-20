@@ -1,0 +1,5 @@
+outs:
+- md5: f18af12a053ba2ee6cc780c596dd58c4
+  size: 547
+  hash: md5
+  path: meta4.json

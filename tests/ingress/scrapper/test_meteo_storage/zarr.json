@@ -1,0 +1,31 @@
+{
+  "attributes": {
+    "__structure__": "ATTRS:\n  S3_ENDPOINT_URL: https://s3.cl4.du.cesnet.cz\n  grid_min:\n  - 50.84\n  - 14.85\n  grid_max:\n  - 50.89\n  - 14.96\n  grid_step:\n  - 1e-2\n  - 1e-2\n  meteo_domain_min:\n  - 14.6556\n  - 50.6916\n  meteo_domain_max:\n  - 15.1817\n  - 50.98\n  VERSION: 0.0.0\nCOORDS: {}\nVARS: {}\n",
+    "__empty__": true,
+    "S3_ENDPOINT_URL": "https://s3.cl4.du.cesnet.cz",
+    "grid_min": [
+      50.84,
+      14.85
+    ],
+    "grid_max": [
+      50.89,
+      14.96
+    ],
+    "grid_step": [
+      "1e-2",
+      "1e-2"
+    ],
+    "meteo_domain_min": [
+      14.6556,
+      50.6916
+    ],
+    "meteo_domain_max": [
+      15.1817,
+      50.98
+    ],
+    "VERSION": "0.0.0"
+  },
+  "zarr_format": 3,
+  "consolidated_metadata": null,
+  "node_type": "group"
+}

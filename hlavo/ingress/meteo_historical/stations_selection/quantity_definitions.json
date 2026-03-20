@@ -1,0 +1,602 @@
+{
+  "TMI": [
+    {
+      "name": "Teplota min",
+      "unit": "°C"
+    }
+  ],
+  "T": [
+    {
+      "name": "Teplota",
+      "unit": "°C"
+    }
+  ],
+  "TMA": [
+    {
+      "name": "Teplota max",
+      "unit": "°C"
+    }
+  ],
+  "SSV": [
+    {
+      "name": "Sluneční svit",
+      "unit": "hod"
+    }
+  ],
+  "P": [
+    {
+      "name": "Tlak vzduchu",
+      "unit": "hPa"
+    }
+  ],
+  "D10": [
+    {
+      "name": "Směr větru des",
+      "unit": "stupně/10"
+    }
+  ],
+  "F": [
+    {
+      "name": "Rychlost větru",
+      "unit": "m/s"
+    }
+  ],
+  "Fmax": [
+    {
+      "name": "Max rychlost",
+      "unit": "m/s"
+    }
+  ],
+  "API30": [
+    {
+      "name": "Index předchozích srážek",
+      "unit": "mm"
+    }
+  ],
+  "SRA": [
+    {
+      "name": "Srážka",
+      "unit": "mm"
+    }
+  ],
+  "Casmax": [
+    {
+      "name": "Čas maxima",
+      "unit": "kód"
+    }
+  ],
+  "E": [
+    {
+      "name": "Tlak páry",
+      "unit": "hPa"
+    }
+  ],
+  "Dmax": [
+    {
+      "name": "Směr Fmax",
+      "unit": "stupně"
+    }
+  ],
+  "H": [
+    {
+      "name": "Vlhkost relat",
+      "unit": "%"
+    }
+  ],
+  "T10": [
+    {
+      "name": "Teplota půdy 10",
+      "unit": "°C"
+    }
+  ],
+  "T50": [
+    {
+      "name": "Teplota půdy 50",
+      "unit": "°C"
+    }
+  ],
+  "TPM": [
+    {
+      "name": "Teplota příz",
+      "unit": "°C"
+    }
+  ],
+  "T05": [
+    {
+      "name": "Teplota půdy 5",
+      "unit": "°C"
+    }
+  ],
+  "T100": [
+    {
+      "name": "Teplota půdy100",
+      "unit": "°C"
+    }
+  ],
+  "T20": [
+    {
+      "name": "Teplota půdy 20",
+      "unit": "°C"
+    }
+  ],
+  "TMInoc": [
+    {
+      "name": "Teplota min",
+      "unit": "°C"
+    }
+  ],
+  "SNO": [
+    {
+      "name": "Nový sníh",
+      "unit": "cm"
+    }
+  ],
+  "SCE": [
+    {
+      "name": "Výška sněhu",
+      "unit": "cm"
+    }
+  ],
+  "SVH": [
+    {
+      "name": "Vodní hodnota",
+      "unit": "mm"
+    }
+  ],
+  "VY": [
+    {
+      "name": "Výpar",
+      "unit": "mm"
+    }
+  ],
+  "SCEdif": [
+    {
+      "name": "Denní rozdíl celkové výšky sněhu",
+      "unit": "cm"
+    }
+  ],
+  "RGLB_D": [
+    {
+      "name": "Záření globální",
+      "unit": "kJ/m2"
+    }
+  ],
+  "SRA1H": [
+    {
+      "name": "Srážka-1H",
+      "unit": "mm"
+    }
+  ],
+  "SSV1H": [
+    {
+      "name": "Sluneční svit",
+      "unit": " 0.1 hod"
+    }
+  ],
+  "ww": [
+    {
+      "name": "Stav počasí",
+      "unit": "kód"
+    }
+  ],
+  "VV": [
+    {
+      "name": "Vodorovná dohlednost",
+      "unit": "kód"
+    }
+  ],
+  "Td": [
+    {
+      "name": "Rosný bod",
+      "unit": "°C"
+    }
+  ],
+  "W2": [
+    {
+      "name": "Průběh počasí 2",
+      "unit": "kód"
+    }
+  ],
+  "W1": [
+    {
+      "name": "Průběh počasí 1",
+      "unit": "kód"
+    }
+  ],
+  "C-I2Co": [
+    {
+      "name": "Ceilometr BL_INDEX_2 COUNT",
+      "unit": "kód"
+    }
+  ],
+  "C-H1Av": [
+    {
+      "name": "Ceilometr BL_HEIGHT_1 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-H3Mx": [
+    {
+      "name": "Ceilometr BL_HEIGHT_3 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-C1Co": [
+    {
+      "name": "Ceilometr CLOUD_1 COUNT",
+      "unit": "m"
+    }
+  ],
+  "C-H2Mn": [
+    {
+      "name": "Ceilometr BL_HEIGHT_2 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-H1Mn": [
+    {
+      "name": "Ceilometr BL_HEIGHT_1 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-C3Mx": [
+    {
+      "name": "Ceilometr CLOUD_3 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-C3Mn": [
+    {
+      "name": "Ceilometr CLOUD_3 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-H2Av": [
+    {
+      "name": "Ceilometr BL_HEIGHT_2 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-H3Co": [
+    {
+      "name": "Ceilometr BL_HEIGHT_3 COUNT",
+      "unit": "m"
+    }
+  ],
+  "C-I1Co": [
+    {
+      "name": "Ceilometr BL_INDEX_1 COUNT",
+      "unit": "kód"
+    }
+  ],
+  "C-MLI": [
+    {
+      "name": "Směšovací vrstva-index spolehlivosti",
+      "unit": "kód"
+    }
+  ],
+  "C-I1Md": [
+    {
+      "name": "Ceilometr BL_INDEX_1 MEAN",
+      "unit": "kód"
+    }
+  ],
+  "C-I2Su": [
+    {
+      "name": "Ceilometr BL_INDEX_2 SUM",
+      "unit": "kód"
+    }
+  ],
+  "N": [
+    {
+      "name": "Oblačnost osm",
+      "unit": "osminy"
+    }
+  ],
+  "C-C2Av": [
+    {
+      "name": "Ceilometr CLOUD_2 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-C2Mx": [
+    {
+      "name": "Ceilometr CLOUD_2 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-C3Av": [
+    {
+      "name": "Ceilometr CLOUD_3 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-I1Su": [
+    {
+      "name": "Ceilometr BL_INDEX_1 SUM",
+      "unit": "kód"
+    }
+  ],
+  "C-I2Md": [
+    {
+      "name": "Ceilometr BL_INDEX_2 MEAN",
+      "unit": "kód"
+    }
+  ],
+  "C-C2Mn": [
+    {
+      "name": "Ceilometr CLOUD_2 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-H3Av": [
+    {
+      "name": "Ceilometr BL_HEIGHT_3 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-H3Mn": [
+    {
+      "name": "Ceilometr BL_HEIGHT_3 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-MLAv": [
+    {
+      "name": "Průměrná výška směšovací vrstvy",
+      "unit": "m"
+    }
+  ],
+  "ppp": [
+    {
+      "name": "Tlak tendence",
+      "unit": "hPa"
+    }
+  ],
+  "C-C1Av": [
+    {
+      "name": "Ceilometr CLOUD_1 AVG",
+      "unit": "m"
+    }
+  ],
+  "C-C1Mn": [
+    {
+      "name": "Ceilometr CLOUD_1 MIN",
+      "unit": "m"
+    }
+  ],
+  "C-C1Mx": [
+    {
+      "name": "Ceilometr CLOUD_1 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-H1Co": [
+    {
+      "name": "Ceilometr BL_HEIGHT_1 COUNT",
+      "unit": "m"
+    }
+  ],
+  "C-H1Mx": [
+    {
+      "name": "Ceilometr BL_HEIGHT_1 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-I3Md": [
+    {
+      "name": "Ceilometr BL_INDEX_3 MEAN",
+      "unit": "kód"
+    }
+  ],
+  "C-I3Su": [
+    {
+      "name": "Ceilometr BL_INDEX_3 SUM",
+      "unit": "kód"
+    }
+  ],
+  "C-C2Co": [
+    {
+      "name": "Ceilometr CLOUD_2 COUNT",
+      "unit": "m"
+    }
+  ],
+  "C-C3Co": [
+    {
+      "name": "Ceilometr CLOUD_3 COUNT",
+      "unit": "m"
+    }
+  ],
+  "C-H2Co": [
+    {
+      "name": "Ceilometr BL_HEIGHT_2 COUNT",
+      "unit": "m"
+    }
+  ],
+  "P_hm": [
+    {
+      "name": "Tlak vzduchu hl.m.",
+      "unit": "hPa"
+    }
+  ],
+  "C-H2Mx": [
+    {
+      "name": "Ceilometr BL_HEIGHT_2 MAX",
+      "unit": "m"
+    }
+  ],
+  "C-I3Co": [
+    {
+      "name": "Ceilometr BL_INDEX_3 COUNT",
+      "unit": "kód"
+    }
+  ],
+  "Gph925": [
+    {
+      "name": "Geopotenc.výška",
+      "unit": "m"
+    }
+  ],
+  "RDIF1H": [
+    {
+      "name": "Záření rozptýlené",
+      "unit": "W/m2"
+    }
+  ],
+  "RGLB1H": [
+    {
+      "name": "Záření globální",
+      "unit": "W/m2"
+    }
+  ],
+  "Gph850": [
+    {
+      "name": "Geopotenc.výška",
+      "unit": "m"
+    }
+  ],
+  "REUV1H": [
+    {
+      "name": "Zář.UV-erythem.",
+      "unit": "mW/m2"
+    }
+  ],
+  "RLWD1H": [
+    {
+      "name": "Záření dlouhovlnné",
+      "unit": "W/m2"
+    }
+  ],
+  "RDIR1H": [
+    {
+      "name": "Záření přímé sluneční",
+      "unit": "W/m2"
+    }
+  ],
+  "SN": [
+    {
+      "name": "sněžení/snow",
+      "unit": "kód"
+    }
+  ],
+  "RO": [
+    {
+      "name": "rosa/dew",
+      "unit": "kód"
+    }
+  ],
+  "NA": [
+    {
+      "name": "námraza/frost",
+      "unit": "kód"
+    }
+  ],
+  "MS": [
+    {
+      "name": "mrznoucí srážky/freezing rain",
+      "unit": "kód"
+    }
+  ],
+  "ML": [
+    {
+      "name": "mlha/fog",
+      "unit": "kód"
+    }
+  ],
+  "LE": [
+    {
+      "name": "ledovka/ice",
+      "unit": "kód"
+    }
+  ],
+  "KR": [
+    {
+      "name": "kroupy/hail",
+      "unit": "kód"
+    }
+  ],
+  "JI": [
+    {
+      "name": "jíní, jinovatka/hoarfrost",
+      "unit": "kód"
+    }
+  ],
+  "DE": [
+    {
+      "name": "déšť/rain",
+      "unit": "kód"
+    }
+  ],
+  "BO": [
+    {
+      "name": "bouřka/storm",
+      "unit": "kód"
+    }
+  ],
+  "SV": [
+    {
+      "name": "silný vítr/strong wind",
+      "unit": "kód"
+    }
+  ],
+  "D": [
+    {
+      "name": "Směr větru",
+      "unit": "stupně"
+    }
+  ],
+  "Fprum": [
+    {
+      "name": "Rychlost prům",
+      "unit": "m/s"
+    }
+  ],
+  "Dprum": [
+    {
+      "name": "Směr větru prům",
+      "unit": "stupně"
+    }
+  ],
+  "SRA10M": [
+    {
+      "name": "Srážka-10M",
+      "unit": "mm"
+    }
+  ],
+  "SSV10M": [
+    {
+      "name": "Sluneční svit",
+      "unit": "s"
+    }
+  ],
+  "RDIF10": [
+    {
+      "name": "Záření rozptýlené",
+      "unit": "W/m2"
+    }
+  ],
+  "RGLB10": [
+    {
+      "name": "Záření globální",
+      "unit": "W/m2"
+    }
+  ],
+  "SVHa": [
+    {
+      "name": "Vodní hodnota",
+      "unit": "mm"
+    }
+  ],
+  "SCEa": [
+    {
+      "name": "Výška sněhu",
+      "unit": "cm"
+    }
+  ],
+  "REUV10": [
+    {
+      "name": "Zář.UV-erythem.",
+      "unit": "mW/m2"
+    }
+  ]
+}
