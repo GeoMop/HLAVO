@@ -13,7 +13,7 @@ import yaml
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
 
 import flopy
-from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 

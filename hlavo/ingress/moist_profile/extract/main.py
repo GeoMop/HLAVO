@@ -356,8 +356,8 @@ def read_storage(storage_path: str | Path = None):
 
 if __name__ == '__main__':
     root_path = Path(__file__).parents[4]
-    main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab",
-         storage_path=root_path / "tests/ingress/moist_profile/test_storage")
+    # main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab",
+    #      storage_path=root_path / "tests/ingress/moist_profile/test_storage")
         # storage_path = "test_storage")
     # 2025 01-06
     # main(source_dir="../20260301T224908_dataflow_grab",
@@ -367,8 +367,11 @@ if __name__ == '__main__':
     #      storage_path=Path("storage_2025"))
     # main(source_dir="../test_empty",
     #      storage_path=Path("storage_empty"))
+    # TO S3
+    main(source_dir="../20260301T224908_dataflow_grab")
+    main(source_dir="../20260301T225923_dataflow_grab")
 
     # read to check zarr storage
     # read_storage(storage_path=Path("test_storage"))
-    read_storage(storage_path=root_path / "tests/ingress/moist_profile/test_storage")
+    # read_storage(storage_path=root_path / "tests/ingress/moist_profile/test_storage")
     # read_storage(storage_path=Path("storage_2025"))
