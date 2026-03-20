@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import logging
+import zarr_fuse as zf
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,12 @@ def _sheet_names_dictionary():
         "UH-2" : "Uh-2"
     }
     return dict
+
+
+def _open_zarr_schema():
+    script_dir = Path(__file__).parent
+    schema_path = script_dir / "wells_schema.yaml"
+    return zf.open_store(schema_path)
 
 
 def read_water_level(file_paths=None):
@@ -213,6 +220,12 @@ def read_draw(xls_file, sheetname):
 
     # convert to base unit (m^3)
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
+
+    root_node = _open_zarr_schema()
+    water_draw_node = root_node['Uhelna']['water_draw']
+    print(f"Columns in DataFrame: {df_result.columns.tolist()}")
+    print("Looking for:", water_draw_node.dataset)
+    water_draw_node.update(df_result)
 
     df_result.attrs["units"] = {"cum_draw ": "m^3"}
     logger.info(" ... draw data completely processed")

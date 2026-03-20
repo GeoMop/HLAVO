@@ -71,7 +71,7 @@ Uhelna:
                 description: "Sheetname in file of measure data"
                 coords: ["well_id"]
             confirmed:
-                type: int1
+                type: int
                 description: "Sign of existing sheetname in file of measured data"
                 coords: ["well_id"]
             X:
@@ -112,14 +112,15 @@ Uhelna:
             VERSION: 0.3.0
 
         VARS:
-            draw:
+            cum_draw:
                 unit: "m ** 3"
                 description: "Total water draw per month."
-                coords: ["date_time", "well_id"]
-            
+                #coords: ["date_time", "well_id"]
+                coords: ["date"]
+
         
         COORDS:
-            date_time:
+            date:
                 unit: { tick: "h", tz: "UTC" }
                 description: "Time coordinate"
 #                df_col: "timestamp"
@@ -141,6 +142,7 @@ Uhelna:
                 # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
                 sorted: [] # Unsorted
                 chunk_size: 1
+
 #Laboratory:
 # Proposed logic : collect all profile data into previous node
 # Read lab station data here + process corresponding profile data and merge.
