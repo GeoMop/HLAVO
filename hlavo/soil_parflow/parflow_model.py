@@ -45,6 +45,7 @@ class ToyProblem(AbstractModel):
         # Setup CLM
         self._run.Solver.LSM = "CLM"
         self._run.Solver.CLM.MetForcing = "1D"
+        self._run.Solver.CLM.MetFileName = "narr_1hr.txt"
 
     def get_nodes_z(self):
         """
@@ -447,14 +448,14 @@ class ToyProblem(AbstractModel):
             clm_ic=     2,               # 1=restart file,2=defined CLM Initial Condition Source
 
             # CLM initial conditions (1-D) : used in drv_clmini.f90_
-            t_ini=      ds.air_temperature_2m[0].values.item(), # Initial temperature [K]
+            t_ini=      ds.air_temperature_2m[0, 0].values.item(), # Initial temperature [K]
             #h2osno_ini= 0.,                                       # Initial snow cover, water equivalent [mm]
         )
 
 
 
 
-        with open(working_dir / "drv_clmin.dat", "w") as f:
+        with open(working_dir / pathlib.Path("drv_clmin.dat"), "w") as f:
             f.write("\n".join(f"{name:20} {value}" for name,value in drv_clmin_params.items()))
 
 
@@ -499,8 +500,8 @@ class ToyProblem(AbstractModel):
             # relative_humidity_2m
             "SPFH": ds.relative_humidity_2m,
         }
-        with open(working_dir / self._run.Solver.CLM.MetFileName, "w") as f:
-            for i,time in enumerate(ds.time.values):
+        with open(working_dir / pathlib.Path(self._run.Solver.CLM.MetFileName), "w") as f:
+            for i,time in enumerate(ds.date_time.values):
                 f.write( " ".join(str(v[0,i].item()) for v in ds.data_vars.values()) + "\n")
 
 
@@ -525,8 +526,6 @@ class ToyProblem(AbstractModel):
             time_step = met_data.time_step / np.timedelta64(1, 'h')
             precipitation_value = 0 # precipitation is computed by CLM
             self.prepare_clm(working_dir, met_data)
-
-
 
         if state_params is not None:
             self.set_dynamic_params(state_params)

@@ -102,6 +102,39 @@ class Model1D:
 
         return self.measurements_dataset.sel(date_time=slice(start_time, stop_time))
 
+
+    def _get_mock_meteo_data(self):
+        import pandas as pd
+        import xarray as xr
+        n_loc = 1
+        precipitation_flux = -0.0166
+        time_step = pd.Timedelta(hours=0.025)
+        lon = [14.41854] * n_loc
+        lat = [50.073658] * n_loc
+        start_date = "2025-03-06"
+        end_date = "2025-03-09"
+        time = pd.date_range(start=start_date, end=end_date, freq=pd.Timedelta(hours=1))
+
+        meteo_data = xr.Dataset(
+            data_vars=dict(
+                surface_solar_radiation_downwards=(["loc", "date_time"], np.zeros((n_loc, time.size))),
+                surface_thermal_radiation_downwards=(["loc", "date_time"], np.zeros((n_loc, time.size))),
+                precipitation_amount_accum=(["loc", "date_time"], precipitation_flux * np.ones((n_loc, time.size))),
+                air_temperature_2m=(["loc", "date_time"], 300 * np.ones((n_loc, time.size))),
+                wind_speed_10m=(["loc", "date_time"], np.zeros((n_loc, time.size))),
+                wind_from_direction_10m=(["loc", "date_time"], np.zeros((n_loc, time.size))),
+                air_pressure_at_sea_level=(["loc", "date_time"], 1e5 * np.ones((n_loc, time.size))),
+                relative_humidity_2m=(["loc", "date_time"], np.zeros((n_loc, time.size))),
+            ),
+            coords=dict(
+                lon=("loc", lon),
+                lat=("loc", lat),
+                date_time=time,
+            ),
+        )
+
+        return meteo_data
+
     def get_meteo_for_lon_lat_time(self, start_time, stop_time, longitude, latitude):
         """
         Retrieve meteorological data for a given location and time window.
@@ -119,6 +152,8 @@ class Model1D:
             longitude=longitude,
             method="nearest"
         )
+
+        meteo_lon_lat_dset = self._get_mock_meteo_data() #@TODO: Use real meteo data ASAP
 
         # Slice dataset by time range
         return meteo_lon_lat_dset.sel(date_time=slice(start_time, stop_time))

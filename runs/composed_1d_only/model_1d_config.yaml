@@ -22,8 +22,7 @@ measurements_config:
   measurements_scheme_file: ../../hlavo/ingress/moist_profile/profile_schema.yaml
   meteo_scheme_file: ../../hlavo/ingress/scrapper/schemas/hlavo_surface_schema.yaml
 kalman_config:
-  model_time_step: 2.5e-2
-  #model_n_time_steps_per_iter: 40
+  model_time_step: 2.5e-2 # in hours
   state_params:
       pressure_field:
         mean_linear:
@@ -71,7 +70,7 @@ kalman_config:
       #  conf_interval: [0.35, 0.41, 0.9]  # explicit 0.9 confidence interval
   train_measurements:
       moisture:
-        z_pos: [-10, -20, -60]  #[-10, -20, -30, -40, -50, -60, -70, -80, -90, -100, 110, -120, -130, -140, -150] ##[-0.5, -2.5]
+        z_pos: [-10, -20,-40, -60, -100]
         noise_level: 0.01
         noise_distr_type: gaussian
       #pressure:
