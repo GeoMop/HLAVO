@@ -228,7 +228,9 @@ def build_station_dataframe(
         rec = {
             "WSI": wsi,
             "FULL_NAME": st["FULL_NAME"],
-            "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            # "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            "LAT": st['LAT'],
+            "LON": st['LON'],
             "ELEVATION": st["ELEVATION"],
             "DIST_KM": dist,
             "BEGIN_DATE": st["BEGIN_DATE"],
