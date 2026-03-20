@@ -21,6 +21,103 @@ from run_model import (
 LOG = logging.getLogger(__name__)
 
 
+def _material_class_from_interfaces(
+    materials: np.ndarray,
+    layer_names: list[str],
+) -> np.ndarray:
+    assert materials.ndim == 3, "materials must be 3D"
+    class_by_layer = np.zeros(len(layer_names), dtype=np.int16)  # 0=other, 1=sand, 2=clay
+    for idx, layer_name in enumerate(layer_names):
+        if layer_name.startswith("Q") and layer_name.endswith("_base"):
+            class_by_layer[idx] = 1
+        elif layer_name.startswith("Q") and layer_name.endswith("_top"):
+            class_by_layer[idx] = 2
+
+    classes = np.full(materials.shape, -1, dtype=np.int16)  # -1=inactive/undefined
+    valid = materials >= 0
+    classes[valid] = class_by_layer[materials[valid]]
+    return classes
+
+
+def _write_material_class_cross_sections(
+    run_config: RunConfig,
+    grid_data: dict[str, np.ndarray],
+    material_class: np.ndarray,
+    top: np.ndarray,
+) -> None:
+    import matplotlib.pyplot as plt
+    from matplotlib import colors
+
+    x_nodes = np.asarray(grid_data["x_nodes"], dtype=float)
+    y_nodes = np.asarray(grid_data["y_nodes"], dtype=float)
+    z_step = float(grid_data["step"][2])
+    nz, ny, nx = material_class.shape
+
+    y_index = run_config.plot_xsection_y_index if run_config.plot_xsection_y_index is not None else ny // 2
+    x_index = run_config.plot_xsection_x_index if run_config.plot_xsection_x_index is not None else nx // 2
+    assert 0 <= y_index < ny, "xsection_y_index out of range"
+    assert 0 <= x_index < nx, "xsection_x_index out of range"
+
+    class_labels = ["other", "sand", "clay"]
+    cmap = colors.ListedColormap(["#9e9e9e", "#e5c100", "#8c5a3c"])
+    norm = colors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
+
+    plot_dir = Path(run_config.plot_output_dir)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    mat_x = np.ma.masked_less(material_class[:, y_index, :], 0)
+    top_line_x = top[y_index, :]
+    z_edges_center = top_line_x[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
+    z_edges = np.empty((nz + 1, nx + 1), dtype=float)
+    z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
+    z_edges[:, 0] = z_edges_center[:, 0]
+    z_edges[:, -1] = z_edges_center[:, -1]
+    x_edges = np.tile(x_nodes[None, :], (nz + 1, 1))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    mesh = ax.pcolormesh(x_edges, z_edges, mat_x, shading="auto", cmap=cmap, norm=norm)
+    z_top_x = float(np.nanmax(top_line_x))
+    z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
+    z_pad_x = 0.05 * run_config.plot_xsection_depth_window
+    ax.set_ylim(z_bottom_x, z_top_x + z_pad_x)
+    ax.set_title(f"Material Class X-Section (y index {y_index})")
+    ax.set_xlabel("X (local)")
+    ax.set_ylabel("Z")
+    cbar = fig.colorbar(mesh, ax=ax, ticks=[0, 1, 2])
+    cbar.ax.set_yticklabels(class_labels)
+    fig.tight_layout()
+    x_path = plot_dir / "material_class_x_section.png"
+    fig.savefig(x_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
+    LOG.info("Saved material class X-section to %s", x_path)
+
+    mat_y = np.ma.masked_less(material_class[:, :, x_index], 0)
+    top_line_y = top[:, x_index]
+    z_edges_center = top_line_y[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
+    z_edges = np.empty((nz + 1, ny + 1), dtype=float)
+    z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
+    z_edges[:, 0] = z_edges_center[:, 0]
+    z_edges[:, -1] = z_edges_center[:, -1]
+    y_edges = np.tile(y_nodes[None, :], (nz + 1, 1))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    mesh = ax.pcolormesh(y_edges, z_edges, mat_y, shading="auto", cmap=cmap, norm=norm)
+    z_top_y = float(np.nanmax(top_line_y))
+    z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
+    z_pad_y = 0.05 * run_config.plot_xsection_depth_window
+    ax.set_ylim(z_bottom_y, z_top_y + z_pad_y)
+    ax.set_title(f"Material Class Y-Section (x index {x_index})")
+    ax.set_xlabel("Y (local)")
+    ax.set_ylabel("Z")
+    cbar = fig.colorbar(mesh, ax=ax, ticks=[0, 1, 2])
+    cbar.ax.set_yticklabels(class_labels)
+    fig.tight_layout()
+    y_path = plot_dir / "material_class_y_section.png"
+    fig.savefig(y_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
+    LOG.info("Saved material class Y-section to %s", y_path)
+
+
 def visualize_results(config_path: Path, workspace: Path | None = None) -> None:
     run_config = RunConfig.from_yaml(config_path, workspace)
     grid_data = _grid_arrays_from_npz(run_config.grid_output_path)
@@ -36,8 +133,10 @@ def visualize_results(config_path: Path, workspace: Path | None = None) -> None:
     top = np.asarray(model_data["top"], dtype=float)
     botm = np.asarray(model_data["botm"], dtype=float)
     materials = np.asarray(model_data["materials"], dtype=int)
+    layer_names = [str(name) for name in model_data["layer_names"].tolist()]
     idomain = np.asarray(model_data["idomain"], dtype=int)
     hk = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
+    material_class = _material_class_from_interfaces(materials, layer_names)
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
     assert top.shape == (ny, nx), "top shape mismatch"
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
@@ -76,6 +175,7 @@ def visualize_results(config_path: Path, workspace: Path | None = None) -> None:
         qz,
         idomain,
         materials,
+        material_class,
         top,
         botm,
         run_config.paraview_quantities,
@@ -86,6 +186,7 @@ def visualize_results(config_path: Path, workspace: Path | None = None) -> None:
         run_config.paraview_materials_output_path,
         grid_data,
         materials,
+        material_class,
         active_mask,
         top,
         botm,
@@ -104,6 +205,12 @@ def visualize_results(config_path: Path, workspace: Path | None = None) -> None:
         materials,
         top,
         botm,
+    )
+    _write_material_class_cross_sections(
+        run_config,
+        grid_data,
+        material_class,
+        top,
     )
     _write_temporal_groundwater_plots(
         run_config,

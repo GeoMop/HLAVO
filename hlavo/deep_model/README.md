@@ -29,12 +29,18 @@ Temporal visualization includes:
 - groundwater change map (`groundwater_change_name`)
 - groundwater hydrograph at selected cell (`hydrograph_name`)
 - X/Y section groundwater profiles for initial/mid/final times (`xsection_*_times_name`)
+- material class X/Y cross-sections (`material_class_x_section.png`, `material_class_y_section.png`)
+- ParaView cell data `material_class` (0=other, 1=sand, 2=clay)
 
 For long-term setup with visible level changes, use `config/model_longterm.yaml`.
 
 Material parameters in config are grouped by `materials`:
 - `materials.all` is required and contains defaults plus all former `unsat` parameters.
-- other entries (`sand`, `clay`, ...) define only `layers`, `horizontal_conductivity`, `vertical_conductivity`.
+- `materials.sand` and `materials.clay` define only `horizontal_conductivity`, `vertical_conductivity`.
+- automatic assignment rule for interfaces starting with `Q`:
+  - `Q*_base` -> sand
+  - `Q*_top` -> clay
+  - non-`Q` interfaces use `materials.all` defaults
 
 
 
