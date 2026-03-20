@@ -12,7 +12,7 @@ def _parse_time(time_str: str | None):
     except Exception:
         return time_str
 
-def normalize_yrno_forecast(json_dict: dict, dataframe_row: dict | None) -> pl.DataFrame:
+def _normalize_yrno_forecast(json_dict: dict, dataframe_row: dict | None) -> pl.DataFrame:
     row = dataframe_row or {}
 
     lat = row.get("dflat")
@@ -78,3 +78,13 @@ def normalize_yrno_forecast(json_dict: dict, dataframe_row: dict | None) -> pl.D
         )
 
     return pl.DataFrame(records)
+
+def normalize(payload: bytes, metadata: dict | None) -> pl.DataFrame:
+    try:
+        json_dict = pl.read_json(payload)
+    except Exception:
+        raise ValueError("Failed to parse JSON payload")
+
+    dataframe_row = metadata.get("dataframe_row") if metadata else None
+
+    return _normalize_yrno_forecast(json_dict, dataframe_row)
