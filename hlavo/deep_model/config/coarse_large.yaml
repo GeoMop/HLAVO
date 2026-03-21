@@ -1,39 +1,45 @@
-# Model configuration (coarse, with mine)
-
-qgis_project_path: "/home/jb/GIS/uhelna_all.qgs"
-boundary_layer_name: "domain_with_mine"
-raster_group_name: "HG model layers"
-
-grid_output_path: "grid_materials.npz"
-material_parameters_output_path: "material_parameters.npz"
-
+qgis_project_path: /home/jb/GIS/uhelna_all.qgs
+boundary_layer_name: domain_with_mine
+raster_group_name: HG model layers
+grid_output_path: grid_materials.npz
+material_parameters_output_path: material_parameters.npz
 meshsteps:
   x: 100.0
   y: 100.0
-  z: 10.0
-
+  z:
+    layers:
+    - 0.3
+    - 0.3
+    - 0.3
+    - 0.6
+    - 0.6
+    - 0.6
+    - 1.2
+    - 1.2
+    - 1.2
+    - 2.4
+    - 2.4
+    - 2.4
+    rest: 4.8
 model:
-  model_name: "with_mine_coarse"
-  workspace: "model"
-  sim_name: "uhelna"
-  exe_name: "mf6"
-  paraview:
-    quantities: [head, hk, idomain, materials, velocity, q, velocity_magnitude, active]
-    include_inactive: false
-    z_scale: 1.0
+  model_name: with_mine_coarse
+  workspace: model
+  sim_name: uhelna
+  exe_name: mf6
   drain_conductance: 1.0
   simulation_days: 1.0
-  stress_periods_days: [1.0]
-
+  stress_periods_days:
+  - 1.0
 materials:
+  strict_layer_mapping: false
   all:
-    horizontal_conductivity: 1.0e-6
-    vertical_conductivity: 1.0e-6
-    porosity: 0.30
+    horizontal_conductivity: 1.0e-06
+    vertical_conductivity: 1.0e-06
+    porosity: 0.3
     vG_n: 2.0
     vG_alpha: 1.0
     recharge_rate: 0.0001
-    vks: 1.0e-6
+    vks: 1.0e-06
     thtr: 0.05
     thts: 0.3
     thti: 0.2
@@ -51,33 +57,104 @@ materials:
     unsat_etwc: false
     unsat_etae: false
     simulate_gwseep: true
-    hydraulic_conductivity: 1.0e-6
-    vertical_conductivity: 1.0e-6
-    specific_yield: 0.10
-    specific_storage: 1.0e-5
+    hydraulic_conductivity: 1.0e-06
+    specific_yield: 0.1
+    specific_storage: 1.0e-05
     initial_head_offset: -1.0
     perlen: 1.0
     nstp: 1
     tsmult: 1.0
-  sand:
-    horizontal_conductivity: 1.0e-5
-    vertical_conductivity: 1.0e-5
-  clay:
-    horizontal_conductivity: 1.0e-7
-    vertical_conductivity: 1.0e-7
-
+  sets:
+    sands:
+      horizontal_conductivity: 1.0e-05
+      vertical_conductivity: 1.0e-05
+      porosity: 0.33
+      vG_n: 2.3
+      vG_alpha: 1.2
+    clays:
+      horizontal_conductivity: 1.0e-07
+      vertical_conductivity: 1.0e-07
+      porosity: 0.42
+      vG_n: 1.35
+      vG_alpha: 0.55
+  layers:
+  - name: sand_1
+    top_interface: relief
+    bottom_interface: Q1_top
+    set: sands
+  - name: clay_1
+    top_interface: Q1_top
+    bottom_interface: Q1_base
+    set: clays
+  - name: sand_2
+    top_interface: Q1_base
+    bottom_interface: Q2_top
+    set: sands
+  - name: clay_2
+    top_interface: Q2_top
+    bottom_interface: Q2_base
+    set: clays
+  - name: sand_3
+    top_interface: Q2_base
+    bottom_interface: Q3_top
+    set: sands
+  - name: clay_3
+    top_interface: Q3_top
+    bottom_interface: Q3_base
+    set: clays
+  - name: sand_4
+    top_interface: Q3_base
+    bottom_interface: Q4_top
+    set: sands
+  - name: clay_4
+    top_interface: Q4_top
+    bottom_interface: Q4_base
+    set: clays
+  - name: sand_5
+    top_interface: Q4_base
+    bottom_interface: Q5_top
+    set: sands
+  - name: clay_5
+    top_interface: Q5_top
+    bottom_interface: Q5_base
+    set: clays
+  - name: sand_6
+    top_interface: Q5_base
+    bottom_interface: Q6_top
+    set: sands
+  - name: clay_6
+    top_interface: Q6_top
+    bottom_interface: Q6_base
+    set: clays
+  - name: sand_7
+    top_interface: Q6_base
+    bottom_interface: Q_base
+    set: sands
+paraview:
+  output_dir: paraview
+  quantities:
+  - head
+  - hk
+  - idomain
+  - materials
+  - velocity
+  - q
+  - velocity_magnitude
+  - active
+  include_inactive: false
+  z_scale: 1.0
 plots:
   enabled: true
-  output_dir: "plots"
+  output_dir: plots
   dpi: 150
-  active_mask_name: "grid_active_mask.png"
-  idomain_name: "idomain_top.png"
-  head_name: "head_groundplan.png"
-  groundwater_surface_name: "groundwater_surface.png"
-  groundwater_change_name: "groundwater_change.png"
-  hydrograph_name: "groundwater_hydrograph.png"
-  xsection_x_name: "materials_x_section.png"
-  xsection_y_name: "materials_y_section.png"
-  xsection_x_times_name: "groundwater_x_section_times.png"
-  xsection_y_times_name: "groundwater_y_section_times.png"
+  active_mask_name: grid_active_mask.png
+  idomain_name: idomain_top.png
+  head_name: head_groundplan.png
+  groundwater_surface_name: groundwater_surface.png
+  groundwater_change_name: groundwater_change.png
+  hydrograph_name: groundwater_hydrograph.png
+  xsection_x_name: materials_x_section.png
+  xsection_y_name: materials_y_section.png
+  xsection_x_times_name: groundwater_x_section_times.png
+  xsection_y_times_name: groundwater_y_section_times.png
   xsection_depth_window: 40.0

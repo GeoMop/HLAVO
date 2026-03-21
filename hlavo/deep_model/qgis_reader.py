@@ -242,10 +242,11 @@ class ModelConfig:
         assert "meshsteps" in raw, "Missing required config key: meshsteps"
         meshsteps_raw = raw["meshsteps"]
         assert isinstance(meshsteps_raw, dict), "meshsteps must be a mapping with x, y, z"
+        z_step_ref = _meshstep_z_reference(meshsteps_raw["z"])
         meshsteps = (
             float(meshsteps_raw["x"]),
             float(meshsteps_raw["y"]),
-            float(meshsteps_raw["z"]),
+            z_step_ref,
         )
 
         return ModelConfig(
@@ -254,6 +255,33 @@ class ModelConfig:
             raster_group_name=raster_group_name,
             meshsteps=meshsteps,
         )
+
+
+def _meshstep_z_reference(z_raw: object) -> float:
+    if isinstance(z_raw, (int, float)):
+        z_value = float(z_raw)
+        assert z_value > 0.0, "meshsteps.z must be > 0"
+        return z_value
+
+    if isinstance(z_raw, list):
+        assert z_raw, "meshsteps.z list cannot be empty"
+        z_value = float(z_raw[0])
+        assert z_value > 0.0, "meshsteps.z values must be > 0"
+        return z_value
+
+    assert isinstance(z_raw, dict), (
+        "meshsteps.z must be a number, a list, or a mapping with layers/rest"
+    )
+    layers_raw = z_raw.get("layers")
+    if isinstance(layers_raw, list) and layers_raw:
+        z_value = float(layers_raw[0])
+        assert z_value > 0.0, "meshsteps.z.layers values must be > 0"
+        return z_value
+    rest_raw = z_raw.get("rest")
+    assert rest_raw is not None, "meshsteps.z.rest is required when layers are not provided"
+    z_value = float(rest_raw)
+    assert z_value > 0.0, "meshsteps.z.rest must be > 0"
+    return z_value
 
 
 @attrs.define(frozen=True)

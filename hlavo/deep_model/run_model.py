@@ -34,6 +34,7 @@ class RunConfig:
     stress_periods_days: tuple[float, ...]
     grid_output_path: Path
     material_parameters_path: Path
+    paraview_output_dir: Path
     paraview_output_path: Path
     paraview_materials_output_path: Path
     paraview_quantities: tuple[str, ...]
@@ -141,25 +142,33 @@ class RunConfig:
         else:
             material_parameters_path = run_workspace / "material_parameters.npz"
 
-        paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
-        if paraview_raw:
-            paraview_output_path = Path(str(paraview_raw))
+        paraview_cfg = raw.get("paraview", model_raw.get("paraview", {}))
+        assert isinstance(paraview_cfg, dict), "paraview config must be a mapping"
+
+        paraview_output_dir_raw = paraview_cfg.get("output_dir", "paraview")
+        paraview_output_dir = Path(str(paraview_output_dir_raw))
+        if not paraview_output_dir.is_absolute():
+            paraview_output_dir = run_workspace / paraview_output_dir
+
+        legacy_results_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
+        if legacy_results_raw:
+            paraview_output_path = Path(str(legacy_results_raw))
             if not paraview_output_path.is_absolute():
                 paraview_output_path = run_workspace / paraview_output_path
         else:
-            paraview_output_path = run_workspace / f"{sim_name}_results.vtu"
+            paraview_results_name = str(paraview_cfg.get("results_name", f"{sim_name}_results.vtu"))
+            paraview_output_path = paraview_output_dir / paraview_results_name
 
-        materials_raw = model_raw.get("paraview_grid_output", raw.get("paraview_grid_output"))
-        if materials_raw:
-            paraview_materials_output_path = Path(str(materials_raw))
+        legacy_materials_raw = model_raw.get("paraview_grid_output", raw.get("paraview_grid_output"))
+        if legacy_materials_raw:
+            paraview_materials_output_path = Path(str(legacy_materials_raw))
             if not paraview_materials_output_path.is_absolute():
                 paraview_materials_output_path = run_workspace / paraview_materials_output_path
         else:
-            paraview_materials_output_path = run_workspace / f"{sim_name}_materials.vtr"
+            paraview_materials_name = str(paraview_cfg.get("materials_name", f"{sim_name}_materials.vtr"))
+            paraview_materials_output_path = paraview_output_dir / paraview_materials_name
 
-        paraview_raw = model_raw.get("paraview", raw.get("paraview", {}))
-        assert isinstance(paraview_raw, dict), "paraview config must be a mapping"
-        quantities_raw = paraview_raw.get("quantities")
+        quantities_raw = paraview_cfg.get("quantities")
         if quantities_raw is None:
             paraview_quantities = (
                 "head",
@@ -174,8 +183,8 @@ class RunConfig:
         else:
             assert isinstance(quantities_raw, (list, tuple)), "paraview.quantities must be a list"
             paraview_quantities = tuple(str(item) for item in quantities_raw)
-        paraview_include_inactive = bool(paraview_raw.get("include_inactive", False))
-        paraview_z_scale = float(paraview_raw.get("z_scale", 1.0))
+        paraview_include_inactive = bool(paraview_cfg.get("include_inactive", False))
+        paraview_z_scale = float(paraview_cfg.get("z_scale", 1.0))
         assert paraview_z_scale > 0.0, "paraview.z_scale must be > 0"
 
         plot_raw = raw.get("plots", {})
@@ -230,6 +239,7 @@ class RunConfig:
             stress_periods_days=stress_periods_days,
             grid_output_path=grid_output_path,
             material_parameters_path=material_parameters_path,
+            paraview_output_dir=paraview_output_dir,
             paraview_output_path=paraview_output_path,
             paraview_materials_output_path=paraview_materials_output_path,
             paraview_quantities=paraview_quantities,
@@ -605,6 +615,7 @@ def _write_plan_view_plots(
         grid_data,
         materials,
         top,
+        botm,
         groundwater_surface,
     )
 
@@ -639,12 +650,13 @@ def _write_cross_section_plots(
     grid_data: dict[str, np.ndarray],
     materials: np.ndarray,
     top: np.ndarray,
+    botm: np.ndarray,
     groundwater_surface: np.ndarray,
 ) -> None:
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
-    z_step = float(grid_data["step"][2])
     nz, ny, nx = materials.shape
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
 
     y_index = run_config.plot_xsection_y_index
     if y_index is None:
@@ -661,8 +673,11 @@ def _write_cross_section_plots(
     # X-direction cross-section at fixed Y index.
     materials_x = materials[:, y_index, :]
     top_line_x = top[y_index, :]
+    botm_x = botm[:, y_index, :]
     gw_line_x = groundwater_surface[y_index, :]
-    z_edges_center = top_line_x[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
+    z_edges_center = np.empty((nz + 1, nx), dtype=float)
+    z_edges_center[0] = top_line_x
+    z_edges_center[1:] = botm_x
     z_edges = np.empty((nz + 1, nx + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
     z_edges[:, 0] = z_edges_center[:, 0]
@@ -690,8 +705,11 @@ def _write_cross_section_plots(
     # Y-direction cross-section at fixed X index.
     materials_y = materials[:, :, x_index]
     top_line_y = top[:, x_index]
+    botm_y = botm[:, :, x_index]
     gw_line_y = groundwater_surface[:, x_index]
-    z_edges_center = top_line_y[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
+    z_edges_center = np.empty((nz + 1, ny), dtype=float)
+    z_edges_center[0] = top_line_y
+    z_edges_center[1:] = botm_y
     z_edges = np.empty((nz + 1, ny + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
     z_edges[:, 0] = z_edges_center[:, 0]

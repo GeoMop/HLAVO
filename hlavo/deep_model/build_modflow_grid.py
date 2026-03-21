@@ -13,7 +13,18 @@ import yaml
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
 
 import flopy
-from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+try:
+    from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+except ImportError:
+    try:
+        from qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+    except ImportError:
+        from hlavo.deep_model.qgis_reader import (
+            BoundaryPolygon,
+            Grid,
+            ModelInputs,
+            RasterLayer,
+        )
 
 LOG = logging.getLogger(__name__)
 
@@ -256,16 +267,20 @@ def materials_from_rasters_per_column(
     grid: Grid,
     active_mask: np.ndarray,
     top: np.ndarray,
+    botm: np.ndarray,
 ) -> np.ndarray:
     ny = int(grid.el_dims[1])
     nx = int(grid.el_dims[0])
-    nz = int(grid.el_dims[2])
-    z_step = float(grid.step[2])
-
-    z_centers = top[None, :, :] - z_step * (np.arange(nz, dtype=float)[:, None, None] + 0.5)
+    nz = int(botm.shape[0])
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
+    layer_tops = np.empty_like(botm)
+    layer_tops[0] = top
+    if nz > 1:
+        layer_tops[1:] = botm[:-1]
+    z_centers = 0.5 * (layer_tops + botm)
     materials = np.full((nz, ny, nx), -1, dtype=int)
 
-    last_top = top - z_step * nz
+    last_top = botm[-1].copy()
     last_id = np.zeros((ny, nx), dtype=int)
     last_id[~active_mask] = -1
 
@@ -319,33 +334,40 @@ def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     grid_corners_lonlat = np.column_stack([lon, lat]).astype(float)
 
     active_mask = active_mask_from_boundary(model_inputs.boundary, grid)
-    z_nodes = grid.z_nodes.astype(float)
-    nz = int(grid.el_dims[2])
-    assert z_nodes.size == nz + 1, "z_nodes size mismatch"
+    z_thickness = _z_layer_thicknesses(config_path, model_inputs.rasters)
+    nz = int(z_thickness.size)
+    assert nz > 0, "At least one vertical layer is required"
     top_raster = model_inputs.rasters[0]
     top_full = raster_to_full_grid(top_raster, grid)
-    top = np.ma.filled(top_full, z_nodes[-1]).astype(float)
-    z_step = float(grid.step[2])
-    botm = top[None, :, :] - z_step * (np.arange(1, nz + 1, dtype=float)[:, None, None])
+    top_default = float(np.nanmax(np.ma.filled(top_full, np.nan)))
+    top = np.ma.filled(top_full, top_default).astype(float)
+    depth_cumsum = np.cumsum(z_thickness)
+    botm = top[None, :, :] - depth_cumsum[:, None, None]
+    z_top_ref = float(np.nanmax(top))
+    z_nodes = z_top_ref - np.concatenate(([0.0], depth_cumsum))
 
     materials = materials_from_rasters_per_column(
         model_inputs.rasters,
         grid,
         active_mask,
         top,
+        botm,
     )
     rasters_bottom_up = tuple(reversed(model_inputs.rasters))
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    el_dims = np.asarray([int(grid.el_dims[0]), int(grid.el_dims[1]), nz], dtype=int)
+    step = np.asarray([float(grid.step[0]), float(grid.step[1]), float(z_thickness[0])], dtype=float)
     np.savez_compressed(
         output_path,
         origin=grid.origin,
-        step=grid.step,
-        el_dims=grid.el_dims,
+        step=step,
+        z_thickness=z_thickness,
+        el_dims=el_dims,
         x_nodes=grid.x_nodes,
         y_nodes=grid.y_nodes,
-        z_nodes=grid.z_nodes,
+        z_nodes=z_nodes,
         top=top,
         botm=botm,
         boundary_origin=boundary_origin,
@@ -361,6 +383,60 @@ def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
     assert output_path.exists(), f"Grid output not created: {output_path}"
     LOG.info("Saved grid materials to %s", output_path)
     return output_path
+
+
+def _z_layer_thicknesses(config_path: Path, rasters: tuple[RasterLayer, ...]) -> np.ndarray:
+    with Path(config_path).open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle)
+    assert isinstance(raw, dict), "Config YAML must be a mapping"
+    meshsteps_raw = raw.get("meshsteps")
+    assert isinstance(meshsteps_raw, dict), "meshsteps must be a mapping"
+    assert "z" in meshsteps_raw, "meshsteps.z is required"
+    z_raw = meshsteps_raw["z"]
+
+    if isinstance(z_raw, (int, float)):
+        z_value = float(z_raw)
+        assert z_value > 0.0, "meshsteps.z must be > 0"
+        return np.asarray([z_value], dtype=float)
+
+    if isinstance(z_raw, list):
+        assert z_raw, "meshsteps.z list cannot be empty"
+        z_layers = np.asarray([float(value) for value in z_raw], dtype=float)
+        assert np.all(z_layers > 0.0), "meshsteps.z values must be > 0"
+        return z_layers
+
+    assert isinstance(z_raw, dict), (
+        "meshsteps.z must be a number, a list, or a mapping with layers/rest"
+    )
+    layers_raw = z_raw.get("layers", [])
+    assert isinstance(layers_raw, list), "meshsteps.z.layers must be a list"
+    z_layers = np.asarray([float(value) for value in layers_raw], dtype=float)
+    if z_layers.size:
+        assert np.all(z_layers > 0.0), "meshsteps.z.layers values must be > 0"
+    rest_raw = z_raw.get("rest")
+    if rest_raw is None:
+        assert z_layers.size > 0, "meshsteps.z must define layers or rest"
+        return z_layers
+
+    z_rest = float(rest_raw)
+    assert z_rest > 0.0, "meshsteps.z.rest must be > 0"
+    if not rasters:
+        return z_layers if z_layers.size else np.asarray([z_rest], dtype=float)
+
+    top_candidates = [float(raster.z_extent[1]) for raster in rasters]
+    bottom_candidates = [float(raster.z_extent[0]) for raster in rasters]
+    depth_required = max(top_candidates) - min(bottom_candidates)
+    assert depth_required > 0.0, "Invalid raster vertical extent"
+
+    depth_current = float(np.sum(z_layers))
+    if depth_current >= depth_required:
+        return z_layers
+
+    n_extra = int(np.ceil((depth_required - depth_current) / z_rest))
+    extra = np.full(n_extra, z_rest, dtype=float)
+    if z_layers.size:
+        return np.concatenate([z_layers, extra])
+    return extra
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
