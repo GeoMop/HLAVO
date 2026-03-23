@@ -33,7 +33,6 @@ model:
 # layers: GIS names of bottom interfaces in HG model layers group.
 materials:
   all:
-    layers: []
     horizontal_conductivity: 1.0e-6
     vertical_conductivity: 1.0e-6
     porosity: 0.30
@@ -66,11 +65,9 @@ materials:
     nstp: 1
     tsmult: 1.0
   sand:
-    layers: ["relief"]
     horizontal_conductivity: 1.0e-5
     vertical_conductivity: 1.0e-5
   clay:
-    layers: ["Q1_top"]
     horizontal_conductivity: 1.0e-7
     vertical_conductivity: 1.0e-7
 

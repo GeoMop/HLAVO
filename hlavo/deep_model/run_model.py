@@ -350,6 +350,7 @@ def _export_results_to_paraview(
     qz: np.ndarray,
     idomain: np.ndarray,
     materials: np.ndarray,
+    material_class: np.ndarray | None,
     top: np.ndarray,
     botm: np.ndarray,
     paraview_quantities: tuple[str, ...],
@@ -382,6 +383,10 @@ def _export_results_to_paraview(
         grid.cell_data["idomain"] = idomain_vtk
     if "materials" in quantities:
         grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+    if material_class is not None:
+        grid.cell_data["material_class"] = _vtk_cell_array(
+            _vtk_oriented(material_class.astype(np.int16))
+        )
 
     needs_vectors = "velocity" in quantities or "q" in quantities
     needs_qmag = "velocity_magnitude" in quantities
@@ -433,6 +438,7 @@ def _export_materials_to_paraview(
     output_path: Path,
     grid_data: dict[str, np.ndarray],
     materials: np.ndarray,
+    material_class: np.ndarray | None,
     active_mask: np.ndarray,
     top: np.ndarray,
     botm: np.ndarray,
@@ -456,6 +462,10 @@ def _export_materials_to_paraview(
     active_vtk = _vtk_cell_array(_vtk_oriented(active_cells.astype(np.uint8)))
     if "materials" in quantities:
         grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+    if material_class is not None:
+        grid.cell_data["material_class"] = _vtk_cell_array(
+            _vtk_oriented(material_class.astype(np.int16))
+        )
     if "active" in quantities:
         grid.cell_data["active"] = active_vtk
 

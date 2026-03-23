@@ -54,7 +54,6 @@ class MaterialAllSpec:
 @attrs.define(frozen=True)
 class LayerMaterialSpec:
     name: str
-    layers: tuple[str, ...]
     horizontal_conductivity: float
     vertical_conductivity: float
 
@@ -65,7 +64,8 @@ class MaterialConfig:
     grid_path: Path
     output_path: Path
     defaults: MaterialAllSpec
-    layer_materials: dict[str, LayerMaterialSpec]
+    sand: LayerMaterialSpec
+    clay: LayerMaterialSpec
 
     @staticmethod
     def from_yaml(config_path: Path) -> "MaterialConfig":
@@ -116,47 +116,51 @@ class MaterialConfig:
             unsat=unsat,
         )
 
-        layer_materials: dict[str, LayerMaterialSpec] = {}
-        for material_name, material_raw in materials_raw.items():
-            if material_name == "all":
-                continue
-            assert isinstance(material_raw, dict), f"materials.{material_name} must be a mapping"
-            layers_raw = material_raw.get("layers", [])
-            assert isinstance(layers_raw, list), f"materials.{material_name}.layers must be a list"
-            layer_materials[str(material_name)] = LayerMaterialSpec(
-                name=str(material_name),
-                layers=tuple(str(layer) for layer in layers_raw),
-                horizontal_conductivity=float(material_raw["horizontal_conductivity"]),
-                vertical_conductivity=float(material_raw["vertical_conductivity"]),
-            )
+        assert "sand" in materials_raw, "materials.sand is required"
+        assert "clay" in materials_raw, "materials.clay is required"
+        sand_raw = materials_raw["sand"]
+        clay_raw = materials_raw["clay"]
+        assert isinstance(sand_raw, dict), "materials.sand must be a mapping"
+        assert isinstance(clay_raw, dict), "materials.clay must be a mapping"
+        sand = LayerMaterialSpec(
+            name="sand",
+            horizontal_conductivity=float(sand_raw["horizontal_conductivity"]),
+            vertical_conductivity=float(sand_raw["vertical_conductivity"]),
+        )
+        clay = LayerMaterialSpec(
+            name="clay",
+            horizontal_conductivity=float(clay_raw["horizontal_conductivity"]),
+            vertical_conductivity=float(clay_raw["vertical_conductivity"]),
+        )
 
         return MaterialConfig(
             config_path=config_path,
             grid_path=grid_path,
             output_path=output_path,
             defaults=defaults,
-            layer_materials=layer_materials,
+            sand=sand,
+            clay=clay,
         )
 
 
 def _layer_conductivities(
     layer_names: list[str],
     defaults: MaterialAllSpec,
-    layer_materials: dict[str, LayerMaterialSpec],
+    sand: LayerMaterialSpec,
+    clay: LayerMaterialSpec,
 ) -> tuple[np.ndarray, np.ndarray]:
     kh = np.full(len(layer_names), defaults.horizontal_conductivity, dtype=float)
     kv = np.full(len(layer_names), defaults.vertical_conductivity, dtype=float)
 
-    layer_to_idx = {name: idx for idx, name in enumerate(layer_names)}
-    assigned = set()
-    for material_name, material in layer_materials.items():
-        for layer in material.layers:
-            assert layer in layer_to_idx, f"Unknown layer {layer} in materials.{material_name}.layers"
-            assert layer not in assigned, f"Layer {layer} assigned by multiple materials"
-            idx = layer_to_idx[layer]
-            kh[idx] = material.horizontal_conductivity
-            kv[idx] = material.vertical_conductivity
-            assigned.add(layer)
+    for idx, layer_name in enumerate(layer_names):
+        if not layer_name.startswith("Q"):
+            continue
+        if layer_name.endswith("_base"):
+            kh[idx] = sand.horizontal_conductivity
+            kv[idx] = sand.vertical_conductivity
+        elif layer_name.endswith("_top"):
+            kh[idx] = clay.horizontal_conductivity
+            kv[idx] = clay.vertical_conductivity
 
     return kh, kv
 
@@ -182,7 +186,7 @@ def add_material_parameters(config_path: Path) -> Path:
     idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
     materials_mf = materials[::-1, :, :]
 
-    kh_values, kv_values = _layer_conductivities(layer_names, cfg.defaults, cfg.layer_materials)
+    kh_values, kv_values = _layer_conductivities(layer_names, cfg.defaults, cfg.sand, cfg.clay)
 
     valid = materials_mf >= 0
     kh = np.full((nz, ny, nx), cfg.defaults.horizontal_conductivity, dtype=float)
