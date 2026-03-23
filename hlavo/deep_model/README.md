@@ -21,6 +21,40 @@ python run_model.py --config <config_file>
 python visualize_results.py --config <config_file>
 ```
 
+## Scenario batch workflow
+
+For repeated scenario runs of one fixed model geometry (for example `with_mine_fine`),
+use:
+
+```
+python run_scenarios.py \
+  --base-config config/base/with_mine_fine.yaml \
+  --scenarios-dir config/scenarios/with_mine_fine
+```
+
+Scenario files are YAML overlays over the base config.
+Use `scenario.name` and `scenario.description` for metadata.
+
+Each run gets an immutable folder:
+
+- `runs/<model_name>/<timestamp>_<scenario_name>_<hash>/config_resolved.yaml`
+- `runs/<model_name>/<timestamp>_<scenario_name>_<hash>/logs/workflow.log`
+- `runs/<model_name>/<timestamp>_<scenario_name>_<hash>/workspace/<model_name>/...` outputs
+
+Batch summary index:
+
+- `runs/<model_name>/index.csv`
+
+The index stores scenario name, status, duration, config path, git commit, key forcing/material values,
+and simple output metrics (head statistics and groundwater-surface change statistics).
+
+Notes:
+
+- Grid is reused by default across scenarios when geometry inputs are identical
+  (`qgis_project_path`, boundary, raster group, `meshsteps`).
+- Use `--no-reuse-grid` to force rebuilding grid for each scenario.
+- Use `--skip-grid` only if each run workspace already contains a valid `grid_materials.npz`.
+
 `run_model.py` and `visualize_results.py` both expect `grid_output_path` and
 `material_parameters_output_path` to exist (produced by steps 1 and 2).
 The plot outputs now include a groundwater-surface elevation map.

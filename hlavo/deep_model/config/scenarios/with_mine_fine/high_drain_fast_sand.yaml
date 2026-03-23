@@ -1,0 +1,12 @@
+scenario:
+  name: high_drain_fast_sand
+  description: Stronger drainage and more conductive sands.
+
+model:
+  drain_conductance: 3.0
+
+materials:
+  sets:
+    sands:
+      horizontal_conductivity: 3.0e-5
+      vertical_conductivity: 2.0e-5

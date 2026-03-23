@@ -1,0 +1,5 @@
+scenario:
+  name: baseline
+  description: Baseline parameters copied from base config.
+
+# Empty overlay on purpose.
