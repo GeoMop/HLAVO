@@ -220,13 +220,15 @@ def _layer_parameters_from_geology(
     sets: dict[str, MaterialParameterSet],
     geological_layers: tuple[GeologicalLayerSpec, ...],
     strict_layer_mapping: bool,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     n_layers = len(layer_names)
     kh = np.full(n_layers, defaults.horizontal_conductivity, dtype=float)
     kv = np.full(n_layers, defaults.vertical_conductivity, dtype=float)
     porosity = np.full(n_layers, defaults.porosity, dtype=float)
     vg_n = np.full(n_layers, defaults.vG_n, dtype=float)
     vg_alpha = np.full(n_layers, defaults.vG_alpha, dtype=float)
+    material_class = np.zeros(n_layers, dtype=np.int16)  # 0=other, 1=sand, 2=clay
+    material_names = [str(name) for name in layer_names]
 
     interface_to_idx = {name: idx for idx, name in enumerate(layer_names)}  # bottom-up indices
     topdown = list(reversed(layer_names))
@@ -264,8 +266,23 @@ def _layer_parameters_from_geology(
         porosity[bottom_interface_idx] = params.porosity
         vg_n[bottom_interface_idx] = params.vG_n
         vg_alpha[bottom_interface_idx] = params.vG_alpha
+        material_class[bottom_interface_idx] = _material_class_from_spec(spec)
+        material_names[bottom_interface_idx] = (
+            spec.name.strip() if str(spec.name).strip() else spec.bottom_interface
+        )
 
-    return kh, kv, porosity, vg_n, vg_alpha
+    return kh, kv, porosity, vg_n, vg_alpha, material_class, material_names
+
+
+def _material_class_from_spec(spec: GeologicalLayerSpec) -> np.int16:
+    haystack = " ".join(
+        value.lower() for value in (spec.name, spec.set_name or "") if value
+    )
+    if "sand" in haystack:
+        return np.int16(1)
+    if "clay" in haystack:
+        return np.int16(2)
+    return np.int16(0)
 
 
 def add_material_parameters(config_path: Path) -> Path:
@@ -287,9 +304,19 @@ def add_material_parameters(config_path: Path) -> Path:
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
 
     idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
+    # Keep legacy export key, but properties/classes are mapped from the native
+    # grid orientation (same as top/botm arrays and MODFLOW layer order).
     materials_mf = materials[::-1, :, :]
 
-    kh_values, kv_values, porosity_values, vg_n_values, vg_alpha_values = _layer_parameters_from_geology(
+    (
+        kh_values,
+        kv_values,
+        porosity_values,
+        vg_n_values,
+        vg_alpha_values,
+        material_class_values,
+        material_names,
+    ) = _layer_parameters_from_geology(
         layer_names,
         cfg.defaults.params,
         cfg.sets,
@@ -297,18 +324,20 @@ def add_material_parameters(config_path: Path) -> Path:
         cfg.strict_layer_mapping,
     )
 
-    valid = materials_mf >= 0
+    valid = materials >= 0
     kh = np.full((nz, ny, nx), cfg.defaults.params.horizontal_conductivity, dtype=float)
     kv = np.full((nz, ny, nx), cfg.defaults.params.vertical_conductivity, dtype=float)
     porosity = np.full((nz, ny, nx), cfg.defaults.params.porosity, dtype=float)
     vg_alpha = np.full((nz, ny, nx), cfg.defaults.params.vG_alpha, dtype=float)
     vg_n = np.full((nz, ny, nx), cfg.defaults.params.vG_n, dtype=float)
+    material_class = np.full((nz, ny, nx), -1, dtype=np.int16)
 
-    kh[valid] = kh_values[materials_mf[valid]]
-    kv[valid] = kv_values[materials_mf[valid]]
-    porosity[valid] = porosity_values[materials_mf[valid]]
-    vg_alpha[valid] = vg_alpha_values[materials_mf[valid]]
-    vg_n[valid] = vg_n_values[materials_mf[valid]]
+    kh[valid] = kh_values[materials[valid]]
+    kv[valid] = kv_values[materials[valid]]
+    porosity[valid] = porosity_values[materials[valid]]
+    vg_alpha[valid] = vg_alpha_values[materials[valid]]
+    vg_n[valid] = vg_n_values[materials[valid]]
+    material_class[valid] = material_class_values[materials[valid]]
 
     cfg.output_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, np.ndarray] = {
@@ -325,6 +354,9 @@ def add_material_parameters(config_path: Path) -> Path:
         "porosity": porosity,
         "van_genuchten_alpha": vg_alpha,
         "van_genuchten_n": vg_n,
+        "material_class": material_class,
+        "material_class_by_layer": material_class_values,
+        "material_name_by_layer": np.asarray(material_names, dtype=object),
         "layer_names": np.asarray(layer_names, dtype=object),
     }
     for key, value in cfg.defaults.unsat.items():

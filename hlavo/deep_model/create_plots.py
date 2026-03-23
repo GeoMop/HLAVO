@@ -13,29 +13,11 @@ from run_model import (
     RunConfig,
     _groundwater_surface_from_head,
     _grid_arrays_from_npz,
+    _material_class_from_model_data,
     _write_plan_view_plots,
 )
 
 LOG = logging.getLogger(__name__)
-
-
-def _material_class_from_interfaces(
-    materials: np.ndarray,
-    layer_names: list[str],
-) -> np.ndarray:
-    assert materials.ndim == 3, "materials must be 3D"
-    class_by_layer = np.zeros(len(layer_names), dtype=np.int16)  # 0=other, 1=sand, 2=clay
-    for idx, layer_name in enumerate(layer_names):
-        if layer_name.startswith("Q") and layer_name.endswith("_base"):
-            class_by_layer[idx] = 1
-        elif layer_name.startswith("Q") and layer_name.endswith("_top"):
-            class_by_layer[idx] = 2
-
-    classes = np.full(materials.shape, -1, dtype=np.int16)  # -1=inactive/undefined
-    valid = materials >= 0
-    classes[valid] = class_by_layer[materials[valid]]
-    return classes
-
 
 def _write_material_class_cross_sections(
     run_config: RunConfig,
@@ -246,9 +228,14 @@ def create_plots(config_path: Path, workspace: Path | None = None) -> None:
     top = np.asarray(model_data["top"], dtype=float)
     botm = np.asarray(model_data["botm"], dtype=float)
     materials = np.asarray(model_data["materials"], dtype=int)
-    layer_names = [str(name) for name in model_data["layer_names"].tolist()]
     idomain = np.asarray(model_data["idomain"], dtype=int)
-    material_class = _material_class_from_interfaces(materials, layer_names)
+    material_class = _material_class_from_model_data(model_data, materials)
+    if "material_name_by_layer" in model_data:
+        material_labels = [str(value) for value in model_data["material_name_by_layer"].tolist()]
+    elif "layer_names" in model_data:
+        material_labels = [str(value) for value in model_data["layer_names"].tolist()]
+    else:
+        material_labels = [str(value) for value in grid_data["layer_names"].tolist()]
 
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
     assert top.shape == (ny, nx), "top shape mismatch"
@@ -288,6 +275,7 @@ def create_plots(config_path: Path, workspace: Path | None = None) -> None:
         materials,
         top,
         botm,
+        material_labels,
     )
     _write_material_class_cross_sections(
         run_config,

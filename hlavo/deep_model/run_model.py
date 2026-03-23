@@ -296,6 +296,33 @@ def _vtk_cell_vectors(
     return np.column_stack([qx_flat, qy_flat, qz_flat])
 
 
+def _material_class_from_model_data(
+    model_data: dict[str, np.ndarray],
+    materials: np.ndarray,
+) -> np.ndarray:
+    assert materials.ndim == 3, "materials must be 3D"
+    if "material_class" in model_data:
+        classes = np.asarray(model_data["material_class"], dtype=np.int16)
+        assert classes.shape == materials.shape, "material_class shape mismatch"
+        return classes
+
+    classes = np.full(materials.shape, -1, dtype=np.int16)  # -1=inactive/undefined
+    layer_names = [str(name) for name in model_data.get("layer_names", np.asarray([], dtype=object)).tolist()]
+    if not layer_names:
+        classes[materials >= 0] = 0
+        return classes
+
+    class_by_layer = np.zeros(len(layer_names), dtype=np.int16)  # 0=other, 1=sand, 2=clay
+    for idx, layer_name in enumerate(layer_names):
+        if layer_name.startswith("Q") and layer_name.endswith("_base"):
+            class_by_layer[idx] = 1
+        elif layer_name.startswith("Q") and layer_name.endswith("_top"):
+            class_by_layer[idx] = 2
+    valid = materials >= 0
+    classes[valid] = class_by_layer[materials[valid]]
+    return classes
+
+
 def _surface_to_nodes(surface: np.ndarray) -> np.ndarray:
     assert surface.ndim == 2, "Surface must be 2D"
     ny, nx = surface.shape
@@ -521,6 +548,7 @@ def _write_plan_view_plots(
     materials: np.ndarray,
     top: np.ndarray,
     botm: np.ndarray,
+    material_labels: list[str] | None = None,
 ) -> None:
     if not run_config.plot_enabled:
         return
@@ -617,6 +645,7 @@ def _write_plan_view_plots(
         top,
         botm,
         groundwater_surface,
+        material_labels,
     )
 
 
@@ -652,11 +681,23 @@ def _write_cross_section_plots(
     top: np.ndarray,
     botm: np.ndarray,
     groundwater_surface: np.ndarray,
+    material_labels: list[str] | None = None,
 ) -> None:
+    import matplotlib.pyplot as plt
+    from matplotlib import colors
+
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
     nz, ny, nx = materials.shape
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
+    if material_labels is None:
+        layer_names = [str(name) for name in grid_data["layer_names"].tolist()]
+    else:
+        layer_names = [str(name) for name in material_labels]
+    assert len(layer_names) > 0, "layer_names cannot be empty"
+    assert len(layer_names) <= 256, "Too many layer names for discrete colormap"
+    cmap = plt.get_cmap("tab20", len(layer_names))
+    norm = colors.BoundaryNorm(np.arange(-0.5, len(layer_names) + 0.5, 1.0), cmap.N)
 
     y_index = run_config.plot_xsection_y_index
     if y_index is None:
@@ -667,8 +708,6 @@ def _write_cross_section_plots(
     if x_index is None:
         x_index = nx // 2
     assert 0 <= x_index < nx, "xsection_x_index out of range"
-
-    import matplotlib.pyplot as plt
 
     # X-direction cross-section at fixed Y index.
     materials_x = materials[:, y_index, :]
@@ -684,22 +723,33 @@ def _write_cross_section_plots(
     z_edges[:, -1] = z_edges_center[:, -1]
     x_edges = np.tile(x_nodes[None, :], (nz + 1, 1))
 
-    plt.figure(figsize=(10, 4))
-    plt.pcolormesh(x_edges, z_edges, materials_x, shading="auto", cmap="tab20")
+    fig, ax = plt.subplots(figsize=(11, 4))
+    mesh = ax.pcolormesh(
+        x_edges,
+        z_edges,
+        np.ma.masked_less(materials_x, 0),
+        shading="auto",
+        cmap=cmap,
+        norm=norm,
+    )
     x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
-    plt.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
+    ax.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
     z_top_x = float(np.nanmax(top_line_x))
     z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
     z_pad_x = 0.05 * run_config.plot_xsection_depth_window
-    plt.ylim(z_bottom_x, z_top_x + z_pad_x)
-    plt.title(f"Materials X-Section (y index {y_index})")
-    plt.xlabel("X (local)")
-    plt.ylabel("Z")
-    plt.legend(loc="best")
-    plt.tight_layout()
+    ax.set_ylim(z_bottom_x, z_top_x + z_pad_x)
+    ax.set_title(f"Materials X-Section (y index {y_index})")
+    ax.set_xlabel("X (local)")
+    ax.set_ylabel("Z")
+    ax.legend(loc="best")
+    ticks = np.arange(len(layer_names), dtype=float)
+    cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
+    cbar.ax.set_yticklabels(layer_names)
+    cbar.set_label("Geological layer")
+    fig.tight_layout()
     xsec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
-    plt.savefig(xsec_path, dpi=run_config.plot_dpi)
-    plt.close()
+    fig.savefig(xsec_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
     LOG.info("Saved X-section plot to %s", xsec_path)
 
     # Y-direction cross-section at fixed X index.
@@ -716,22 +766,33 @@ def _write_cross_section_plots(
     z_edges[:, -1] = z_edges_center[:, -1]
     y_edges = np.tile(y_nodes[None, :], (nz + 1, 1))
 
-    plt.figure(figsize=(10, 4))
-    plt.pcolormesh(y_edges, z_edges, materials_y, shading="auto", cmap="tab20")
+    fig, ax = plt.subplots(figsize=(11, 4))
+    mesh = ax.pcolormesh(
+        y_edges,
+        z_edges,
+        np.ma.masked_less(materials_y, 0),
+        shading="auto",
+        cmap=cmap,
+        norm=norm,
+    )
     y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
-    plt.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
+    ax.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
     z_top_y = float(np.nanmax(top_line_y))
     z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
     z_pad_y = 0.05 * run_config.plot_xsection_depth_window
-    plt.ylim(z_bottom_y, z_top_y + z_pad_y)
-    plt.title(f"Materials Y-Section (x index {x_index})")
-    plt.xlabel("Y (local)")
-    plt.ylabel("Z")
-    plt.legend(loc="best")
-    plt.tight_layout()
+    ax.set_ylim(z_bottom_y, z_top_y + z_pad_y)
+    ax.set_title(f"Materials Y-Section (x index {x_index})")
+    ax.set_xlabel("Y (local)")
+    ax.set_ylabel("Z")
+    ax.legend(loc="best")
+    ticks = np.arange(len(layer_names), dtype=float)
+    cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
+    cbar.ax.set_yticklabels(layer_names)
+    cbar.set_label("Geological layer")
+    fig.tight_layout()
     ysec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
-    plt.savefig(ysec_path, dpi=run_config.plot_dpi)
-    plt.close()
+    fig.savefig(ysec_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
     LOG.info("Saved Y-section plot to %s", ysec_path)
 
 

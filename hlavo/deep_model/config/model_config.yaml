@@ -104,29 +104,21 @@ materials:
     set: clays
   - name: sand_4
     top_interface: Q3_base
-    bottom_interface: Q4_top
-    set: sands
-  - name: clay_4
-    top_interface: Q4_top
-    bottom_interface: Q4_base
-    set: clays
-  - name: sand_5
-    top_interface: Q4_base
     bottom_interface: Q5_top
     set: sands
-  - name: clay_5
+  - name: clay_4
     top_interface: Q5_top
     bottom_interface: Q5_base
     set: clays
-  - name: sand_6
+  - name: sand_5
     top_interface: Q5_base
     bottom_interface: Q6_top
     set: sands
-  - name: clay_6
+  - name: clay_5
     top_interface: Q6_top
     bottom_interface: Q6_base
     set: clays
-  - name: sand_7
+  - name: sand_6
     top_interface: Q6_base
     bottom_interface: Q_base
     set: sands
