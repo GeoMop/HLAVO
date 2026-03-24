@@ -5,7 +5,9 @@
 
 
 import sys
+from pathlib import Path
 import pandas as pd
+import polars as pl
 #import logging
 
 #logger = logging.getLogger(__name__)
@@ -21,7 +23,13 @@ def pdf_plot(pdf_file, df, well_id):
     """
     import matplotlib.pyplot as plt
 
-    df_filtered = df[df["well_id"] == well_id]
+    script_dir = Path(__file__).parent
+    workdir = script_dir / "workdir"
+    workdir.mkdir(exist_ok=True)
+
+    full_path = workdir / pdf_file
+
+    df_filtered = df.filter(pl.col("well_id") == well_id)
     ax = df_filtered.plot(
         x="date_time",
         y=["water_depth", "water_level"],
@@ -34,7 +42,7 @@ def pdf_plot(pdf_file, df, well_id):
     ax.grid(True)
 
     plt.tight_layout()
-    plt.savefig(pdf_file)
+    plt.savefig(full_path)
     plt.close()
 
 
