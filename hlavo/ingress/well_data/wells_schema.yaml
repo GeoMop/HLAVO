@@ -37,7 +37,7 @@ Uhelna:
                 sorted: [] # Unsorted
                 chunk_size: 1
                 
-            interval_idx:
+            interval_num_from_top:
                 description: "Index of boreholoe open interval. Indexed from top to bottom."
                 type: str[16]
                 # Composed implies unsorted, no support for sparse data interpolation, right now.
@@ -62,18 +62,17 @@ Uhelna:
                 description: "Water level depth relative to the borehole head."
                 coords: ["date_time", "well_id"]
 
-            borehole_full_name:
+            well_in_section_file:
                 type: str[32]
                 description: "Well full name (including collector)."
                 coords: ["well_id"]
-            borehole_id:
-                type: str[16]
-                description: "Sheetname in file of measure data"
-                coords: ["well_id"]
+
             confirmed:
-                type: int
+                type: int32
+                na_value: 0
                 description: "Sign of existing sheetname in file of measured data"
                 coords: ["well_id"]
+
             X:
                 unit: "m"
                 type: float
@@ -92,17 +91,23 @@ Uhelna:
                 na_value: 'nan' # default
                 description: "Z-coord of well."
                 coords: ["well_id"]
+
             collector:
+                type: str[32]
+                description: "Name of collector."
                 coords: ["well_id"]
             
             interval_min:
                 unit: "m"
+                type: float
                 description: "Depth of interval start measured from the borehole head."
-                coords: ["well_id"]
+                coords: ["well_id", "interval_num_from_top"]
+
             interval_max:
                 unit: "m"
+                type: float
                 description: "Depth of interval stop measured from the borehole head."
-                coords: ["well_id"]
+                coords: ["well_id", "interval_num_from_top"]
             
           
                 
@@ -115,8 +120,7 @@ Uhelna:
             cum_draw:
                 unit: "m ** 3"
                 description: "Total water draw per month."
-                #coords: ["date_time", "well_id"]
-                coords: ["date"]
+                coords: ["date", "well_id"]
 
         
         COORDS:

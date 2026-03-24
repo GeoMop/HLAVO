@@ -105,9 +105,11 @@ def _sheet_names_dictionary():
     return dict
 
 
-def _open_zarr_schema():
+def _open_zarr_schema(remove_store=True):
     script_dir = Path(__file__).parent
     schema_path = script_dir / "wells_schema.yaml"
+    if remove_store:
+        zf.remove_store(schema_path)
     return zf.open_store(schema_path)
 
 
@@ -220,11 +222,11 @@ def read_draw(xls_file, sheetname):
 
     # convert to base unit (m^3)
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
+    df_result["well_id"] = "1420_1"
 
+    # remove store
     root_node = _open_zarr_schema()
     water_draw_node = root_node['Uhelna']['water_draw']
-    print(f"Columns in DataFrame: {df_result.columns.tolist()}")
-    print("Looking for:", water_draw_node.dataset)
     water_draw_node.update(df_result)
 
     df_result.attrs["units"] = {"cum_draw ": "m^3"}
@@ -331,6 +333,29 @@ def read_sections(section_file, sheetname):
     df.attrs["units"] = { "X": "m", "Y": "m", "Z": "m", "depth": "m", "interval_max": "m", "interval_min": "m"}
 
     return df
+
+def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths=None):
+    """
+    Prepare full data.DataFrame containing combination of water levels data and well sections data.
+
+    Param   section_file_path        Path to Excel input file
+    Param   section_sheetname        Name of sheet in xls_file
+    Param   water_level_file_paths   Set of paths to Excel input files
+    Returns pandas:DataFrame
+    """
+    df_sections = read_sections(section_file_path, section_sheetname)
+    df_water_levels = read_water_level(water_level_file_paths)
+
+    df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
+
+    root_node = _open_zarr_schema()
+    water_levels_node = root_node['Uhelna']['water_levels']
+    print(f"Columns in DataFrame: {df_full.columns.tolist()}")
+    print("Looking for:", water_levels_node.dataset)
+    water_levels_node.update(df_full)
+
+    return df_full
+
 
 def csv_output(csv_file, df):
     """
