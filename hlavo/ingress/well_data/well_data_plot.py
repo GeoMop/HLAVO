@@ -30,13 +30,14 @@ def pdf_plot(pdf_file, df, well_id):
     full_path = workdir / pdf_file
 
     df_filtered = df.filter(pl.col("well_id") == well_id)
+    df_filtered = df_filtered.to_pandas()
     ax = df_filtered.plot(
         x="date_time",
-        y=["water_depth", "water_level"],
+        y=["water_level"],
         figsize=(10, 5)
     )
 
-    ax.title("Water levels well: '" + well_id + "'")
+    ax.set_title("Water levels well: '" + well_id + "'")
     ax.set_xlabel("Date")
     ax.set_ylabel("water level [m]")
     ax.grid(True)
