@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any
 
+import json
 import polars as pl
 
 
@@ -81,7 +82,7 @@ def _normalize_yrno_forecast(json_dict: dict, dataframe_row: dict | None) -> pl.
 
 def normalize(payload: bytes, metadata: dict | None) -> pl.DataFrame:
     try:
-        json_dict = pl.read_json(payload)
+        json_dict = json.loads(payload.decode("utf-8"))
     except Exception:
         raise ValueError("Failed to parse JSON payload")
 
