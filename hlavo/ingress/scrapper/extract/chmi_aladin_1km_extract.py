@@ -19,6 +19,7 @@ def rename_vars_by_schema(ds: xr.Dataset, metadata: dict, dataset_key: str, sche
     assert source_name is not None, "metadata.dataframe_row.quantity is missing"
 
     root = zf.schema.deserialize(schema_path)
+
     node = root.groups[dataset_key].ds
     source_map = node.source_to_schema_name_map
 
