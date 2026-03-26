@@ -1,7 +1,0 @@
-seed: 123456
-start_datetime: "2025-03-16T00:00:00"
-end_datetime: "2025-05-16T00:00:00"
-1d_models:
-  - /home/martin/Documents/HLAVO/runs/deep_model/config_0_experiments_distr.yaml
-  #- ../../runs/deep_model/config_1_experiments_distr.yaml
-  #- ../../runs/deep_model/config_2_experiments_distr.yaml
