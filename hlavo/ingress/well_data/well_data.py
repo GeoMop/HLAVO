@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import logging
 import zarr_fuse as zf
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,10 @@ def _sheet_names_dictionary():
 
 def _open_zarr_schema(remove_store=True):
     script_dir = Path(__file__).parent
+    root_path = script_dir / "../../.."
+    file_path = root_path / ".secrets_env"
+    load_dotenv(dotenv_path=file_path)
+
     schema_path = script_dir / "wells_schema.yaml"
     if remove_store:
         zf.remove_store(schema_path)
