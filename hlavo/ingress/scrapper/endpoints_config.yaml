@@ -64,5 +64,5 @@ active_scrappers:
     iterate:
       - name: quantity
         source: schema
-        dataset_name: "chmi_aladin_10m"
+        target_node: "chmi_aladin_10m"
         schema_regex: "VARS.*.df_col"
