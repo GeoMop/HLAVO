@@ -44,11 +44,15 @@ def read_storage(schema_path: str | Path,
     # print(rdf)
     # rdf = root_node['chmi_aladin_10m'].dataset
 
-    ds = get_nested(root_node, node_path).dataset[var_names]
+    node = get_nested(root_node, node_path)
+    if len(var_names) > 0:
+        ds = node.dataset[var_names]
+    else:
+        ds = node.dataset
 
     # place debug pause here and view pandas dataframe
     # rdf_pd = rdf.sort(["site_id", "date_time", "depth_level"]).to_pandas()
-    return ds
+    return node, ds
 
 
 def main():
