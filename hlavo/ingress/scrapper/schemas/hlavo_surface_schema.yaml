@@ -1,14 +1,14 @@
 ATTRS:
   S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+  S3_STORE_URL: "s3://hlavo-release/hlavo-release.zarr"
   grid_min: [50.840000, 14.850000] # unit deg
   grid_max: [50.8900000, 14.9600000] # unit deg
   grid_step: [1e-2, 1e-2] # unit deg; about 1000m; approximately resolution of the yr.no service
-  
+
   # longitude, latitude; about 100m precision
-  metero_domain_min: [14.6556,50.6916]
-  meteo_domain_max: [15.1817,50.9800]
-  
-  
+  meteo_domain_min: [14.6556, 50.6916]
+  meteo_domain_max: [15.1817, 50.9800]
+
 yr.no:
   VARS:
     precipitation_amount:
@@ -291,13 +291,13 @@ chmi_aladin_10m:
       coords: ["date_time", latitude, longitude]
 
     precipitation_type_mode_1h:
-      unit: "index"
+      unit: ""
       description: "Most frequent precipitation type during the past/next 1h (as encoded by source)"
       df_col: "PRECIP_TYPE"
       coords: ["date_time", latitude, longitude]
 
     # precip_type_severe_1h:
-    #   unit: "index"
+    #   unit: ""
     #   description: "Most dangerous precipitation type during the past/next 1h (as encoded by source)"
     #   df_col: "PRECIP_TYPESEV"
     #   coords: ["date_time", latitude, longitude]
@@ -341,4 +341,3 @@ chmi_aladin_10m:
       chunk_size: 32
       merge:
         step_limits: [0.0001, 0.0001, "degrees"]
-
