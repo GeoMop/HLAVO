@@ -1,7 +1,12 @@
 import json
+import logging
 from pathlib import Path
 
 import polars as pl
+
+from hlavo.common.zarr_fuse_reader import read_storage
+
+LOGGER = logging.getLogger(__name__)
 
 
 def get_data_block(doc):
@@ -52,8 +57,71 @@ def load_station_daily_dataframe(wsi, stations_data_dir="stations_data"):
     )
 
     return df.filter(
-        pl.col("DT").dt.year().is_between(2024, 2025, closed="both")
+        pl.col("DT").dt.year().is_between(2020, 2025, closed="both")
     ).sort("DT").rename({"DT": "date_time"})
+
+
+def validate_station_quantity_flags(station_df, station):
+    """
+    Compare station metadata flags against actual station_df content.
+    """
+    metadata_columns = {
+        "WSI",
+        "FULL_NAME",
+        "LAT",
+        "LON",
+        "ELEVATION",
+        "DIST_KM",
+        "BEGIN_DATE",
+        "END_DATE",
+    }
+    station_df_metadata_columns = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
+
+    quantity_columns = [
+        column_name
+        for column_name in station_df.columns
+        if column_name not in station_df_metadata_columns
+    ]
+    all_null_quantity_columns = {
+        column_name
+        for column_name in quantity_columns
+        if not station_df.select(pl.col(column_name).is_not_null().any()).item()
+    }
+    columns_with_values = {
+        column_name
+        for column_name in quantity_columns
+        if station_df.select(pl.col(column_name).is_not_null().any()).item()
+    }
+    false_quantity_columns = {
+        column_name
+        for column_name, value in station.items()
+        if column_name not in metadata_columns and str(value).lower() == "false"
+    }
+    true_quantity_columns = {
+        column_name
+        for column_name, value in station.items()
+        if column_name not in metadata_columns and str(value).lower() == "true"
+    }
+
+    validation = {
+        "null_despite_true": sorted(all_null_quantity_columns & true_quantity_columns),
+        "values_despite_false": sorted(columns_with_values & false_quantity_columns),
+    }
+
+    if validation["null_despite_true"]:
+        LOGGER.warning(
+            "Station %s has quantity columns flagged True but containing only null values: %s",
+            station["WSI"],
+            validation["null_despite_true"],
+        )
+    if validation["values_despite_false"]:
+        LOGGER.warning(
+            "Station %s has quantity columns flagged False but containing valid values: %s",
+            station["WSI"],
+            validation["values_despite_false"],
+        )
+
+    return validation
 
 
 def load_active_station_data(
@@ -67,11 +135,15 @@ def load_active_station_data(
     stations_df = pl.read_csv(stations_csv_path)
 
     station_frames = []
-    for station in stations_df.select(["WSI", "LAT", "LON"]).iter_rows(named=True):
+    for station in stations_df.iter_rows(named=True):
         station_df = load_station_daily_dataframe(
             wsi=station["WSI"],
             stations_data_dir=stations_data_dir,
-        ).with_columns(
+        )
+        print(station["FULL_NAME"], station_df.columns[3:])
+        validation = validate_station_quantity_flags(station_df, station)
+
+        station_df = station_df.with_columns(
             pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
             pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
         )
@@ -89,11 +161,24 @@ def load_active_station_data(
     return df.select(non_empty_columns)
 
 
+def update_storage(stations_df):
+    node, ds = read_storage("chmi_stations_schema.yaml",
+                            node_path=["chmi_stations"], var_names=[], storage_path="chmi_stations_storage")
+
+    node.update(stations_df)
+    pass
+
+
 def main():
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     active_station_df = load_active_station_data()
     print("Active stations daily dataframe preview:")
     print(active_station_df.head())
     print(f"Active stations daily dataframe shape: {active_station_df.shape}")
+
+    update_storage(active_station_df)
+
+    pass
 
 
 if __name__ == "__main__":
