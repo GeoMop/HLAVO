@@ -8,18 +8,19 @@ import sys
 from hlavo.ingress import well_data
 from hlavo.ingress.well_data import well_data_plot
 
-def main(args):
+def test_borehole_water_level():
     # allow to perform plot of set of wells or single well
     plot_set = True
 
-    defaults = ["../hlavo/ingress/well_data/Vrty_souradnice_perforace.xlsx", "List1", "borehole_water_level_out.csv"]
-    xls_file, sheetname, csv_output = (args + defaults)[:3]
+    xls_file = "../hlavo/ingress/well_data/Vrty_souradnice_perforace.xlsx"
+    sheetname = "List1"
+    csv_output = "borehole_water_level_out.csv"
 
     final_df = well_data.read_sections_water_levels(xls_file, sheetname)
     print(final_df)
 
     # reopen and test data
-    root_node = well_data._open_zarr_schema(False)
+    root_node = well_data._open_zarr_schema()
     water_level_node = root_node['Uhelna']['water_levels']
     print(water_level_node.dataset)
 
@@ -38,4 +39,4 @@ def main(args):
         well_data_plot.pdf_plot_simple("borehole_water_level_out.pdf", df, "21")
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+   test_borehole_water_level()
