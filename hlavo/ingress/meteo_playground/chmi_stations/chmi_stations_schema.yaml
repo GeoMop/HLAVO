@@ -17,32 +17,158 @@ ATTRS:
 
 chmi_stations:
   VARS:
-    rainfall:
+    API30:
       unit: "mm"
-      description: "Rainfall precipitation."
+      description: "Index předchozích srážek"
+      df_col: "API30"
+      coords: [ "date_time", latitude, longitude ]
+
+#    Casmax:
+#      unit: "kód"
+#      description: "Čas maxima"
+#      df_col: "Casmax"
+#      coords: [ "date_time", latitude, longitude ]
+
+    Dmax:
+      unit: "degrees"
+      description: "Direction of Fmax"
+      df_col: "Dmax"
+      coords: [ "date_time", latitude, longitude ]
+
+    SRA:
+      unit: "mm"
+      description: "Rainfall."
       df_col: "SRA"
       coords: [ date_time, latitude, longitude ]
-    air_temperature:
+    T:
       unit: "C"
       description: "Temperature [d. of Celsius]."
       df_col: "T"
       coords: [ date_time, latitude, longitude ]
-    air_pressure:
+    P:
       unit: "hPa"
       description: "Air pressure"
       df_col: "P"
       coords: [ "date_time", latitude, longitude ]
 
-    wind_speed:
+    F:
       unit: "m/s"
       description: "wind speed"
       df_col: "F"
       coords: [ "date_time", latitude, longitude ]
 
-    wind_dir:
+    D10:
       unit: "degrees"
-      description: "wind direction"
-      df_col: "D"
+      description: "wind direction 1/10 [tenth of degrees]"
+      df_col: "D10"
+      coords: [ "date_time", latitude, longitude ]
+
+    E:
+      unit: "hPa"
+      description: "Tlak páry"
+      df_col: "E"
+      coords: [ "date_time", latitude, longitude ]
+
+    H:
+      unit: "%"
+      description: "relative humidity"
+      df_col: "H"
+      coords: [ "date_time", latitude, longitude ]
+
+    Fmax:
+      unit: "m/s"
+      description: "Max wind speed"
+      df_col: "Fmax"
+      coords: [ "date_time", latitude, longitude ]
+
+    SCE:
+      unit: "cm"
+      description: "Výška sněhu"
+      df_col: "SCE"
+      coords: [ "date_time", latitude, longitude ]
+
+    SCEdif:
+      unit: "cm"
+      description: "Denní rozdíl celkové výšky sněhu"
+      df_col: "SCEdif"
+      coords: [ "date_time", latitude, longitude ]
+
+    SNO:
+      unit: "cm"
+      description: "Nový sníh"
+      df_col: "SNO"
+      coords: [ "date_time", latitude, longitude ]
+
+    SSV:
+      unit: "h"
+      description: "Sluneční svit"
+      df_col: "SSV"
+      coords: [ "date_time", latitude, longitude ]
+
+    SVH:
+      unit: "mm"
+      description: "Vodní hodnota"
+      df_col: "SVH"
+      coords: [ "date_time", latitude, longitude ]
+
+    TMA:
+      unit: "C"
+      description: "Teplota max"
+      df_col: "TMA"
+      coords: [ "date_time", latitude, longitude ]
+
+    TMI:
+      unit: "C"
+      description: "Teplota min"
+      df_col: "TMI"
+      coords: [ "date_time", latitude, longitude ]
+
+    TMInoc:
+      unit: "C"
+      description: "Teplota min"
+      df_col: "TMInoc"
+      coords: [ "date_time", latitude, longitude ]
+
+    TPM:
+      unit: "C"
+      description: "Teplota příz"
+      df_col: "TPM"
+      coords: [ "date_time", latitude, longitude ]
+
+    T05:
+      unit: "C"
+      description: "Teplota půdy 5"
+      df_col: "T05"
+      coords: [ "date_time", latitude, longitude ]
+
+    T10:
+      unit: "C"
+      description: "Teplota půdy 10"
+      df_col: "T10"
+      coords: [ "date_time", latitude, longitude ]
+
+    T100:
+      unit: "C"
+      description: "Teplota půdy100"
+      df_col: "T100"
+      coords: [ "date_time", latitude, longitude ]
+
+    T20:
+      unit: "C"
+      description: "Teplota půdy 20"
+      df_col: "T20"
+      coords: [ "date_time", latitude, longitude ]
+
+    T50:
+      unit: "C"
+      description: "Teplota půdy 50"
+      df_col: "T50"
+      coords: [ "date_time", latitude, longitude ]
+
+    VY:
+      unit: "mm"
+      description: "Výpar"
+      df_col: "VY"
       coords: [ "date_time", latitude, longitude ]
 
   COORDS:

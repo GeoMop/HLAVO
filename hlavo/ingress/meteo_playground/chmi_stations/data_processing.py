@@ -8,6 +8,8 @@ from hlavo.common.zarr_fuse_reader import read_storage
 
 LOGGER = logging.getLogger(__name__)
 
+STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
+
 
 def get_data_block(doc):
     """
@@ -75,12 +77,11 @@ def validate_station_quantity_flags(station_df, station):
         "BEGIN_DATE",
         "END_DATE",
     }
-    station_df_metadata_columns = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
 
     quantity_columns = [
         column_name
         for column_name in station_df.columns
-        if column_name not in station_df_metadata_columns
+        if column_name not in STATION_DF_METADATA_COLUMNS
     ]
     all_null_quantity_columns = {
         column_name
@@ -124,6 +125,25 @@ def validate_station_quantity_flags(station_df, station):
     return validation
 
 
+def drop_all_null_columns(df, excluded_columns):
+    """
+    Drop columns that contain only null values, except for required metadata columns.
+    """
+    keep_columns = [
+        column_name
+        for column_name in df.columns
+        if column_name in excluded_columns or df.select(pl.col(column_name).is_not_null().any()).item()
+    ]
+    return df.select(keep_columns)
+
+
+def print_station_columns(station_name, column_names, name_width):
+    """
+    Print station name with fixed width followed by the available quantity columns.
+    """
+    print(f"{station_name:<{name_width}} {column_names}")
+
+
 def load_active_station_data(
     stations_csv_path="stations_nearby_active.csv",
     stations_data_dir="stations_data",
@@ -133,6 +153,7 @@ def load_active_station_data(
     concatenate the result, and drop columns that are entirely null.
     """
     stations_df = pl.read_csv(stations_csv_path)
+    station_name_width = stations_df.select(pl.col("FULL_NAME").str.len_chars().max()).item()
 
     station_frames = []
     for station in stations_df.iter_rows(named=True):
@@ -140,12 +161,20 @@ def load_active_station_data(
             wsi=station["WSI"],
             stations_data_dir=stations_data_dir,
         )
-        print(station["FULL_NAME"], station_df.columns[3:])
-        validation = validate_station_quantity_flags(station_df, station)
-
         station_df = station_df.with_columns(
             pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
             pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
+        )
+        validate_station_quantity_flags(station_df, station)
+        # station_df = drop_all_null_columns(df=station_df, excluded_columns=STATION_DF_METADATA_COLUMNS)
+        print_station_columns(
+            station_name=station["FULL_NAME"],
+            column_names=[
+                column_name
+                for column_name in station_df.columns
+                if column_name not in STATION_DF_METADATA_COLUMNS
+            ],
+            name_width=station_name_width,
         )
         station_frames.append(station_df)
 
@@ -153,12 +182,7 @@ def load_active_station_data(
         return pl.DataFrame()
 
     df = pl.concat(station_frames, how="diagonal_relaxed")
-    non_empty_columns = [
-        column_name
-        for column_name in df.columns
-        if df.select(pl.col(column_name).is_not_null().any()).item()
-    ]
-    return df.select(non_empty_columns)
+    return drop_all_null_columns(df=df, excluded_columns=STATION_DF_METADATA_COLUMNS)
 
 
 def update_storage(stations_df):
@@ -183,3 +207,48 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+# CHAT about snow measurements understanding:
+#------------------------------------------------
+# From the local CHMI metadata, the meanings are:
+# •
+# SRA: Srážka, unit mm (quantity_definitions.json)
+# •
+# SCE: Výška sněhu, unit cm
+# •
+# SCEdif: Denní rozdíl celkové výšky sněhu, unit cm
+# •
+# SNO: Nový sníh, unit cm
+# •
+# SVH: Vodní hodnota, unit mm
+# That strongly implies:
+# •
+# SRA is precipitation amount, already in water equivalent.
+# •
+# SCE, SCEdif, SNO are snow depths, not precipitation totals.
+# •
+# SVH is snow water equivalent of the snowpack on the ground, a state variable, not incoming precipitation.
+# So for CHMI station forcing, the simple model is:
+# total_precipitation = SRA
+# You should not compute total precipitation as SRA + snow columns, because that would mix flux with snowpack state/depth and double-count.
+# Practical interpretation:
+# •
+# Use SRA as total precipitation input.
+# •
+# Use SNO as a snow diagnostic only.
+# •
+# Use SVH for snowpack storage / SWE checks.
+# •
+# Use SCE and SCEdif for snow depth diagnostics.
+# One important correction: in your repo, chmi_stations_storage/chmi_stations/zarr.json currently describes SRA as Rainfall precipitation. That description looks misleading relative to the CHMI metadata, because Czech Srážka is precipitation generally, not rain-only.
+# My recommendation:
+# •
+# treat SRA as total precipitation
+# •
+# do not derive total precipitation from SCE/SCEdif/SNO/SVH
+# •
+# if needed, split SRA into rain/snow later using temperature
+# If you want, I can next patch the storage/schema description so SRA is labeled as total precipitation instead of rainfall.
