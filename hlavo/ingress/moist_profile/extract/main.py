@@ -1,10 +1,10 @@
 # from __future__ import annotations
 from pathlib import Path
-from dotenv import load_dotenv
 import polars as pl
 from profile_extract import extract_df
 import zarr_fuse
 
+from hlavo.common.zarr_fuse_reader import load_schema, override_local_storage
 
 def list_csv_filepaths(dir_path: str | Path) -> list[Path]:
     """
@@ -285,24 +285,12 @@ def split_lab(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, list[pl.DataFrame]
     return df_lab, rest_dfs
 
 
-def override_local_storage(schema, storage_path: str | Path | None):
-    if storage_path is not None:
-        schema.ds.ATTRS['STORE_URL'] = str(storage_path)
-
-
-def load_schema():
-    load_dotenv("../.env")
-    schema_path = Path("../profile_schema.yaml")
-    schema = zarr_fuse.schema.deserialize(schema_path)
-    return schema
-
-
 def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     """
     :param source_dir: source directory with CSV files from xpert.nz datareports
     :return:
     """
-    schema = load_schema()
+    schema = load_schema(Path("../profile_schema.yaml"))
     override_local_storage(schema, storage_path)
 
     df_coords = load_site_coords_csv("site_coords.csv")
@@ -345,7 +333,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
 
 def read_storage(storage_path: str | Path = None):
-    schema = load_schema()
+    schema = load_schema(Path("../profile_schema.yaml"))
     override_local_storage(schema, storage_path)
 
     root_node = zarr_fuse.open_store(schema)

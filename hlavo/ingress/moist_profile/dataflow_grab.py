@@ -7,8 +7,9 @@ import csv
 import traceback
 
 import selenium.webdriver.remote.webelement
-from dotenv import load_dotenv
 from urllib.parse import urlparse
+
+from hlavo.common.zarr_fuse_reader import load_dotenv
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
