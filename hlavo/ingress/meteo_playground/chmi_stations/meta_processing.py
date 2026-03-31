@@ -305,12 +305,16 @@ def download_station_data(file_urls, output_dir):
     output_path.mkdir(parents=True, exist_ok=True)
 
     downloaded_paths = []
-    for file_url in file_urls:
+    total_files = len(file_urls)
+    for index, file_url in enumerate(file_urls, start=1):
+        print(f"\r{index}/{total_files} files downloading", end="", flush=True)
         target_path = output_path / Path(file_url).name
         with urlopen(file_url) as response:
             target_path.write_bytes(response.read())
         downloaded_paths.append(target_path)
         LOGGER.info("Downloaded %s", target_path.name)
+    if total_files > 0:
+        print()
 
     return downloaded_paths
 
@@ -333,9 +337,7 @@ def main():
     meta2_path = "meta2.json"
     output_csv = "stations_nearby.csv"
     active_output_csv = "stations_nearby_active.csv"
-    stations_data_dir = "stations_data"
     quantity_defs_path = "quantity_definitions.json"  # <--- new output file
-    historical_daily_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
 
     # reference location & radius (example: somewhere near Cheb)
     center_lat = 50.8659928
@@ -387,9 +389,20 @@ def main():
     active_df.to_csv(active_output_csv, index=False, encoding="utf-8")
     print(f"Written {len(active_df)} active stations to {active_output_csv}")
 
+    stations_data_daily_dir = Path("stations_data_daily")
+    stations_data_hourly_dir = Path("stations_data_hourly")
+    historical_daily_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
+    historical_hourly_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/1hour/"
     station_data_urls = find_station_data_urls(active_df, historical_daily_url)
-    downloaded_paths = download_station_data(station_data_urls, stations_data_dir)
-    print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_dir}")
+    downloaded_paths = download_station_data(station_data_urls, stations_data_daily_dir)
+    print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_daily_dir}")
+
+    # for y in ['2018','2019','2020','2021','2022','2023','2024','2025']:
+    for y in ['2024', '2025']:
+        station_data_urls = find_station_data_urls(active_df, f"{historical_hourly_url}{y}/")
+        downloaded_paths = download_station_data(station_data_urls, stations_data_hourly_dir / y)
+        print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_hourly_dir / y}")
+
 
 
 if __name__ == "__main__":
