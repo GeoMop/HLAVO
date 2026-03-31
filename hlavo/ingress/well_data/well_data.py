@@ -110,6 +110,10 @@ def _open_zarr_schema(remove_store=False):
     script_dir = Path(__file__).parent
     root_path = script_dir / "../../.."
     file_path = root_path / ".secrets_env"
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"{file_path} doesn't exist")
+
     load_dotenv(dotenv_path=file_path)
 
     schema_path = script_dir / "wells_schema.yaml"
