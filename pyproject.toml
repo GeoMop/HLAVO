@@ -27,7 +27,9 @@ dependencies = [
     "dask",
     "distributed",
     "zarr_fuse @ git+https://github.com/GeoMop/zarr_fuse.git@main",
-
+    "ingress-server @ git+https://github.com/GeoMop/zarr_fuse.git@main#subdirectory=ingress_server",
+    #"zarr_fuse @ file:./ZF",
+    #"ingress_server @ file:./ZF/ingress_server",
     
     # Deep model
     "modflow_devtools",
