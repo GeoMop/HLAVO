@@ -297,6 +297,18 @@ def compute_specific_humidity(temperature_c, relative_humidity_pct, pressure_hpa
     return 0.622 * vapor_pressure_hpa / (pressure_hpa - 0.378 * vapor_pressure_hpa)
 
 
+def with_clean_attrs(data_array, *, units, description, source_quantities):
+    """
+    Replace inherited attrs with a clean, explicit metadata set for CLM forcing variables.
+    """
+    data_array.attrs = {
+        "units": units,
+        "description": description,
+        "source_quantities": source_quantities,
+    }
+    return data_array
+
+
 def build_parflow_clm_input_dataset(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     schema_path=CHMI_STATIONS_SCHEMA_PATH,
@@ -339,18 +351,58 @@ def build_parflow_clm_input_dataset(
     template = merged_inputs["T"]
     parflow_clm_ds = xr.Dataset(
         data_vars={
-            "APCP": (merged_inputs["SRA"] / SECONDS_PER_DAY).rename("APCP"),
-            "Temp": (merged_inputs["T"] + 273.15).rename("Temp"),
-            "UGRD": (-merged_inputs["F"] * np.sin(wind_direction_rad)).rename("UGRD"),
-            "VGRD": (-merged_inputs["F"] * np.cos(wind_direction_rad)).rename("VGRD"),
-            "Press": (merged_inputs["P"] * 100.0).rename("Press"),
-            "SPFH": compute_specific_humidity(
-                merged_inputs["T"],
-                merged_inputs["H"],
-                merged_inputs["P"],
-            ).rename("SPFH"),
-            "DSWR": xr.full_like(template, np.nan).rename("DSWR"),
-            "DLWR": xr.full_like(template, np.nan).rename("DLWR"),
+            "APCP": with_clean_attrs(
+                (merged_inputs["SRA"] / SECONDS_PER_DAY).rename("APCP"),
+                units="mm/s",
+                description="Total precipitation rate for ParFlow/CLM.",
+                source_quantities=["SRA"],
+            ),
+            "Temp": with_clean_attrs(
+                (merged_inputs["T"] + 273.15).rename("Temp"),
+                units="K",
+                description="Air temperature for ParFlow/CLM.",
+                source_quantities=["T"],
+            ),
+            "UGRD": with_clean_attrs(
+                (-merged_inputs["F"] * np.sin(wind_direction_rad)).rename("UGRD"),
+                units="m/s",
+                description="Eastward wind component for ParFlow/CLM.",
+                source_quantities=["F", "D10"],
+            ),
+            "VGRD": with_clean_attrs(
+                (-merged_inputs["F"] * np.cos(wind_direction_rad)).rename("VGRD"),
+                units="m/s",
+                description="Northward wind component for ParFlow/CLM.",
+                source_quantities=["F", "D10"],
+            ),
+            "Press": with_clean_attrs(
+                (merged_inputs["P"] * 100.0).rename("Press"),
+                units="Pa",
+                description="Atmospheric pressure for ParFlow/CLM.",
+                source_quantities=["P"],
+            ),
+            "SPFH": with_clean_attrs(
+                compute_specific_humidity(
+                    merged_inputs["T"],
+                    merged_inputs["H"],
+                    merged_inputs["P"],
+                ).rename("SPFH"),
+                units="kg/kg",
+                description="Specific humidity for ParFlow/CLM.",
+                source_quantities=["T", "H", "P"],
+            ),
+            "DSWR": with_clean_attrs(
+                xr.full_like(template, np.nan).rename("DSWR"),
+                units="W/m2",
+                description="Downward shortwave radiation for ParFlow/CLM; unavailable from selected CHMI station variables.",
+                source_quantities=[],
+            ),
+            "DLWR": with_clean_attrs(
+                xr.full_like(template, np.nan).rename("DLWR"),
+                units="W/m2",
+                description="Downward longwave radiation for ParFlow/CLM; unavailable from selected CHMI station variables.",
+                source_quantities=[],
+            ),
         },
         coords={"time": template["time"].values},
         attrs={
