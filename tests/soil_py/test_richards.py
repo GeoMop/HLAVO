@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from richards import RichardsEquationSolver, RichardsSolverOutput
-from soil import VanGenuchtenParams, plot_soils
-from bc_models import dirichlet_bc, neumann_bc, free_drainage_bc, seepage_bc
-from plots import plot_richards_output
+from hlavo.soil_py import RichardsEquationSolver, RichardsSolverOutput
+from hlavo.soil_py  import VanGenuchtenParams, plot_soils
+from hlavo.soil_py import dirichlet_bc, neumann_bc, free_drainage_bc, seepage_bc
+from hlavo.soil_py import plot_richards_output
 import pandas as pd
 import pytest
 from scipy.interpolate import RegularGridInterpolator
