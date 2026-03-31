@@ -4,7 +4,7 @@ import polars as pl
 from profile_extract import extract_df
 import zarr_fuse
 
-from hlavo.common.zarr_fuse_reader import load_schema, override_local_storage
+from hlavo.common.zarr_fuse_reader import load_schema
 
 def list_csv_filepaths(dir_path: str | Path) -> list[Path]:
     """
@@ -291,7 +291,6 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     :return:
     """
     schema = load_schema(Path("../profile_schema.yaml"))
-    override_local_storage(schema, storage_path)
 
     df_coords = load_site_coords_csv("site_coords.csv")
     print(df_coords)
@@ -310,7 +309,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
     df_lab, dfs_network = split_lab(dfs)
 
-    root_node = zarr_fuse.open_store(schema)
+    root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
     print('Store open')
     for i, df in enumerate(dfs_network):
         print(f'Storing df[{i}/{len(dfs_network)}]: {df.shape[0]} rows.')
@@ -322,7 +321,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
         root_node['Uhelna']['lab'].update(df_lab)
 
     # close/open again
-    # root_node = zarr_fuse.open_store(schema)
+    # root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
     # rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
     # print(rdf)
 
@@ -334,9 +333,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
 def read_storage(storage_path: str | Path = None):
     schema = load_schema(Path("../profile_schema.yaml"))
-    override_local_storage(schema, storage_path)
-
-    root_node = zarr_fuse.open_store(schema)
+    root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
     rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id", "sensor_depth"])
     print(rdf)
 
@@ -345,9 +342,9 @@ def read_storage(storage_path: str | Path = None):
     pass
 
 
-def remove_S3_storage():
-    schema = load_schema()
-    zarr_fuse.remove_store(schema)
+def remove_storage(storage_path: str | Path = None):
+    schema = load_schema(Path("../profile_schema.yaml"))
+    zarr_fuse.remove_store(schema, STORE_URL=storage_path)
 
 
 if __name__ == '__main__':
@@ -366,10 +363,13 @@ if __name__ == '__main__':
 
 
     # TO S3
-    # remove_S3_storage()
-    # main(source_dir="../20260301T224908_dataflow_grab")
-    # main(source_dir="../20260301T225923_dataflow_grab")
-    # read_storage()
+    storage_url = "s3://hlavo-testing/profiles.zarr"
+    # remove_storage(storage_path=storage_url)
+    # main(source_dir="../20260301T224908_dataflow_grab",
+    #      storage_path=storage_url)
+    # main(source_dir="../20260301T225923_dataflow_grab",
+    #      storage_path=storage_url)
+    read_storage(storage_url)
 
     # read to check zarr storage
     # read_storage(storage_path=Path("test_storage"))
