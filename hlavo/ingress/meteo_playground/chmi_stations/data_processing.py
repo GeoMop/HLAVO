@@ -3,12 +3,24 @@ import logging
 from pathlib import Path
 
 import polars as pl
+import xarray as xr
+import numpy as np
 
 from hlavo.common.zarr_fuse_reader import read_storage
 
 LOGGER = logging.getLogger(__name__)
 
 STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
+SCRIPT_DIR = Path(__file__).resolve().parent
+CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
+CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations_storage"
+ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
+CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
+                        "0-203-0-11601", # "Frýdlant"
+                        "0-20000-0-11603", # "Liberec"
+                        ]
+CLM_REQUIRED_SOURCE_VARS = ["SRA", "T", "P", "F", "D10", "H"]
+SECONDS_PER_DAY = 24 * 60 * 60
 
 
 def get_data_block(doc):
@@ -59,7 +71,7 @@ def load_station_daily_dataframe(wsi, stations_data_dir="stations_data"):
     )
 
     return df.filter(
-        pl.col("DT").dt.year().is_between(2020, 2025, closed="both")
+        pl.col("DT").dt.year().is_between(2025, 2025, closed="both")
     ).sort("DT").rename({"DT": "date_time"})
 
 
@@ -186,21 +198,193 @@ def load_active_station_data(
 
 
 def update_storage(stations_df):
-    node, ds = read_storage("chmi_stations_schema.yaml",
-                            node_path=["chmi_stations"], var_names=[], storage_path="chmi_stations_storage")
+    node, _ = read_storage(
+        CHMI_STATIONS_SCHEMA_PATH,
+        node_path=["chmi_stations"],
+        var_names=[],
+        storage_path=CHMI_STATIONS_STORAGE_PATH,
+    )
 
     node.update(stations_df)
-    pass
+
+
+def read_station_storage(
+    schema_path=CHMI_STATIONS_SCHEMA_PATH,
+    storage_path=CHMI_STATIONS_STORAGE_PATH,
+    var_names=None,
+):
+    """
+    Read station data from zarr_fuse storage.
+    """
+    read_var_names = [] if var_names is None else var_names
+    _, ds = read_storage(
+        schema_path=schema_path,
+        node_path=["chmi_stations"],
+        var_names=read_var_names,
+        storage_path=storage_path,
+    )
+    return ds
+
+
+def get_priority_station_metadata(
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    station_priority=CLM_STATION_PRIORITY,
+):
+    """
+    Resolve configured station names to metadata rows used for priority merging.
+    """
+    stations_df = pl.read_csv(stations_csv_path)
+    priority_metadata = []
+    for station_wsi in station_priority:
+        station_rows = stations_df.filter(pl.col("WSI") == station_wsi)
+        assert station_rows.height == 1, f"Expected exactly one station row for {station_wsi!r}."
+        priority_metadata.append(station_rows.row(0, named=True))
+    return priority_metadata
+
+
+def select_station_variable(ds, var_name, station):
+    """
+    Select one variable for one station and reduce it to a time series.
+    """
+    station_da = ds[var_name].sel(
+        latitude=station["LAT"],
+        longitude=station["LON"],
+        method="nearest",
+    )
+    return station_da.squeeze(drop=True).drop_vars(
+        [coord_name for coord_name in ["latitude", "longitude"] if coord_name in station_da.coords],
+        errors="ignore",
+    )
+
+
+def merge_station_priority(ds, var_name, priority_metadata):
+    """
+    Merge one variable across stations using the configured station priority.
+    """
+    merged_da = None
+    source_station = None
+    for station in priority_metadata:
+        station_da = select_station_variable(ds=ds, var_name=var_name, station=station)
+        if merged_da is None:
+            merged_da = station_da
+            source_station = xr.DataArray(
+                data=np.full(station_da.shape, station["WSI"], dtype=object),
+                coords=station_da.coords,
+                dims=station_da.dims,
+                name=f"{var_name}_source_station",
+            )
+            continue
+
+        fill_mask = merged_da.isnull() & station_da.notnull()
+        merged_da = merged_da.combine_first(station_da)
+        source_station = xr.where(fill_mask, station["FULL_NAME"], source_station)
+
+    assert merged_da is not None, f"No station data available for variable {var_name!r}."
+    station_names = [station["FULL_NAME"] for station in priority_metadata]
+    merged_da.attrs["station_priority"] = station_names
+    source_station.name = f"{var_name}_source_station"
+    source_station.attrs["station_priority"] = station_names
+    return merged_da, source_station
+
+
+def compute_specific_humidity(temperature_c, relative_humidity_pct, pressure_hpa):
+    """
+    Convert temperature, relative humidity, and station pressure to specific humidity.
+    Works with xarray DataArray inputs backed by chunked arrays.
+    """
+    saturation_vapor_pressure_hpa = 6.112 * np.exp(17.67 * temperature_c / (temperature_c + 243.5))
+    vapor_pressure_hpa = (relative_humidity_pct / 100.0) * saturation_vapor_pressure_hpa
+    return 0.622 * vapor_pressure_hpa / (pressure_hpa - 0.378 * vapor_pressure_hpa)
+
+
+def build_parflow_clm_input_dataset(
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    schema_path=CHMI_STATIONS_SCHEMA_PATH,
+    storage_path=CHMI_STATIONS_STORAGE_PATH,
+    station_priority=CLM_STATION_PRIORITY,
+):
+    """
+    Read stored CHMI station data, merge station priorities, and convert the result
+    to a preliminary ParFlow/CLM forcing dataset.
+    """
+    source_ds = read_station_storage(
+        schema_path=schema_path,
+        storage_path=storage_path,
+        var_names=CLM_REQUIRED_SOURCE_VARS,
+    )
+    priority_metadata = get_priority_station_metadata(
+        stations_csv_path=stations_csv_path,
+        station_priority=station_priority,
+    )
+
+    merged_inputs = {}
+    source_station_vars = {}
+    for var_name in CLM_REQUIRED_SOURCE_VARS:
+        merged_inputs[var_name], source_station_vars[var_name] = merge_station_priority(
+            ds=source_ds,
+            var_name=var_name,
+            priority_metadata=priority_metadata,
+        )
+
+    merged_inputs = {
+        var_name: data_array.rename({"date_time": "time"})
+        for var_name, data_array in merged_inputs.items()
+    }
+    source_station_vars = {
+        var_name: data_array.rename({"date_time": "time"})
+        for var_name, data_array in source_station_vars.items()
+    }
+
+    wind_direction_rad = np.deg2rad(merged_inputs["D10"] * 10.0)
+    template = merged_inputs["T"]
+    parflow_clm_ds = xr.Dataset(
+        data_vars={
+            "APCP": (merged_inputs["SRA"] / SECONDS_PER_DAY).rename("APCP"),
+            "Temp": (merged_inputs["T"] + 273.15).rename("Temp"),
+            "UGRD": (-merged_inputs["F"] * np.sin(wind_direction_rad)).rename("UGRD"),
+            "VGRD": (-merged_inputs["F"] * np.cos(wind_direction_rad)).rename("VGRD"),
+            "Press": (merged_inputs["P"] * 100.0).rename("Press"),
+            "SPFH": compute_specific_humidity(
+                merged_inputs["T"],
+                merged_inputs["H"],
+                merged_inputs["P"],
+            ).rename("SPFH"),
+            "DSWR": xr.full_like(template, np.nan).rename("DSWR"),
+            "DLWR": xr.full_like(template, np.nan).rename("DLWR"),
+        },
+        coords={"time": template["time"].values},
+        attrs={
+            "station_priority": station_priority,
+            "notes": (
+                "Preliminary CHMI-to-ParFlow/CLM forcing conversion. "
+                "DSWR and DLWR are unavailable from the selected station variables and remain NaN."
+            ),
+        },
+    )
+
+    for var_name, source_station in source_station_vars.items():
+        parflow_clm_ds[source_station.name] = source_station
+
+    time_values = parflow_clm_ds["time"].values
+    assert time_values.size >= 2, "Need at least two time steps to determine forcing interval."
+    parflow_clm_ds["time_step"] = xr.DataArray(time_values[1] - time_values[0])
+    parflow_clm_ds["time_interval"] = xr.DataArray(time_values[-1] - time_values[0])
+
+    return parflow_clm_ds
 
 
 def main():
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    active_station_df = load_active_station_data()
-    print("Active stations daily dataframe preview:")
-    print(active_station_df.head())
-    print(f"Active stations daily dataframe shape: {active_station_df.shape}")
+    if not Path("chmi_stations_storage").exists():
+        active_station_df = load_active_station_data()
+        print("Active stations daily dataframe preview:")
+        print(active_station_df.head())
+        print(f"Active stations daily dataframe shape: {active_station_df.shape}")
 
-    update_storage(active_station_df)
+        update_storage(active_station_df)
+
+    parflow_clm_ds = build_parflow_clm_input_dataset()
+    print(parflow_clm_ds)
 
     pass
 
