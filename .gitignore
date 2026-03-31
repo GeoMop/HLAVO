@@ -1,6 +1,9 @@
 dev/.codex_docker
 hlavo/deep_model/model
 runs/composed_mock/3d_models
+.secrets_env
+tests/ingress/aladin_data
+ZF
 hlavo/deep_model/GIS
 **/.gpkg
 _*/*
