@@ -36,7 +36,7 @@ active_scrappers:
     schema_path: schemas/hlavo_surface_schema.yaml
     target_node: chmi_aladin_10m
     extract_fn: extractor
-    fn_module: inputs.extract.chmi_aladin_1km_extract
+    fn_module: hlavo.ingress.scrapper.extract.chmi_aladin_1km_extract
 
     runs:
       - cron: "52 4 * * *"
