@@ -106,10 +106,14 @@ def _sheet_names_dictionary():
     return dict
 
 
-def _open_zarr_schema(remove_store=True):
+def _open_zarr_schema(remove_store=False):
     script_dir = Path(__file__).parent
     root_path = script_dir / "../../.."
     file_path = root_path / ".secrets_env"
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"{file_path} doesn't exist")
+
     load_dotenv(dotenv_path=file_path)
 
     schema_path = script_dir / "wells_schema.yaml"
@@ -230,7 +234,7 @@ def read_draw(xls_file, sheetname):
     df_result["well_id"] = "1420_1"
 
     # remove store
-    root_node = _open_zarr_schema()
+    root_node = _open_zarr_schema(True)
     water_draw_node = root_node['Uhelna']['water_draw']
     water_draw_node.update(df_result)
 
@@ -353,7 +357,7 @@ def read_sections_water_levels(section_file_path, section_sheetname, water_level
 
     df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
 
-    root_node = _open_zarr_schema()
+    root_node = _open_zarr_schema(True)
     water_levels_node = root_node['Uhelna']['water_levels']
     print(f"Columns in DataFrame: {df_full.columns.tolist()}")
     print("Looking for:", water_levels_node.dataset)
@@ -375,7 +379,9 @@ def csv_output(csv_file, df):
 
 
 def main():
-    final_df = read_water_level()
+    xls_file = "../hlavo/ingress/well_data/Vrty_souradnice_perforace.xlsx"
+    sheetname =  "List1"
+    final_df = read_sections_water_levels(xls_file, sheetname)
     print(final_df)
 
 if __name__ == "__main__":
