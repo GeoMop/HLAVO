@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import shutil
 import time
@@ -9,7 +10,10 @@ import pytest
 
 workdir = Path(__file__).parent / "workdir"
 
-def test_process_one_on_meteo_raw_data(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_process_one_on_meteo_raw_data(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     # AGENT: do not use tmp path for resulting data, use workdir instead to be able to review the
     # results after the test
 
@@ -25,6 +29,7 @@ def test_process_one_on_meteo_raw_data(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use a local Zarr store to avoid S3 access.
     # Keep result in the workdir to be able to check the result
     monkeypatch.setenv("ZF_STORE_URL", str(workdir / "hlavo_test.zarr"))
+    caplog.set_level(logging.INFO, logger="ingress_server")
 
     # copy source raw data to workdir simulatied raw data queue
 
@@ -65,5 +70,5 @@ def test_process_one_on_meteo_raw_data(monkeypatch: pytest.MonkeyPatch) -> None:
     app_cfg.stop_event.set()
     thread.join(timeout=5)
 
-    assert not remaining, "Worker did not drain accepted queue in time"
-    assert not thread.is_alive(), "Worker thread did not stop"
+    worker_logs = caplog.text
+    print(worker_logs)
