@@ -15,6 +15,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
 CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations_storage"
 ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
+STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
+STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
 CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
@@ -41,38 +43,93 @@ def get_data_block(doc):
     raise RuntimeError("Could not find 'header'/'values' block in JSON document.")
 
 
-def load_station_daily_dataframe(wsi, stations_data_dir="stations_data"):
+def find_station_data_paths(wsi, stations_data_dir, pattern, *, require_single=False):
+    """
+    Find station JSON files under a directory tree, allowing nested year/month partitions.
+    """
+    stations_path = Path(stations_data_dir)
+    matching_paths = sorted(stations_path.rglob(pattern.format(wsi=wsi)))
+    if not matching_paths:
+        raise FileNotFoundError(f"Station data files not found under {stations_path}: {pattern.format(wsi=wsi)}")
+    if require_single:
+        assert len(matching_paths) == 1, (
+            f"Expected one match for {pattern.format(wsi=wsi)}, got {len(matching_paths)}."
+        )
+    return matching_paths
+
+
+def load_station_dataframe_from_paths(station_paths, index_columns):
+    """
+    Read one or more CHMI station JSON files, merge them, and pivot ELEMENT into columns.
+    """
+    frames = []
+    for station_path in station_paths:
+        with station_path.open("r", encoding="utf-8") as f:
+            doc = json.load(f)
+
+        data_block = get_data_block(doc)
+        header = data_block["header"].split(",")
+        values = data_block["values"]
+        header_index = {column_name: index for index, column_name in enumerate(header)}
+        required_columns = [*index_columns, "ELEMENT", "VAL"]
+
+        frame = pl.DataFrame(
+            [
+                {
+                    column_name: (
+                        None
+                        if row[header_index[column_name]] in ("", None)
+                        else str(row[header_index[column_name]])
+                    )
+                    for column_name in required_columns
+                }
+                for row in values
+            ],
+            schema={column_name: pl.Utf8 for column_name in required_columns},
+        ).with_columns(
+            pl.col("DT").str.to_datetime(format="%Y-%m-%dT%H:%M:%SZ", time_zone="UTC", strict=False),
+            pl.col("VAL").cast(pl.Utf8).str.strip_chars().replace("", None).cast(pl.Float64, strict=False),
+        )
+        frames.append(frame)
+
+    df = pl.concat(frames, how="vertical")
+    df = df.pivot(
+        on="ELEMENT",
+        values="VAL",
+        index=index_columns,
+        aggregate_function="first",
+    )
+    return df.sort("DT").rename({"DT": "date_time"})
+
+
+def load_station_daily_dataframe(wsi, stations_data_dir=STATIONS_DATA_DAILY_PATH):
     """
     Read one downloaded CHMI daily data file, pivot ELEMENT values into columns,
     sort by datetime, and keep only years 2024 and 2025.
     """
-    station_path = Path(stations_data_dir) / f"dly-{wsi}.json"
-    if not station_path.exists():
-        raise FileNotFoundError(f"Station data file not found: {station_path}")
-
-    with station_path.open("r", encoding="utf-8") as f:
-        doc = json.load(f)
-
-    data_block = get_data_block(doc)
-    header = data_block["header"].split(",")
-    values = data_block["values"]
-
-    df = pl.DataFrame(values, schema=header, orient="row")
-    df = df.with_columns(
-        pl.col("DT").str.to_datetime(format="%Y-%m-%dT%H:%M:%SZ", time_zone="UTC", strict=False),
-        pl.col("VAL").cast(pl.Utf8).str.strip_chars().replace("", None).cast(pl.Float64, strict=False),
+    station_paths = find_station_data_paths(
+        wsi=wsi,
+        stations_data_dir=stations_data_dir,
+        pattern="dly-{wsi}.json",
+        require_single=True,
     )
-
-    df = df.pivot(
-        on="ELEMENT",
-        values="VAL",
-        index=["STATION", "VTYPE", "DT"],
-        aggregate_function="first",
-    )
-
+    df = load_station_dataframe_from_paths(station_paths, index_columns=["STATION", "VTYPE", "DT"])
     return df.filter(
-        pl.col("DT").dt.year().is_between(2025, 2025, closed="both")
-    ).sort("DT").rename({"DT": "date_time"})
+        pl.col("date_time").dt.year().is_between(2025, 2025, closed="both")
+    )
+
+
+def load_station_hourly_dataframe(wsi, stations_data_dir=STATIONS_DATA_HOURLY_PATH):
+    """
+    Read all downloaded CHMI hourly files for one station, merge through years/months,
+    and pivot ELEMENT values into columns.
+    """
+    station_paths = find_station_data_paths(
+        wsi=wsi,
+        stations_data_dir=stations_data_dir,
+        pattern="1h-{wsi}-*.json",
+    )
+    return load_station_dataframe_from_paths(station_paths, index_columns=["STATION", "DT"])
 
 
 def validate_station_quantity_flags(station_df, station):
@@ -156,29 +213,40 @@ def print_station_columns(station_name, column_names, name_width):
     print(f"{station_name:<{name_width}} {column_names}")
 
 
-def load_active_station_data(
-    stations_csv_path="stations_nearby_active.csv",
-    stations_data_dir="stations_data",
+def load_active_station_dataframe(
+    *,
+    station_loader,
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    stations_data_dir,
+    allow_missing=False,
+    validate_flags=False,
 ):
     """
-    Load reshaped daily data for each active station, append station coordinates,
-    concatenate the result, and drop columns that are entirely null.
+    Load station data for each active station, append coordinates, concatenate the
+    result, and print the available quantity columns for visual inspection.
     """
     stations_df = pl.read_csv(stations_csv_path)
     station_name_width = stations_df.select(pl.col("FULL_NAME").str.len_chars().max()).item()
 
     station_frames = []
     for station in stations_df.iter_rows(named=True):
-        station_df = load_station_daily_dataframe(
-            wsi=station["WSI"],
-            stations_data_dir=stations_data_dir,
-        )
+        try:
+            station_df = station_loader(
+                wsi=station["WSI"],
+                stations_data_dir=stations_data_dir,
+            )
+        except FileNotFoundError:
+            if not allow_missing:
+                raise
+            LOGGER.warning("Station data missing for %s (%s). Skipping.", station["FULL_NAME"], station["WSI"])
+            continue
+
         station_df = station_df.with_columns(
             pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
             pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
         )
-        validate_station_quantity_flags(station_df, station)
-        # station_df = drop_all_null_columns(df=station_df, excluded_columns=STATION_DF_METADATA_COLUMNS)
+        if validate_flags:
+            validate_station_quantity_flags(station_df, station)
         print_station_columns(
             station_name=station["FULL_NAME"],
             column_names=[
@@ -195,6 +263,68 @@ def load_active_station_data(
 
     df = pl.concat(station_frames, how="diagonal_relaxed")
     return drop_all_null_columns(df=df, excluded_columns=STATION_DF_METADATA_COLUMNS)
+
+
+def load_active_station_daily_data(
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    stations_data_dir=STATIONS_DATA_DAILY_PATH,
+):
+    """
+    Load reshaped daily data for each active station.
+    """
+    return load_active_station_dataframe(
+        station_loader=load_station_daily_dataframe,
+        stations_csv_path=stations_csv_path,
+        stations_data_dir=stations_data_dir,
+        allow_missing=False,
+        validate_flags=True,
+    )
+
+
+def load_active_station_hourly_data(
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    stations_data_dir=STATIONS_DATA_HOURLY_PATH,
+):
+    """
+    Load reshaped hourly data for each active station.
+    """
+    return load_active_station_dataframe(
+        station_loader=load_station_hourly_dataframe,
+        stations_csv_path=stations_csv_path,
+        stations_data_dir=stations_data_dir,
+        allow_missing=True,
+        validate_flags=False,
+    )
+
+
+def rename_hourly_overlap_columns(active_station_daily_df, active_station_hourly_df):
+    """
+    Rename hourly quantity columns that overlap with daily quantity columns by appending '1H'.
+    """
+    daily_columns = set(active_station_daily_df.columns) - STATION_DF_METADATA_COLUMNS
+    overlapping_columns = [
+        column_name
+        for column_name in active_station_hourly_df.columns
+        if column_name not in STATION_DF_METADATA_COLUMNS and column_name in daily_columns
+    ]
+    return active_station_hourly_df.rename(
+        {column_name: f"{column_name}1H" for column_name in overlapping_columns}
+    )
+
+
+def print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df):
+    """
+    Print daily/hourly column overlap for visual inspection.
+    """
+    daily_columns = set(active_station_daily_df.columns) - STATION_DF_METADATA_COLUMNS
+    hourly_columns = set(active_station_hourly_df.columns) - STATION_DF_METADATA_COLUMNS
+
+    print("Common daily/hourly quantity columns:")
+    print(sorted(daily_columns & hourly_columns))
+    print("Daily-only quantity columns:")
+    print(sorted(daily_columns - hourly_columns))
+    print("Hourly-only quantity columns:")
+    print(sorted(hourly_columns - daily_columns))
 
 
 def update_storage(stations_df):
@@ -427,19 +557,28 @@ def build_parflow_clm_input_dataset(
 
 def main():
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+    active_station_daily_df = load_active_station_daily_data()
+    # active_station_daily_df.sort(["date_time"])
+    print("Active stations daily dataframe preview:")
+    print(active_station_daily_df.head())
+    print(f"Active stations daily dataframe shape: {active_station_daily_df.shape}")
+
+    active_station_hourly_df = load_active_station_hourly_data()
+    print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df)
+    print("Active stations hourly dataframe preview:")
+    print(active_station_hourly_df.head())
+    print(f"Active stations hourly dataframe shape: {active_station_hourly_df.shape}")
+
+    active_station_hourly_df = rename_hourly_overlap_columns(active_station_daily_df,
+                                                             active_station_hourly_df)
     if not Path("chmi_stations_storage").exists():
-        active_station_df = load_active_station_data()
-        print("Active stations daily dataframe preview:")
-        print(active_station_df.head())
-        print(f"Active stations daily dataframe shape: {active_station_df.shape}")
+        # update_storage(active_station_daily_df)
+        # update_storage(active_station_hourly_df)
+        pass
 
-        update_storage(active_station_df)
-
-    parflow_clm_ds = build_parflow_clm_input_dataset()
-    print(parflow_clm_ds)
-
-    pass
-
+    # parflow_clm_ds = build_parflow_clm_input_dataset()
+    # print(parflow_clm_ds)
 
 if __name__ == "__main__":
     main()
@@ -488,3 +627,115 @@ if __name__ == "__main__":
 # •
 # if needed, split SRA into rain/snow later using temperature
 # If you want, I can next patch the storage/schema description so SRA is labeled as total precipitation instead of rainfall.
+
+
+#---------------------------------------------------
+# For prepare_clm(), ParFlow/CLM wants exactly these meteorological forcings:
+# •
+# DSWR: downward shortwave radiation [W/m²]
+# •
+# DLWR: downward longwave radiation [W/m²]
+# •
+# APCP: precipitation rate [mm/s]
+# •
+# Temp: air temperature [K]
+# •
+# UGRD: eastward wind [m/s]
+# •
+# VGRD: northward wind [m/s]
+# •
+# Press: atmospheric pressure [Pa]
+# •
+# SPFH: specific humidity [kg/kg]
+# Source: ParFlow docs, both the input keys and CLM setup pages:
+# •
+# https://parflow.readthedocs.io/en/latest/keys.html
+# •
+# https://parflow.readthedocs.io/en/latest/pfsystem.html
+# Against your CHMI station variables, the practical mapping is:
+# •
+# APCP from SRA
+# •
+# Temp from T
+# •
+# UGRD, VGRD from F and D10
+# •
+# Press from P
+# •
+# SPFH from T, H, P
+# •
+# DSWR, DLWR are not directly available from the station set you listed
+# •
+# Snow columns SCE, SCEdif, SNO, SVH are diagnostics/state, not direct CLM met forcing inputs
+# Recommended transforms:
+# •
+# APCP = SRA / Δt
+# ◦
+# If SRA is a daily total in mm, use Δt = 86400 s
+# ◦
+# This is acceptable for daily forcing, but poor for subdaily CLM because it destroys storm timing
+# •
+# Temp = T + 273.15
+# •
+# Press = P * 100
+# ◦
+# P is station pressure in hPa; this is better than sea-level pressure for CLM
+# •
+# Wind from meteorological direction:
+# ◦
+# theta = D10 * 10 * π / 180
+# ◦
+# UGRD = -F * sin(theta)
+# ◦
+# VGRD = -F * cos(theta)
+# ◦
+# This is an inference from standard meteorological convention
+# •
+# Specific humidity from RH:
+# ◦
+# es(T) = 6.112 * exp(17.67*T / (T + 243.5)) in hPa
+# ◦
+# e = (H/100) * es
+# ◦
+# q = 0.622 * e / (P - 0.378*e) in kg/kg
+# ◦
+# Here T is in °C, P in hPa
+# ◦
+# This conversion is standard meteorology, not a ParFlow-specific formula
+# What to do with the snow variables:
+# •
+# Do not feed SCE, SCEdif, SNO, or SVH as CLM forcing columns
+# •
+# CLM internally partitions precipitation into rain/snow from met forcing; ParFlow docs explicitly expose snow partition options like Solver.CLM.SnowPartition, SnowTLow, SnowTHigh, wet-bulb methods, etc.
+# •
+# A useful use of SVH is as an initial snow-water-equivalent state if you want to initialize snowpack consistently. This is an inference from CLM practice and from your commented h2osno_ini in parflow_model.py
+# What is missing from your station data:
+# •
+# DSWR: no direct shortwave radiation variable in your active list
+# •
+# DLWR: no direct longwave radiation variable in your active list
+# Possible approximations, but I would treat them as fallback only:
+# •
+# DSWR from SSV using Angstrom-Prescott daily solar radiation estimation
+# •
+# DLWR from T, vapor pressure, and a cloudiness proxy using an empirical clear-sky/cloud correction
+# Those are common meteorological approximations, but they are not ParFlow/CLM-native requirements and would introduce substantial structural uncertainty, especially for daily station data.
+# My recommendation:
+# 1.
+# Use station data directly for APCP, Temp, Press, UGRD, VGRD, SPFH.
+# 2.
+# Do not use snow columns as forcing; use them only for validation or initial snow state.
+# 3.
+# Do not force CLM from these stations alone unless you also provide defensible DSWR and DLWR.
+# 4.
+# Best practical path: use your gridded atmospheric product for radiation and maybe humidity/wind, and use CHMI stations to bias-correct precipitation, temperature, and pressure.
+# One important code issue in your current prepare_clm() if you adapt it to station data:
+# •
+# VGRD is currently computed with cos again; it should use sin/cos as above
+# •
+# SPFH cannot be set equal to relative humidity
+# •
+# Press should use station pressure if you have it, not sea-level pressure
+# •
+# The final file write is iterating over ds.data_vars.values() instead of clm_met_data
+# If you want, I can turn this into a concrete mapping spec for your CHMI zarr variables and patch prepare_clm() accordingly.
