@@ -23,11 +23,209 @@ chmi_stations:
       df_col: "API30"
       coords: [ "date_time", latitude, longitude ]
 
-#    Casmax:
-#      unit: "kód"
-#      description: "Čas maxima"
-#      df_col: "Casmax"
-#      coords: [ "date_time", latitude, longitude ]
+    C-C1Av:
+      unit: "m"
+      description: "Ceilometr CLOUD_1 AVG"
+      df_col: "C-C1Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C1Co:
+      unit: "m"
+      description: "Ceilometr CLOUD_1 COUNT"
+      df_col: "C-C1Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C1Mn:
+      unit: "m"
+      description: "Ceilometr CLOUD_1 MIN"
+      df_col: "C-C1Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C1Mx:
+      unit: "m"
+      description: "Ceilometr CLOUD_1 MAX"
+      df_col: "C-C1Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C2Av:
+      unit: "m"
+      description: "Ceilometr CLOUD_2 AVG"
+      df_col: "C-C2Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C2Co:
+      unit: "m"
+      description: "Ceilometr CLOUD_2 COUNT"
+      df_col: "C-C2Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C2Mn:
+      unit: "m"
+      description: "Ceilometr CLOUD_2 MIN"
+      df_col: "C-C2Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C2Mx:
+      unit: "m"
+      description: "Ceilometr CLOUD_2 MAX"
+      df_col: "C-C2Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C3Av:
+      unit: "m"
+      description: "Ceilometr CLOUD_3 AVG"
+      df_col: "C-C3Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C3Co:
+      unit: "m"
+      description: "Ceilometr CLOUD_3 COUNT"
+      df_col: "C-C3Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C3Mn:
+      unit: "m"
+      description: "Ceilometr CLOUD_3 MIN"
+      df_col: "C-C3Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-C3Mx:
+      unit: "m"
+      description: "Ceilometr CLOUD_3 MAX"
+      df_col: "C-C3Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H1Av:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_1 AVG"
+      df_col: "C-H1Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H1Co:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_1 COUNT"
+      df_col: "C-H1Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H1Mn:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_1 MIN"
+      df_col: "C-H1Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H1Mx:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_1 MAX"
+      df_col: "C-H1Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H2Av:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_2 AVG"
+      df_col: "C-H2Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H2Co:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_2 COUNT"
+      df_col: "C-H2Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H2Mn:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_2 MIN"
+      df_col: "C-H2Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H2Mx:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_2 MAX"
+      df_col: "C-H2Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H3Av:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_3 AVG"
+      df_col: "C-H3Av"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H3Co:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_3 COUNT"
+      df_col: "C-H3Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H3Mn:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_3 MIN"
+      df_col: "C-H3Mn"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-H3Mx:
+      unit: "m"
+      description: "Ceilometr BL_HEIGHT_3 MAX"
+      df_col: "C-H3Mx"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I1Co:
+      unit: ""
+      description: "Ceilometr BL_INDEX_1 COUNT"
+      df_col: "C-I1Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I1Md:
+      unit: ""
+      description: "Ceilometr BL_INDEX_1 MEAN"
+      df_col: "C-I1Md"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I1Su:
+      unit: ""
+      description: "Ceilometr BL_INDEX_1 SUM"
+      df_col: "C-I1Su"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I2Co:
+      unit: ""
+      description: "Ceilometr BL_INDEX_2 COUNT"
+      df_col: "C-I2Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I2Md:
+      unit: ""
+      description: "Ceilometr BL_INDEX_2 MEAN"
+      df_col: "C-I2Md"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I2Su:
+      unit: ""
+      description: "Ceilometr BL_INDEX_2 SUM"
+      df_col: "C-I2Su"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I3Co:
+      unit: ""
+      description: "Ceilometr BL_INDEX_3 COUNT"
+      df_col: "C-I3Co"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I3Md:
+      unit: ""
+      description: "Ceilometr BL_INDEX_3 MEAN"
+      df_col: "C-I3Md"
+      coords: [ "date_time", latitude, longitude ]
+
+    C-I3Su:
+      unit: ""
+      description: "Ceilometr BL_INDEX_3 SUM"
+      df_col: "C-I3Su"
+      coords: [ "date_time", latitude, longitude ]
+
+    Casmax:
+      unit: ""
+      description: "Čas maxima"
+      df_col: "Casmax"
+      coords: [ "date_time", latitude, longitude ]
 
     Dmax:
       unit: "degrees"
@@ -41,7 +239,7 @@ chmi_stations:
       df_col: "SRA"
       coords: [ date_time, latitude, longitude ]
     T:
-      unit: "C"
+      unit: "degC"
       description: "Temperature [d. of Celsius]."
       df_col: "T"
       coords: [ date_time, latitude, longitude ]
@@ -75,6 +273,12 @@ chmi_stations:
       df_col: "H"
       coords: [ "date_time", latitude, longitude ]
 
+    N:
+      unit: ""
+      description: "Oblačnost osm"
+      df_col: "N"
+      coords: [ "date_time", latitude, longitude ]
+
     Fmax:
       unit: "m/s"
       description: "Max wind speed"
@@ -99,10 +303,22 @@ chmi_stations:
       df_col: "SNO"
       coords: [ "date_time", latitude, longitude ]
 
+    SRA1H:
+      unit: "mm"
+      description: "Srážka-1H"
+      df_col: "SRA1H"
+      coords: [ "date_time", latitude, longitude ]
+
     SSV:
       unit: "h"
       description: "Sluneční svit"
       df_col: "SSV"
+      coords: [ "date_time", latitude, longitude ]
+
+    SSV1H:
+      unit: "hour"
+      description: "Sluneční svit"
+      df_col: "SSV1H"
       coords: [ "date_time", latitude, longitude ]
 
     SVH:
@@ -112,55 +328,61 @@ chmi_stations:
       coords: [ "date_time", latitude, longitude ]
 
     TMA:
-      unit: "C"
+      unit: "degC"
       description: "Teplota max"
       df_col: "TMA"
       coords: [ "date_time", latitude, longitude ]
 
     TMI:
-      unit: "C"
+      unit: "degC"
       description: "Teplota min"
       df_col: "TMI"
       coords: [ "date_time", latitude, longitude ]
 
     TMInoc:
-      unit: "C"
+      unit: "degC"
       description: "Teplota min"
       df_col: "TMInoc"
       coords: [ "date_time", latitude, longitude ]
 
     TPM:
-      unit: "C"
+      unit: "degC"
       description: "Teplota příz"
       df_col: "TPM"
       coords: [ "date_time", latitude, longitude ]
 
+    Td:
+      unit: "degC"
+      description: "Rosný bod"
+      df_col: "Td"
+      coords: [ "date_time", latitude, longitude ]
+
     T05:
-      unit: "C"
+      unit: "degC"
       description: "Teplota půdy 5"
       df_col: "T05"
       coords: [ "date_time", latitude, longitude ]
 
     T10:
-      unit: "C"
+      unit: "degC"
       description: "Teplota půdy 10"
       df_col: "T10"
       coords: [ "date_time", latitude, longitude ]
 
     T100:
-      unit: "C"
+      unit: "degC"
       description: "Teplota půdy100"
       df_col: "T100"
       coords: [ "date_time", latitude, longitude ]
 
     T20:
-      unit: "C"
+      unit: "degC"
       description: "Teplota půdy 20"
       df_col: "T20"
       coords: [ "date_time", latitude, longitude ]
 
     T50:
-      unit: "C"
+      unit: "degC"
       description: "Teplota půdy 50"
       df_col: "T50"
       coords: [ "date_time", latitude, longitude ]
@@ -169,6 +391,60 @@ chmi_stations:
       unit: "mm"
       description: "Výpar"
       df_col: "VY"
+      coords: [ "date_time", latitude, longitude ]
+
+    VV:
+      unit: ""
+      description: "Vodorovná dohlednost"
+      df_col: "VV"
+      coords: [ "date_time", latitude, longitude ]
+
+    W1:
+      unit: ""
+      description: "Průběh počasí 1"
+      df_col: "W1"
+      coords: [ "date_time", latitude, longitude ]
+
+    W2:
+      unit: ""
+      description: "Průběh počasí 2"
+      df_col: "W2"
+      coords: [ "date_time", latitude, longitude ]
+
+    P_hm:
+      unit: "hPa"
+      description: "Tlak vzduchu hl.m."
+      df_col: "P_hm"
+      coords: [ "date_time", latitude, longitude ]
+
+    RGLB1H:
+      unit: "W / m ** 2"
+      description: "Záření globální"
+      df_col: "RGLB1H"
+      coords: [ "date_time", latitude, longitude ]
+
+    ppp:
+      unit: "hPa"
+      description: "Tlak tendence"
+      df_col: "ppp"
+      coords: [ "date_time", latitude, longitude ]
+
+    ww:
+      unit: ""
+      description: "Stav počasí"
+      df_col: "ww"
+      coords: [ "date_time", latitude, longitude ]
+
+    E1H:
+      unit: "hPa"
+      description: "Tlak páry (hourly data renamed to avoid overlap with daily E)"
+      df_col: "E1H"
+      coords: [ "date_time", latitude, longitude ]
+
+    P1H:
+      unit: "hPa"
+      description: "Tlak vzduchu (hourly data renamed to avoid overlap with daily P)"
+      df_col: "P1H"
       coords: [ "date_time", latitude, longitude ]
 
   COORDS:
