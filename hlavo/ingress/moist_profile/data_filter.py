@@ -44,10 +44,9 @@ def read_data():
     """
     root_node = _open_zarr_schema()
     water_level_node = root_node['Uhelna']['profiles']
-    #print(water_level_node.dataset)
 
-    ds = water_level_node.dataset['moisture']
-    df = ds.to_dataframe()
+    df = water_level_node.read_df(
+        var_names=["date_time", "site_id", "depth_level", "moisture"])
     return df
 
 
@@ -60,18 +59,19 @@ def apply_filter(df, site_id, depth_level, out_file):
     Param   depth_level   Order of depth level
     Returns pandas:DataFrame
     """
-    df_filtered = df[
-        (df["site_id"] == site_id) &
-        (df["depth_level"] == depth_level)
+    df_pandas = df.to_pandas()
+    df_filtered = df_pandas[
+        (df_pandas["site_id"] == site_id) &
+        (df_pandas["depth_level"] == depth_level)
         ]
-    #df_filtered = df_filtered.to_pandas()
+    print(df_filtered)
     ax = df_filtered.plot(
         x="date_time",
         y=["moisture"],
         figsize=(10, 5)
     )
 
-    ax.set_title("Moisture data of site: '" + site_id + "', level: '" + depth_level + "'")
+    ax.set_title("Moisture data of site: '" + str(site_id) + "', level: '" + str(depth_level) + "'")
     ax.set_xlabel("Date")
     ax.set_ylabel("Moisture")
     ax.grid(True)
