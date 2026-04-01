@@ -1,0 +1,5 @@
+outs:
+- md5: be2311a4b1ea7b2d8618def737de67f6
+  size: 2409
+  hash: md5
+  path: DEM_Turow_10m_resample.tif.aux.xml
