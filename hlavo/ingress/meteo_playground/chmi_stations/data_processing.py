@@ -21,7 +21,7 @@ CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
                         ]
-CLM_REQUIRED_SOURCE_VARS = ["SRA", "T", "P", "F", "D10", "H"]
+CLM_REQUIRED_SOURCE_VARS = ["SRA1H", "T", "P1H", "F", "D10", "H"]
 SECONDS_PER_DAY = 24 * 60 * 60
 
 
@@ -552,10 +552,10 @@ def build_parflow_clm_input_dataset(
     parflow_clm_ds = xr.Dataset(
         data_vars={
             "APCP": with_clean_attrs(
-                (merged_inputs["SRA"] / SECONDS_PER_DAY).rename("APCP"),
+                (merged_inputs["SRA1H"] / SECONDS_PER_DAY).rename("APCP"),
                 units="mm/s",
                 description="Total precipitation rate for ParFlow/CLM.",
-                source_quantities=["SRA"],
+                source_quantities=["SRA1H"],
             ),
             "Temp": with_clean_attrs(
                 (merged_inputs["T"] + 273.15).rename("Temp"),
@@ -576,20 +576,20 @@ def build_parflow_clm_input_dataset(
                 source_quantities=["F", "D10"],
             ),
             "Press": with_clean_attrs(
-                (merged_inputs["P"] * 100.0).rename("Press"),
+                (merged_inputs["P1H"] * 100.0).rename("Press"),
                 units="Pa",
                 description="Atmospheric pressure for ParFlow/CLM.",
-                source_quantities=["P"],
+                source_quantities=["P1H"],
             ),
             "SPFH": with_clean_attrs(
                 compute_specific_humidity(
                     merged_inputs["T"],
                     merged_inputs["H"],
-                    merged_inputs["P"],
+                    merged_inputs["P1H"],
                 ).rename("SPFH"),
                 units="kg/kg",
                 description="Specific humidity for ParFlow/CLM.",
-                source_quantities=["T", "H", "P"],
+                source_quantities=["T", "H", "P1H"],
             ),
             "DSWR": with_clean_attrs(
                 xr.full_like(template, np.nan).rename("DSWR"),
@@ -649,8 +649,8 @@ def main():
         active_station_df = pl.concat([active_station_daily_df, active_station_hourly_df], how="diagonal_relaxed")
         update_storage(active_station_df)
 
-    # parflow_clm_ds = build_parflow_clm_input_dataset()
-    # print(parflow_clm_ds)
+    parflow_clm_ds = build_parflow_clm_input_dataset()
+    print(parflow_clm_ds)
 
 if __name__ == "__main__":
     main()
