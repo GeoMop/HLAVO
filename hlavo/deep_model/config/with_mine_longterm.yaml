@@ -7,31 +7,30 @@ meshsteps:
   x: 40.0
   y: 40.0
   z:
-    layers:
-    - 0.3
-    - 0.3
-    - 0.3
-    - 0.6
-    - 0.6
-    - 0.6
-    - 1.2
-    - 1.2
-    - 1.2
-    - 2.4
-    - 2.4
-    - 2.4
-    rest: 4.8
+    start: 0.3
+    factor: 2.0
+    max: 4.8
 model:
-  model_name: with_mine_fine
+  model_name: with_mine_longterm
   workspace: model
-  sim_name: uhelna
+  sim_name: uhelna_longterm
   exe_name: mf6
-  drain_conductance: 1.0
-  simulation_days: 30.0
+  use_uzf: true
+  use_drn: true
+  drain_mode: north_side
+  drain_conductance: 0.5
+  simulation_days: 3650.0
   stress_periods_days:
-  - 5.0
-  - 10.0
-  - 15.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
+  - 365.0
 materials:
   strict_layer_mapping: false
   all:
@@ -40,13 +39,13 @@ materials:
     porosity: 0.3
     vG_n: 2.0
     vG_alpha: 1.0
-    recharge_rate: 0.0001
+    recharge_rate: 2.0e-05
     vks: 1.0e-06
     thtr: 0.05
     thts: 0.3
     thti: 0.2
     eps: 3.5
-    surfdep: 0.0
+    surfdep: 0.01
     pet: 0.0
     extdp: 1.0
     extwc: 0.1
@@ -58,9 +57,9 @@ materials:
     simulate_et: false
     unsat_etwc: false
     unsat_etae: false
-    simulate_gwseep: true
+    simulate_gwseep: false
     hydraulic_conductivity: 1.0e-06
-    specific_yield: 0.1
+    specific_yield: 0.03
     specific_storage: 1.0e-05
     initial_head_offset: -1.0
     perlen: 1.0
@@ -69,13 +68,13 @@ materials:
   sets:
     sands:
       horizontal_conductivity: 1.0e-05
-      vertical_conductivity: 1.0e-05
+      vertical_conductivity: 8.0e-06
       porosity: 0.33
       vG_n: 2.3
       vG_alpha: 1.2
     clays:
       horizontal_conductivity: 1.0e-07
-      vertical_conductivity: 1.0e-07
+      vertical_conductivity: 5.0e-08
       porosity: 0.42
       vG_n: 1.35
       vG_alpha: 0.55

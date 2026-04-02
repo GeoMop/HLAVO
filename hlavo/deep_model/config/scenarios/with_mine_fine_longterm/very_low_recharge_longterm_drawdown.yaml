@@ -1,0 +1,17 @@
+scenario:
+  name: very_low_recharge_longterm_drawdown
+  description: 10-year run with very low net recharge and stronger drainage to show groundwater decline.
+
+model:
+  simulation_days: 3650.0
+  stress_periods_days: [365.0, 365.0, 365.0, 365.0, 365.0, 365.0, 365.0, 365.0, 365.0, 365.0]
+  # First years: very low recharge, then extended dry periods (slightly negative net recharge)
+  # to enforce a clear long-term drawdown signal.
+  recharge_series_m_per_day: [0.000002, 0.000002, 0.000001, 0.0, -0.000001, -0.000002, -0.000003, -0.000003, -0.000004, -0.000004]
+  drain_conductance: 4.0
+
+materials:
+  all:
+    # Kept for completeness in metadata; run_model starts heads at layer tops (=surface in top layer).
+    initial_head_offset: 0.0
+    recharge_rate: 0.000002

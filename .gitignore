@@ -1,5 +1,6 @@
 dev/.codex_docker
 hlavo/deep_model/model
+hlavo/deep_model/runs
 runs/composed_mock/3d_models
 hlavo/deep_model/GIS
 **/.gpkg

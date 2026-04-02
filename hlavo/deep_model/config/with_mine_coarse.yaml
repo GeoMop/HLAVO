@@ -1,28 +1,17 @@
 qgis_project_path: /home/jb/GIS/uhelna_all.qgs
-boundary_layer_name: domain_around_mine
+boundary_layer_name: domain_with_mine
 raster_group_name: HG model layers
 grid_output_path: grid_materials.npz
 material_parameters_output_path: material_parameters.npz
 meshsteps:
-  x: 40.0
-  y: 40.0
+  x: 100.0
+  y: 100.0
   z:
-    layers:
-    - 0.3
-    - 0.3
-    - 0.3
-    - 0.6
-    - 0.6
-    - 0.6
-    - 1.2
-    - 1.2
-    - 1.2
-    - 2.4
-    - 2.4
-    - 2.4
-    rest: 4.8
+    start: 0.3
+    factor: 2.0
+    max: 4.8
 model:
-  model_name: around_mine_fine
+  model_name: with_mine_coarse
   workspace: model
   sim_name: uhelna
   exe_name: mf6
@@ -104,21 +93,29 @@ materials:
     set: clays
   - name: sand_4
     top_interface: Q3_base
-    bottom_interface: Q5_top
+    bottom_interface: Q4_top
     set: sands
   - name: clay_4
+    top_interface: Q4_top
+    bottom_interface: Q4_base
+    set: clays
+  - name: sand_5
+    top_interface: Q4_base
+    bottom_interface: Q5_top
+    set: sands
+  - name: clay_5
     top_interface: Q5_top
     bottom_interface: Q5_base
     set: clays
-  - name: sand_5
+  - name: sand_6
     top_interface: Q5_base
     bottom_interface: Q6_top
     set: sands
-  - name: clay_5
+  - name: clay_6
     top_interface: Q6_top
     bottom_interface: Q6_base
     set: clays
-  - name: sand_6
+  - name: sand_7
     top_interface: Q6_base
     bottom_interface: Q_base
     set: sands

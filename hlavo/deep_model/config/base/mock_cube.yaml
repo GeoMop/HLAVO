@@ -1,0 +1,99 @@
+qgis_project_path: "/dev/null"
+boundary_layer_name: "mock"
+raster_group_name: "mock"
+
+grid_output_path: "grid_materials.npz"
+material_parameters_output_path: "material_parameters.npz"
+
+meshsteps:
+  x: 10.0
+  y: 10.0
+  z:
+    start: 1.0
+    factor: 2.0
+    max: 1.0
+
+model:
+  model_name: "mock_cube"
+  workspace: "model"
+  sim_name: "mock_cube"
+  exe_name: "mf6"
+  drain_conductance: 0.5
+  simulation_days: 20.0
+  stress_periods_days: [5.0, 5.0, 10.0]
+  recharge_series_m_per_day: [0.0001, 0.00005, 0.0]
+
+mock:
+  nx: 8
+  ny: 8
+  nz: 6
+  delr: 10.0
+  delc: 10.0
+  delz: [0.5, 0.5, 1.0, 1.0, 2.0, 2.0]
+  top: 100.0
+  layer_names: [sand_1, clay_1, sand_2, clay_2, sand_3, clay_3]
+  material_by_layer: [0, 1, 2, 3, 4, 5]
+  material_class_by_layer: [1, 2, 1, 2, 1, 2]
+  material_name_by_layer: [sand_1, clay_1, sand_2, clay_2, sand_3, clay_3]
+  hk_by_layer: [1.0e-4, 1.0e-6, 8.0e-5, 1.0e-6, 5.0e-5, 1.0e-6]
+  kv_by_layer: [8.0e-5, 5.0e-7, 6.0e-5, 5.0e-7, 4.0e-5, 5.0e-7]
+  porosity_by_layer: [0.33, 0.42, 0.32, 0.42, 0.31, 0.42]
+  vg_alpha_by_layer: [1.2, 0.5, 1.1, 0.5, 1.0, 0.5]
+  vg_n_by_layer: [2.2, 1.3, 2.1, 1.3, 2.0, 1.3]
+
+materials:
+  all:
+    horizontal_conductivity: 1.0e-6
+    vertical_conductivity: 1.0e-6
+    porosity: 0.3
+    vG_n: 2.0
+    vG_alpha: 1.0
+    recharge_rate: 0.00005
+    vks: 1.0e-6
+    thtr: 0.05
+    thts: 0.3
+    thti: 0.2
+    eps: 3.5
+    surfdep: 0.0
+    pet: 0.0
+    extdp: 1.0
+    extwc: 0.1
+    ha: 0.0
+    hroot: 0.0
+    rootact: 0.0
+    ntrailwaves: 7
+    nwavesets: 40
+    simulate_et: false
+    unsat_etwc: false
+    unsat_etae: false
+    simulate_gwseep: true
+    hydraulic_conductivity: 1.0e-6
+    vertical_conductivity: 1.0e-6
+    specific_yield: 0.1
+    specific_storage: 1.0e-5
+    initial_head_offset: 0.0
+    perlen: 1.0
+    nstp: 1
+    tsmult: 1.0
+
+paraview:
+  output_dir: "paraview"
+  quantities: [head, hk, idomain, materials, material_class, velocity, q, velocity_magnitude, active]
+  include_inactive: false
+  z_scale: 1.0
+
+plots:
+  enabled: true
+  output_dir: "plots"
+  dpi: 150
+  active_mask_name: "grid_active_mask.png"
+  idomain_name: "idomain_top.png"
+  head_name: "head_groundplan.png"
+  groundwater_surface_name: "groundwater_surface.png"
+  groundwater_change_name: "groundwater_change.png"
+  hydrograph_name: "groundwater_hydrograph.png"
+  xsection_x_name: "materials_x_section.png"
+  xsection_y_name: "materials_y_section.png"
+  xsection_x_times_name: "groundwater_x_section_times.png"
+  xsection_y_times_name: "groundwater_y_section_times.png"
+  xsection_depth_window: 15.0

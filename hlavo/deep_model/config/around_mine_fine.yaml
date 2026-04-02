@@ -1,5 +1,5 @@
 qgis_project_path: /home/jb/GIS/uhelna_all.qgs
-boundary_layer_name: domain_with_mine
+boundary_layer_name: domain_around_mine
 raster_group_name: HG model layers
 grid_output_path: grid_materials.npz
 material_parameters_output_path: material_parameters.npz
@@ -11,16 +11,16 @@ meshsteps:
     factor: 2.0
     max: 4.8
 model:
-  model_name: with_mine_fine
+  model_name: around_mine_fine
   workspace: model
   sim_name: uhelna
   exe_name: mf6
+  use_uzf: true
+  use_drn: false
   drain_conductance: 1.0
-  simulation_days: 30.0
+  simulation_days: 1.0
   stress_periods_days:
-  - 5.0
-  - 10.0
-  - 15.0
+  - 1.0
 materials:
   strict_layer_mapping: false
   all:
@@ -29,8 +29,8 @@ materials:
     porosity: 0.3
     vG_n: 2.0
     vG_alpha: 1.0
-    recharge_rate: 0.0001
-    vks: 1.0e-06
+    recharge_rate: 0.0008219
+    vks: 8.64
     thtr: 0.05
     thts: 0.3
     thti: 0.2
@@ -95,29 +95,21 @@ materials:
     set: clays
   - name: sand_4
     top_interface: Q3_base
-    bottom_interface: Q4_top
-    set: sands
-  - name: clay_4
-    top_interface: Q4_top
-    bottom_interface: Q4_base
-    set: clays
-  - name: sand_5
-    top_interface: Q4_base
     bottom_interface: Q5_top
     set: sands
-  - name: clay_5
+  - name: clay_4
     top_interface: Q5_top
     bottom_interface: Q5_base
     set: clays
-  - name: sand_6
+  - name: sand_5
     top_interface: Q5_base
     bottom_interface: Q6_top
     set: sands
-  - name: clay_6
+  - name: clay_5
     top_interface: Q6_top
     bottom_interface: Q6_base
     set: clays
-  - name: sand_7
+  - name: sand_6
     top_interface: Q6_base
     bottom_interface: Q_base
     set: sands
@@ -133,7 +125,7 @@ paraview:
   - velocity_magnitude
   - active
   include_inactive: false
-  z_scale: 5.0
+  z_scale: 1.0
 plots:
   enabled: true
   output_dir: plots

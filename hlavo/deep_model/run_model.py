@@ -28,8 +28,13 @@ class RunConfig:
     sim_name: str
     exe_name: str
     recharge_rate: float
+    recharge_rate_override: float | None
     recharge_series_m_per_day: tuple[float, ...] | None
     drain_conductance: float
+    use_uzf: bool
+    use_drn: bool
+    drain_mode: str
+    initial_head_offset_override: float | None
     simulation_days: float
     stress_periods_days: tuple[float, ...]
     grid_output_path: Path
@@ -74,6 +79,9 @@ class RunConfig:
 
         sim_name = str(model_raw.get("sim_name", "uhelna"))
         exe_name = str(model_raw.get("exe_name", "mf6"))
+        recharge_rate_override = None
+        if "recharge_rate" in model_raw:
+            recharge_rate_override = float(model_raw["recharge_rate"])
         recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
         recharge_series_raw = model_raw.get("recharge_series_m_per_day")
         if recharge_series_raw is not None:
@@ -87,6 +95,19 @@ class RunConfig:
         else:
             recharge_series_m_per_day = None
         drain_conductance = float(model_raw.get("drain_conductance", 1.0))
+        use_uzf = bool(model_raw.get("use_uzf", False))
+        use_drn_raw = model_raw.get("use_drn")
+        if use_drn_raw is None:
+            use_drn = not use_uzf
+        else:
+            use_drn = bool(use_drn_raw)
+        drain_mode = str(model_raw.get("drain_mode", "top"))
+        assert drain_mode in ("top", "north_side"), (
+            "model.drain_mode must be one of: top, north_side"
+        )
+        initial_head_offset_override = None
+        if "initial_head_offset" in model_raw:
+            initial_head_offset_override = float(model_raw["initial_head_offset"])
         simulation_days = model_raw.get("simulation_days")
         if simulation_days is not None:
             simulation_days = float(simulation_days)
@@ -233,8 +254,13 @@ class RunConfig:
             sim_name=sim_name,
             exe_name=exe_name,
             recharge_rate=recharge_rate,
+            recharge_rate_override=recharge_rate_override,
             recharge_series_m_per_day=recharge_series_m_per_day,
             drain_conductance=drain_conductance,
+            use_uzf=use_uzf,
+            use_drn=use_drn,
+            drain_mode=drain_mode,
+            initial_head_offset_override=initial_head_offset_override,
             simulation_days=simulation_days,
             stress_periods_days=stress_periods_days,
             grid_output_path=grid_output_path,
@@ -269,6 +295,19 @@ def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
     assert npz_path.exists(), f"Grid NPZ not found: {npz_path}"
     with np.load(npz_path, allow_pickle=True) as data:
         return {key: data[key] for key in data.files}
+
+
+def _scalar_from_model_data(
+    model_data: dict[str, np.ndarray],
+    key: str,
+    *,
+    cast=float,
+) -> float | int | bool:
+    assert key in model_data, f"Missing '{key}' in material parameters"
+    value = np.asarray(model_data[key]).reshape(-1)[0]
+    if cast is bool:
+        return bool(float(value))
+    return cast(value)
 
 
 def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
@@ -586,6 +625,9 @@ def _write_plan_view_plots(
     LOG.info("Saved idomain plot to %s", idomain_path)
 
     head_plan = np.where(idomain[0] > 0, head[0], np.nan)
+    if not np.isfinite(head_plan).any():
+        groundwater_surface = _groundwater_surface_from_head(head, idomain, top, botm)
+        head_plan = groundwater_surface
     plt.figure(figsize=(8, 6))
     img = plt.imshow(head_plan, origin="upper", extent=extent, cmap="viridis")
     plt.title("Hydraulic Head (Top Layer, Plan View)")
@@ -661,16 +703,22 @@ def _groundwater_surface_from_head(
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
     assert top.shape == (ny, nx), "top shape mismatch"
 
+    head_clean = np.asarray(head, dtype=float)
+    head_clean = np.where(np.isfinite(head_clean), head_clean, np.nan)
+    head_clean = np.where(np.abs(head_clean) > 1.0e20, np.nan, head_clean)
+
     water_table = np.full((ny, nx), np.nan, dtype=float)
     for k in range(nz):
         layer_active = idomain[k] > 0
         layer_top = top if k == 0 else botm[k - 1]
         layer_bot = botm[k]
-        layer_head = np.asarray(head[k], dtype=float)
-        saturated = layer_active & np.isfinite(layer_head) & (layer_head > layer_bot)
-        assign = np.isnan(water_table) & saturated
+        layer_head = head_clean[k]
+        valid = layer_active & np.isfinite(layer_head)
+        saturated = valid & (layer_head > layer_bot)
+        assign = np.isnan(water_table) & (saturated | valid)
         if np.any(assign):
-            water_table[assign] = np.minimum(layer_head[assign], layer_top[assign])
+            clipped = np.where(layer_head > layer_bot, np.minimum(layer_head, layer_top), layer_head)
+            water_table[assign] = clipped[assign]
     return water_table
 
 
@@ -935,11 +983,19 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         idomain=idomain,
     )
 
-    # MF6 expects starting heads per layer; use layer tops for a consistent 3D array.
+    # MF6 expects starting heads per layer; use layer tops with optional offset.
     layer_tops = np.empty_like(botm)
     layer_tops[0] = top
     if nz > 1:
         layer_tops[1:] = botm[:-1]
+    if run_config.initial_head_offset_override is not None:
+        offset = float(run_config.initial_head_offset_override)
+    elif "initial_head_offset" in model_data:
+        offset = float(_scalar_from_model_data(model_data, "initial_head_offset"))
+    else:
+        offset = 0.0
+    if offset != 0.0:
+        layer_tops = layer_tops + offset
     flopy.mf6.ModflowGwfic(gwf, strt=layer_tops)
 
     icelltype = np.zeros(nz, dtype=int)
@@ -958,20 +1014,105 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     if run_config.recharge_series_m_per_day is not None:
         recharge_rates = run_config.recharge_series_m_per_day
     else:
-        recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
+        if run_config.recharge_rate_override is not None:
+            recharge_rate = float(run_config.recharge_rate_override)
+        else:
+            recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
         recharge_rates = tuple([recharge_rate] * len(run_config.stress_periods_days))
-    recharge_spd = {
-        iper: np.where(active_mask, float(rate), 0.0) for iper, rate in enumerate(recharge_rates)
-    }
-    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge_spd)
 
     top_active = active_mask & (idomain[0] > 0)
     top_rows, top_cols = np.where(top_active)
-    drain_cells = []
-    for row, col in zip(top_rows.tolist(), top_cols.tolist()):
-        drain_cells.append((0, int(row), int(col), float(top[row, col]), run_config.drain_conductance))
+    if run_config.use_uzf:
+        assert all(rate >= 0.0 for rate in recharge_rates), (
+            "UZF finf must be non-negative. Use simulate_et for ET or switch to RCH for signed recharge."
+        )
+        vks = float(_scalar_from_model_data(model_data, "vks"))
+        thtr = float(_scalar_from_model_data(model_data, "thtr"))
+        thts = float(_scalar_from_model_data(model_data, "thts"))
+        thti = float(_scalar_from_model_data(model_data, "thti"))
+        eps = float(_scalar_from_model_data(model_data, "eps"))
+        surfdep = float(_scalar_from_model_data(model_data, "surfdep"))
+        pet = float(_scalar_from_model_data(model_data, "pet"))
+        extdp = float(_scalar_from_model_data(model_data, "extdp"))
+        extwc = float(_scalar_from_model_data(model_data, "extwc"))
+        ha = float(_scalar_from_model_data(model_data, "ha"))
+        hroot = float(_scalar_from_model_data(model_data, "hroot"))
+        rootact = float(_scalar_from_model_data(model_data, "rootact"))
+        ntrailwaves = int(_scalar_from_model_data(model_data, "ntrailwaves", cast=int))
+        nwavesets = int(_scalar_from_model_data(model_data, "nwavesets", cast=int))
+        simulate_et = bool(_scalar_from_model_data(model_data, "simulate_et", cast=bool))
+        unsat_etwc = bool(_scalar_from_model_data(model_data, "unsat_etwc", cast=bool))
+        unsat_etae = bool(_scalar_from_model_data(model_data, "unsat_etae", cast=bool))
+        simulate_gwseep = bool(_scalar_from_model_data(model_data, "simulate_gwseep", cast=bool))
 
-    flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
+        iuzno = np.arange(top_rows.size, dtype=int)
+        packagedata = [
+            (
+                int(iuzno_idx),
+                (0, int(row), int(col)),
+                1,
+                0,
+                surfdep,
+                vks,
+                thtr,
+                thts,
+                thti,
+                eps,
+            )
+            for iuzno_idx, (row, col) in enumerate(zip(top_rows.tolist(), top_cols.tolist()))
+        ]
+        perioddata = {}
+        for iper, rate in enumerate(recharge_rates):
+            finf = float(rate)
+            perioddata[iper] = [
+                (int(iuzno_idx), finf, pet, extdp, extwc, ha, hroot, rootact)
+                for iuzno_idx in iuzno.tolist()
+            ]
+
+        flopy.mf6.ModflowGwfuzf(
+            gwf,
+            nuzfcells=len(packagedata),
+            ntrailwaves=ntrailwaves,
+            nwavesets=nwavesets,
+            packagedata=packagedata,
+            perioddata=perioddata,
+            simulate_et=simulate_et,
+            simulate_gwseep=simulate_gwseep,
+            unsat_etwc=unsat_etwc,
+            unsat_etae=unsat_etae,
+            save_flows=True,
+        )
+    else:
+        recharge_spd = {
+            iper: np.where(active_mask, float(rate), 0.0) for iper, rate in enumerate(recharge_rates)
+        }
+        flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge_spd)
+
+    if run_config.use_drn:
+        drain_cells = []
+        if run_config.drain_mode == "top":
+            for row, col in zip(top_rows.tolist(), top_cols.tolist()):
+                drain_cells.append(
+                    (0, int(row), int(col), float(top[row, col]), run_config.drain_conductance)
+                )
+        elif run_config.drain_mode == "north_side":
+            north_row = 0
+            for lay in range(nz):
+                layer_top = top if lay == 0 else botm[lay - 1]
+                cols = np.where(idomain[lay, north_row, :] > 0)[0]
+                for col in cols.tolist():
+                    drain_cells.append(
+                        (
+                            int(lay),
+                            int(north_row),
+                            int(col),
+                            float(layer_top[north_row, col]),
+                            run_config.drain_conductance,
+                        )
+                    )
+        else:
+            raise AssertionError(f"Unsupported drain mode: {run_config.drain_mode}")
+        flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
 
     flopy.mf6.ModflowGwfoc(
         gwf,

@@ -1,5 +1,5 @@
 qgis_project_path: /home/jb/GIS/uhelna_all.qgs
-boundary_layer_name: domain_with_mine
+boundary_layer_name: domain_around_mine
 raster_group_name: HG model layers
 grid_output_path: grid_materials.npz
 material_parameters_output_path: material_parameters.npz
@@ -7,22 +7,11 @@ meshsteps:
   x: 100.0
   y: 100.0
   z:
-    layers:
-    - 0.3
-    - 0.3
-    - 0.3
-    - 0.6
-    - 0.6
-    - 0.6
-    - 1.2
-    - 1.2
-    - 1.2
-    - 2.4
-    - 2.4
-    - 2.4
-    rest: 4.8
+    start: 0.3
+    factor: 2.0
+    max: 4.8
 model:
-  model_name: with_mine_coarse
+  model_name: around_mine_coarse
   workspace: model
   sim_name: uhelna
   exe_name: mf6

@@ -55,6 +55,25 @@ Notes:
 - Use `--no-reuse-grid` to force rebuilding grid for each scenario.
 - Use `--skip-grid` only if each run workspace already contains a valid `grid_materials.npz`.
 
+## Mock cube test model
+
+For fast debugging without GIS input, use the mock cube setup:
+
+```
+python build_mock_cube.py --config config/base/mock_cube.yaml
+python run_model.py --config config/base/mock_cube.yaml
+python create_paraview.py --config config/base/mock_cube.yaml
+python create_plots.py --config config/base/mock_cube.yaml
+```
+
+Or run all in one command:
+
+```
+bash run_workflow_mock.sh config/base/mock_cube.yaml
+```
+
+The mock config defines a small cube grid and per-layer properties directly under the `mock:` section.
+
 `run_model.py` and `visualize_results.py` both expect `grid_output_path` and
 `material_parameters_output_path` to exist (produced by steps 1 and 2).
 The plot outputs now include a groundwater-surface elevation map.

@@ -270,8 +270,12 @@ def _meshstep_z_reference(z_raw: object) -> float:
         return z_value
 
     assert isinstance(z_raw, dict), (
-        "meshsteps.z must be a number, a list, or a mapping with layers/rest"
+        "meshsteps.z must be a number, a list, or a mapping with layers/rest or start/factor/max"
     )
+    if "start" in z_raw:
+        z_value = float(z_raw["start"])
+        assert z_value > 0.0, "meshsteps.z.start must be > 0"
+        return z_value
     layers_raw = z_raw.get("layers")
     if isinstance(layers_raw, list) and layers_raw:
         z_value = float(layers_raw[0])

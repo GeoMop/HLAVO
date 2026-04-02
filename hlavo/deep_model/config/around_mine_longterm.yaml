@@ -1,5 +1,5 @@
 qgis_project_path: /home/jb/GIS/uhelna_all.qgs
-boundary_layer_name: domain_with_mine
+boundary_layer_name: domain_around_mine
 raster_group_name: HG model layers
 grid_output_path: grid_materials.npz
 material_parameters_output_path: material_parameters.npz
@@ -7,25 +7,17 @@ meshsteps:
   x: 40.0
   y: 40.0
   z:
-    layers:
-    - 0.3
-    - 0.3
-    - 0.3
-    - 0.6
-    - 0.6
-    - 0.6
-    - 1.2
-    - 1.2
-    - 1.2
-    - 2.4
-    - 2.4
-    - 2.4
-    rest: 4.8
+    start: 0.3
+    factor: 2.0
+    max: 4.8
 model:
-  model_name: with_mine_longterm
+  model_name: around_mine_longterm
   workspace: model
   sim_name: uhelna_longterm
   exe_name: mf6
+  use_uzf: true
+  use_drn: true
+  drain_mode: north_side
   drain_conductance: 0.05
   simulation_days: 3650.0
   stress_periods_days:
@@ -39,17 +31,6 @@ model:
   - 365.0
   - 365.0
   - 365.0
-  recharge_series_m_per_day:
-  - 0.0
-  - 1.0e-05
-  - 6.0e-05
-  - 0.00015
-  - 0.0003
-  - 8.0e-05
-  - 1.0e-05
-  - 0.0
-  - -3.0e-05
-  - -8.0e-05
 materials:
   strict_layer_mapping: false
   all:
@@ -58,13 +39,13 @@ materials:
     porosity: 0.3
     vG_n: 2.0
     vG_alpha: 1.0
-    recharge_rate: 0.0001
+    recharge_rate: 2.0e-05
     vks: 1.0e-06
     thtr: 0.05
     thts: 0.3
     thti: 0.2
     eps: 3.5
-    surfdep: 0.0
+    surfdep: 0.01
     pet: 0.0
     extdp: 1.0
     extwc: 0.1
@@ -76,7 +57,7 @@ materials:
     simulate_et: false
     unsat_etwc: false
     unsat_etae: false
-    simulate_gwseep: true
+    simulate_gwseep: false
     hydraulic_conductivity: 1.0e-06
     specific_yield: 0.03
     specific_storage: 1.0e-05
@@ -162,7 +143,7 @@ paraview:
   - velocity_magnitude
   - active
   include_inactive: false
-  z_scale: 5.0
+  z_scale: 1.0
 plots:
   enabled: true
   output_dir: plots

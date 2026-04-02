@@ -406,8 +406,35 @@ def _z_layer_thicknesses(config_path: Path, rasters: tuple[RasterLayer, ...]) ->
         return z_layers
 
     assert isinstance(z_raw, dict), (
-        "meshsteps.z must be a number, a list, or a mapping with layers/rest"
+        "meshsteps.z must be a number, a list, or a mapping with layers/rest or start/factor/max"
     )
+    if "start" in z_raw:
+        start = float(z_raw["start"])
+        factor = float(z_raw["factor"])
+        max_thickness = float(z_raw["max"])
+        assert start > 0.0, "meshsteps.z.start must be > 0"
+        assert factor > 1.0, "meshsteps.z.factor must be > 1"
+        assert max_thickness > 0.0, "meshsteps.z.max must be > 0"
+        assert max_thickness >= start, "meshsteps.z.max must be >= meshsteps.z.start"
+
+        if not rasters:
+            return np.asarray([min(start, max_thickness)], dtype=float)
+
+        top_candidates = [float(raster.z_extent[1]) for raster in rasters]
+        bottom_candidates = [float(raster.z_extent[0]) for raster in rasters]
+        depth_required = max(top_candidates) - min(bottom_candidates)
+        assert depth_required > 0.0, "Invalid raster vertical extent"
+
+        thicknesses: list[float] = []
+        current = start
+        depth_current = 0.0
+        while depth_current < depth_required:
+            thickness = min(current, max_thickness)
+            thicknesses.append(thickness)
+            depth_current += thickness
+            if current < max_thickness:
+                current = min(current * factor, max_thickness)
+        return np.asarray(thicknesses, dtype=float)
     layers_raw = z_raw.get("layers", [])
     assert isinstance(layers_raw, list), "meshsteps.z.layers must be a list"
     z_layers = np.asarray([float(value) for value in layers_raw], dtype=float)

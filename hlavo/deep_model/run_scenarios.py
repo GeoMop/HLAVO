@@ -199,11 +199,26 @@ def _run_step(script_dir: Path, step: str, config_path: Path, workspace_override
     if workspace_override is not None and step in {"run_model.py", "create_paraview.py", "create_plots.py"}:
         cmd.extend(["--workspace", str(workspace_override)])
 
+    banner = f">>> {' '.join(cmd)}"
+    LOG.info(banner)
     with log_path.open("a", encoding="utf-8") as log:
-        log.write(f"\n>>> {' '.join(cmd)}\n")
+        log.write(f"\n{banner}\n")
         log.flush()
-        proc = subprocess.run(cmd, cwd=str(script_dir), stdout=log, stderr=subprocess.STDOUT, check=False)
-    assert proc.returncode == 0, f"Step failed ({step}), see log: {log_path}"
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(script_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert proc.stdout is not None, "Missing subprocess stdout pipe"
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            log.write(line)
+        return_code = proc.wait()
+    assert return_code == 0, f"Step failed ({step}), see log: {log_path}"
 
 
 def _append_index(index_path: Path, result: ScenarioResult) -> None:
@@ -288,6 +303,7 @@ def run_scenarios(
 
         try:
             log_path = logs_dir / "workflow.log"
+            LOG.info("Scenario start: %s (run_id=%s)", spec.name, run_id)
             ws, grid_path, _material_path = _resolved_paths(resolved_cfg)
             grid_sig = _grid_signature(resolved_cfg)
             grid_cache_path = grid_cache_dir / f"{grid_sig}.npz"
@@ -346,7 +362,7 @@ def run_scenarios(
         _append_index(index_path, result)
 
         if status == "ok":
-            LOG.info("Scenario %s finished: run_id=%s", spec.name, run_id)
+            LOG.info("Scenario finished: %s (run_id=%s)", spec.name, run_id)
         else:
             LOG.warning("Scenario %s failed: run_id=%s error=%s", spec.name, run_id, error)
 
