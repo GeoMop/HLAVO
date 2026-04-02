@@ -1,7 +1,13 @@
+dev/.codex_docker
+hlavo/deep_model/model
+runs/composed_mock/3d_models
 .secrets_env
 tests/ingress/aladin_data
 ZF
+hlavo/deep_model/GIS
+**/.gpkg
 _*/*
+.DS_Store
 
 dev/.codex_docker
 dev/parflow_install
@@ -204,3 +210,4 @@ microchip_SW/.vscode
 
 data_processing/.env
 /data_processing/.python-version
+/hlavo/kalman/pristupy.txt

@@ -2,14 +2,45 @@
 
 State on 11.2.2026
 
-## Main script execution
+## Main workflow
 
+1. Build grid/layers/material IDs from GIS and write base MODFLOW input files (infrequent):
+```
+python build_modflow_grid.py --config <config_file>
+```
+2. Add material parameters from YAML (frequent tuning/calibration):
+```
+python add_material_parameters.py --config <config_file>
+```
+3. Run MODFLOW:
 ```
 python run_model.py --config <config_file>
 ```
-There are two yaml config files provided - the `coarse_config.yaml` may be outdated.
+4. Create Paraview and plot visualizations:
+```
+python visualize_results.py --config <config_file>
+```
 
-It reads data from GIS files, write a Modflow model (under `model` folder), runs it and creates outputs for ParaView and some plots in `model/plots`.
+`run_model.py` and `visualize_results.py` both expect `grid_output_path` and
+`material_parameters_output_path` to exist (produced by steps 1 and 2).
+The plot outputs now include a groundwater-surface elevation map.
+Cross-sections can be zoomed to the upper part via `plots.xsection_depth_window`.
+Temporal visualization includes:
+- groundwater change map (`groundwater_change_name`)
+- groundwater hydrograph at selected cell (`hydrograph_name`)
+- X/Y section groundwater profiles for initial/mid/final times (`xsection_*_times_name`)
+- material class X/Y cross-sections (`material_class_x_section.png`, `material_class_y_section.png`)
+- ParaView cell data `material_class` (0=other, 1=sand, 2=clay)
+
+For long-term setup with visible level changes, use `config/model_longterm.yaml`.
+
+Material parameters in config are grouped by `materials`:
+- `materials.all` is required and contains defaults plus all former `unsat` parameters.
+- `materials.sand` and `materials.clay` define only `horizontal_conductivity`, `vertical_conductivity`.
+- automatic assignment rule for interfaces starting with `Q`:
+  - `Q*_base` -> sand
+  - `Q*_top` -> clay
+  - non-`Q` interfaces use `materials.all` defaults
 
 
 
