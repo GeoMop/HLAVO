@@ -42,18 +42,6 @@ def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
     return df
 
 
-def _prepare_default_filepaths(file_paths):
-    """
-    Set default paths to input files if file_paths is not set.
-    """
-    if file_paths is None:
-        defautl_files = ["./25_09_27_vrty_III.etapa_vše.xlsx", "./25_09_27_vrty_nové_vše.xlsx",
-                         "./25_09_27_vrty_staré_vše.xlsx"]
-        script_path = Path(__file__).resolve().parent
-        file_paths = {script_path / f for f in defautl_files}
-    return file_paths
-
-
 def _sheet_names_dictionary():
     """
     Return dictionary of pairs of sheet names in excel files and its according well ids in section file.
@@ -133,8 +121,6 @@ def read_water_level(file_paths=None):
     """
 
     logging.basicConfig(level=logging.INFO)
-
-    file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
     dfs = []
@@ -366,23 +352,12 @@ def read_sections_water_levels(section_file_path, section_sheetname, water_level
     return df_full
 
 
-def csv_output(csv_file, df):
-    """
-    Perform pandas.DataFrame data to CSV file.
-    """
-    script_dir = Path(__file__).parent
-    workdir = script_dir / "workdir"
-    workdir.mkdir(exist_ok=True)
-
-    full_path = workdir / csv_file
-    df.to_csv(path_or_buf=full_path, header=True, mode='w')
-
-
 def main():
-    xls_file = "../hlavo/ingress/well_data/Vrty_souradnice_perforace.xlsx"
-    sheetname =  "List1"
-    final_df = read_sections_water_levels(xls_file, sheetname)
-    print(final_df)
+    well_data_path = Path(__file__).parent
+    xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
+    sheetname = "List1"
+    excel_df = read_sections(xls_file, sheetname)
+    print(excel_df)
 
 if __name__ == "__main__":
    main()
