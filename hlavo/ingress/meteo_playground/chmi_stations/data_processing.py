@@ -213,6 +213,36 @@ def print_station_columns(station_name, column_names, name_width):
     print(f"{station_name:<{name_width}} {column_names}")
 
 
+# def get_node_quantity_columns(node):
+#     """
+#     Return quantity dataframe columns declared for the node schema.
+#     """
+#     return [
+#         var_config.df_col
+#         for var_config in node.schema.VARS.values()
+#     ]
+#
+#
+# def add_missing_schema_columns(stations_df, node):
+#     """
+#     Ensure the dataframe contains all quantity columns required by the node schema.
+#     Missing quantity columns are added and filled with null values.
+#     """
+#     required_quantity_columns = get_node_quantity_columns(node)
+#     missing_columns = [
+#         column_name
+#         for column_name in required_quantity_columns
+#         if column_name not in stations_df.columns
+#     ]
+#
+#     if not missing_columns:
+#         return stations_df
+#
+#     return stations_df.with_columns(
+#         [pl.lit(None, dtype=pl.Float64).alias(column_name) for column_name in missing_columns]
+#     )
+
+
 def load_active_station_dataframe(
     *,
     station_loader,
@@ -335,6 +365,7 @@ def update_storage(stations_df):
         storage_path=CHMI_STATIONS_STORAGE_PATH,
     )
 
+    # node.update(add_missing_schema_columns(stations_df, node))
     node.update(stations_df)
 
 
@@ -558,24 +589,24 @@ def build_parflow_clm_input_dataset(
 def main():
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
-    active_station_daily_df = load_active_station_daily_data()
-    # active_station_daily_df.sort(["date_time"])
-    print("Active stations daily dataframe preview:")
-    print(active_station_daily_df.head())
-    print(f"Active stations daily dataframe shape: {active_station_daily_df.shape}")
-
-    active_station_hourly_df = load_active_station_hourly_data()
-    print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df)
-    print("Active stations hourly dataframe preview:")
-    print(active_station_hourly_df.head())
-    print(f"Active stations hourly dataframe shape: {active_station_hourly_df.shape}")
-
-    active_station_hourly_df = rename_hourly_overlap_columns(active_station_daily_df,
-                                                             active_station_hourly_df)
     if not Path("chmi_stations_storage").exists():
-        # update_storage(active_station_daily_df)
-        # update_storage(active_station_hourly_df)
-        pass
+        active_station_daily_df = load_active_station_daily_data()
+        # active_station_daily_df.sort(["date_time"])
+        print("Active stations daily dataframe preview:")
+        print(active_station_daily_df.head())
+        print(f"Active stations daily dataframe shape: {active_station_daily_df.shape}")
+
+        active_station_hourly_df = load_active_station_hourly_data()
+        print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df)
+        print("Active stations hourly dataframe preview:")
+        print(active_station_hourly_df.head())
+        print(f"Active stations hourly dataframe shape: {active_station_hourly_df.shape}")
+
+        active_station_hourly_df = rename_hourly_overlap_columns(active_station_daily_df,
+                                                                 active_station_hourly_df)
+
+        active_station_df = pl.concat([active_station_daily_df, active_station_hourly_df], how="diagonal_relaxed")
+        update_storage(active_station_df)
 
     # parflow_clm_ds = build_parflow_clm_input_dataset()
     # print(parflow_clm_ds)
