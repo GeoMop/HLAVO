@@ -5,14 +5,19 @@
 
 
 import sys
+from pathlib import Path
+
 from hlavo.ingress import well_data
 from hlavo.ingress.well_data import well_data_plot
+
+well_data_path = Path(well_data.__file__).parent
+# TODO: move csv_output to tests, merge tests into a single file
 
 def test_borehole_water_level():
     # allow to perform plot of set of wells or single well
     plot_set = True
 
-    xls_file = "../hlavo/ingress/well_data/Vrty_souradnice_perforace.xlsx"
+    xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     sheetname = "List1"
     csv_output = "borehole_water_level_out.csv"
 

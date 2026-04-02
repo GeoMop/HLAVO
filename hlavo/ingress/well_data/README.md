@@ -1,5 +1,9 @@
 ## Water table and water draw measurements
 
+## How to extract well data?
+# TODO: how to call the script, what is its result, need to have .secrets_env, where are the tests, 
+
+## File overview
 - `1.CS_Zpráva o vlivu na životní prostředí.pdf` - polská zpráva EIA o rozšíření těžby v dole Turow, obsahuje i predikce jejich HG modelu
 - `25_09_27_Odbery_Uhelna.xlsx`         - čerpání z vodního zdroje Uhelná, řádky roky, sloupce Mx čerpané objemy po měsících, výšky hladin
 - 25_09_27_vrty_III.etapa_vše.xlsx    - výšky hladin na monitorovacích vrtech, klíčový je sloupec FINAL
