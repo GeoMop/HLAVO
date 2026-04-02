@@ -102,10 +102,26 @@ def load_station_dataframe_from_paths(station_paths, index_columns):
     return df.sort("DT").rename({"DT": "date_time"})
 
 
-def load_station_daily_dataframe(wsi, stations_data_dir=STATIONS_DATA_DAILY_PATH):
+def filter_date_interval(df, start_date=None, end_date=None):
+    """
+    Filter a dataframe by the inclusive date_time interval.
+    """
+    if start_date is not None:
+        df = df.filter(pl.col("date_time") >= pl.lit(start_date).str.to_datetime(time_zone="UTC"))
+    if end_date is not None:
+        df = df.filter(pl.col("date_time") <= pl.lit(end_date).str.to_datetime(time_zone="UTC"))
+    return df
+
+
+def load_station_daily_dataframe(
+    wsi,
+    stations_data_dir=STATIONS_DATA_DAILY_PATH,
+    start_date=None,
+    end_date=None,
+):
     """
     Read one downloaded CHMI daily data file, pivot ELEMENT values into columns,
-    sort by datetime, and keep only years 2024 and 2025.
+    sort by datetime, and filter by the selected date interval.
     """
     station_paths = find_station_data_paths(
         wsi=wsi,
@@ -114,22 +130,33 @@ def load_station_daily_dataframe(wsi, stations_data_dir=STATIONS_DATA_DAILY_PATH
         require_single=True,
     )
     df = load_station_dataframe_from_paths(station_paths, index_columns=["STATION", "VTYPE", "DT"])
-    return df.filter(
-        pl.col("date_time").dt.year().is_between(2025, 2025, closed="both")
+    return filter_date_interval(
+        df=df,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
-def load_station_hourly_dataframe(wsi, stations_data_dir=STATIONS_DATA_HOURLY_PATH):
+def load_station_hourly_dataframe(
+    wsi,
+    stations_data_dir=STATIONS_DATA_HOURLY_PATH,
+    start_date=None,
+    end_date=None,
+):
     """
     Read all downloaded CHMI hourly files for one station, merge through years/months,
-    and pivot ELEMENT values into columns.
+    pivot ELEMENT values into columns, and filter by the selected date interval.
     """
     station_paths = find_station_data_paths(
         wsi=wsi,
         stations_data_dir=stations_data_dir,
         pattern="1h-{wsi}-*.json",
     )
-    return load_station_dataframe_from_paths(station_paths, index_columns=["STATION", "DT"])
+    return filter_date_interval(
+        df=load_station_dataframe_from_paths(station_paths, index_columns=["STATION", "DT"]),
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 def validate_station_quantity_flags(station_df, station):
@@ -250,6 +277,8 @@ def load_active_station_dataframe(
     stations_data_dir,
     allow_missing=False,
     validate_flags=False,
+    start_date=None,
+    end_date=None,
 ):
     """
     Load station data for each active station, append coordinates, concatenate the
@@ -264,6 +293,8 @@ def load_active_station_dataframe(
             station_df = station_loader(
                 wsi=station["WSI"],
                 stations_data_dir=stations_data_dir,
+                start_date=start_date,
+                end_date=end_date,
             )
         except FileNotFoundError:
             if not allow_missing:
@@ -298,6 +329,8 @@ def load_active_station_dataframe(
 def load_active_station_daily_data(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     stations_data_dir=STATIONS_DATA_DAILY_PATH,
+    start_date=None,
+    end_date=None,
 ):
     """
     Load reshaped daily data for each active station.
@@ -308,12 +341,16 @@ def load_active_station_daily_data(
         stations_data_dir=stations_data_dir,
         allow_missing=False,
         validate_flags=True,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
 def load_active_station_hourly_data(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     stations_data_dir=STATIONS_DATA_HOURLY_PATH,
+    start_date=None,
+    end_date=None,
 ):
     """
     Load reshaped hourly data for each active station.
@@ -324,6 +361,8 @@ def load_active_station_hourly_data(
         stations_data_dir=stations_data_dir,
         allow_missing=True,
         validate_flags=False,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -438,10 +477,10 @@ def merge_station_priority(ds, var_name, priority_metadata):
 
         fill_mask = merged_da.isnull() & station_da.notnull()
         merged_da = merged_da.combine_first(station_da)
-        source_station = xr.where(fill_mask, station["FULL_NAME"], source_station)
+        source_station = xr.where(fill_mask, station["WSI"], source_station)
 
     assert merged_da is not None, f"No station data available for variable {var_name!r}."
-    station_names = [station["FULL_NAME"] for station in priority_metadata]
+    station_names = [station["WSI"] for station in priority_metadata]
     merged_da.attrs["station_priority"] = station_names
     source_station.name = f"{var_name}_source_station"
     source_station.attrs["station_priority"] = station_names
@@ -588,15 +627,17 @@ def build_parflow_clm_input_dataset(
 
 def main():
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    start_date = "2024-01-01T00:00:00Z"
+    end_date = "2025-12-31T23:59:59Z"
 
     if not Path("chmi_stations_storage").exists():
-        active_station_daily_df = load_active_station_daily_data()
+        active_station_daily_df = load_active_station_daily_data(start_date=start_date, end_date=end_date)
         # active_station_daily_df.sort(["date_time"])
         print("Active stations daily dataframe preview:")
         print(active_station_daily_df.head())
         print(f"Active stations daily dataframe shape: {active_station_daily_df.shape}")
 
-        active_station_hourly_df = load_active_station_hourly_data()
+        active_station_hourly_df = load_active_station_hourly_data(start_date=start_date, end_date=end_date)
         print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df)
         print("Active stations hourly dataframe preview:")
         print(active_station_hourly_df.head())
