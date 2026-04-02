@@ -1,4 +1,4 @@
-# AGENTS.md
+# CODEX context ofr HLAVO project
 
 ## Project summary
 
@@ -37,10 +37,10 @@ GIS sources.
 - `soil_py/` - Pure Python minimalistic Richards' solver.
 
 
-## HLAVO Project Guidelines
+## CODEX Guidelines
 
-This is subproject of HLAVO repository living in deep_model/gpt_zone.
-Codex run within docker container
+- treat keyword 'AGENT:' in comments as a source context dependent message for your further development
+- Always review your changes before finishing for human review.
 
 
 ## Coding rules
@@ -56,6 +56,9 @@ Codex run within docker container
 - use attrs for dataclasses
 - use attrs staticmethod/classmethod technique to construct from other data then is stored in the dataclass  
 - Be defensive, with strong checks, but only for the user input data.
+  That means error inputs must raise early. Therefore only check for existing keys in input dicts
+  if these will be required down in a long calculation. Otherwise just let KeyError do the job.
+- do not use "guess" default values, only obvious defaults
 - Do just basic asserts for consistency for function inputs.
 - Can add more asserts if needed during debugging.
 - NEVER resolve test errors by try blocks

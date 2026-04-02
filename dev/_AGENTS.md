@@ -26,6 +26,9 @@
   
 ## Guidelines
 - treat keyword 'AGENT:' in comments as a source context dependent message for your further development
+- Always review your changes before finishing for human review.
+- do not check or assert for the key of dict, unless for unit test checks
+- do not use any default values unless trivial
 - minimise the code,
 - constantly try to reduce duplicated code
 - avoid state branching, no checks with workarounds, just assert and fail with proper indication of the cause.

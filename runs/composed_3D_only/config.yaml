@@ -2,10 +2,12 @@ seed: 123456
 start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
+  # AGENT: remove, use fixed subdirs
   folder: "3d_models/model_with_mine"
   # folder where the original files for 3d model are stored
   name: "uhelna"
   # file with this name and extension .nam should exist in the folder - main file for modflow
+  # AGENT: remove, use fixed subdirs
   work_folder: "3d_models/model_with_mine_work"
   # in this folder the simulation is run, not to spoil original data
   time_step_days: 5.0
