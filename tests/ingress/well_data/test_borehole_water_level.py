@@ -29,6 +29,8 @@ def test_borehole_sections():
     sheetname = "List1"
     csv_path = "./borehole_section_out.csv"
 
+    assert xls_file.exists()
+
     excel_df = well_data.read_sections(xls_file, sheetname)
     print(excel_df)
     csv_output(csv_path, excel_df)
@@ -37,6 +39,11 @@ def test_borehole_sections():
 def test_borehole_water_level():
     # allow to perform plot of set of wells or single well
     plot_set = True
+
+    # tests of existing files
+    assert (well_data_path / "25_09_27_vrty_III.etapa_vše.xlsx").exists()
+    assert (well_data_path / "25_09_27_vrty_nové_vše.xlsx").exists()
+    assert (well_data_path / "25_09_27_vrty_staré_vše.xlsx").exists()
 
     section_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     sheetname = "List1"

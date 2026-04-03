@@ -329,7 +329,7 @@ def read_sections(section_file, sheetname):
 
     return df
 
-def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths=None):
+def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths):
     """
     Prepare full data.DataFrame containing combination of water levels data and well sections data.
 
