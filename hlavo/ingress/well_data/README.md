@@ -1,7 +1,14 @@
 ## Water table and water draw measurements
 
 ## How to extract well data?
-# TODO: how to call the script, what is its result, need to have .secrets_env, where are the tests, 
+Script well_data.py poskytuje 3 základní funkce pro zpracování dat:
+- read_sections: Funkce načte a zpracuje základní data vrtů a jejich sections. Data jsou načítána z jednoho souboru a jednoho sheetname. Výstupem je pandas.DataFrame. Funkce nezpracovává data měření.
+- read_sections_water_levels: Funkce načte a zpracuje data měření hladin vrtů. Funkce umožňuje zpracovat data z jednoho nebo více vstupních souborů, data každého vrtu jsou obsažena na samostatném sheetname. Zpracování jednotlivých sheetname je prováděno automaticky. Ke každému vrtu je automaticky doplněno označení vrtu v souboru sections (viz. předchozí funkce). Zpracovaná data jsou uložena do zar_fuse úložiště, pomocným výstupem, který funkce vrací, je pandas.DataFrame. 
+- read_draw: Funkce načte a zpracuje data čerpání z vodního zdroje pro jeden vrt. Data jsou načítána z jednoho souboru a jednoho sheetname. Výstup je ukládán do zar_fuse úložiště, pomocným výstupem, který funkce vrací, je pandas.DataFrame.
+Formát tabulek a jejich sloupců je popsán níže.
+For correct access to zarr_fuse storage we need to have .secrets_env file defined in root directory of project. This file defines access keys to zarr_fuse storage.
+
+Příklad použití všech výše popsaných funkcí je v testu /tests/ingress/well_data/test_borehole_water_level.py.
 
 ## File overview
 - `1.CS_Zpráva o vlivu na životní prostředí.pdf` - polská zpráva EIA o rozšíření těžby v dole Turow, obsahuje i predikce jejich HG modelu
@@ -44,22 +51,20 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 ## Formát tabulek generovaných funkcemi skriptu well_data.py
 
 - sloupce generované funkcí read_water_level
-  - well_id                 id vrtu
-  - well_in_section_file    název vrtu v souboru seznamu vrtů
   - date_time               datum a čas měření
-  - water_depth             hloubka hladiny vody [m]
+  - well_id                 id vrtu
   - water_level             nadmořská výška hladiny vody [m nm]
   
 - sloupce generované funkcí read_sections
   - well_id                 id vrtu
   - borehole_full_name      celé jméno vrtu ve vstupním souboru (včetně názvu kolektoru)
-  - sheetname_in_water_file název tabulky v souboru měření hladin vrtů
-  - confirmed               indikátor existující tabulky v souboru měření vrtů
   - X                       x-souřadnice vrtu [m]
   - Y                       y-souřadnice vrtu [m]
   - Z                       z-souřadnice vrtu [m]
   - collector               název kolektoru [m]
   - depth                   hloubka vrtu [m]
+  - sheetname_in_water_file název tabulky v souboru měření hladin vrtů
+  - confirmed               indikátor existující tabulky v souboru měření vrtů
   - interval_max            maximum měřeného intervalu [m]
   - interval_min            minimum měřeného intervalu [m]
   - interval_num_from_top   index měřeného intervalu v rámci měření stejného vrtu (měření seřazena vzestupně od povrchu))
@@ -67,4 +72,5 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 - sloupce generované funkcí read_draw
   - date                    datum a čas měření
   - cum_draw                množství odčerpané vody za kalendářní měsích [m^3]
+  - well_id                 id vrtu
   
