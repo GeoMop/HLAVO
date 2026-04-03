@@ -3,8 +3,8 @@ ATTRS:
     # for the bucket name see the store_create.sh script.
     S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
     #  note:  STORE_URL: "s3://<bucket>>/<zarr_storage>"
-#    STORE_URL: "s3://hlavo-release/profiles.zarr"
-    STORE_URL: "s3://hlavo-testing/profiles.zarr"
+    STORE_URL: "s3://hlavo-release/profiles.zarr"
+#    STORE_URL: "s3://hlavo-testing/profiles.zarr"
 #    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
 
 
