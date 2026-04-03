@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 import pandas as pd
 import logging
+import zarr_fuse as zf
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +40,6 @@ def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
     df.attrs["units"] = {"water_depth ": "m", "water_level": "m above see level"}
 
     return df
-
-
-def _prepare_default_filepaths(file_paths):
-    """
-    Set default paths to input files if file_paths is not set.
-    """
-    if file_paths is None:
-        defautl_files = ["./25_09_27_vrty_III.etapa_vše.xlsx", "./25_09_27_vrty_nové_vše.xlsx",
-                         "./25_09_27_vrty_staré_vše.xlsx"]
-        script_path = Path(__file__).resolve().parent
-        file_paths = {script_path / f for f in defautl_files}
-    return file_paths
 
 
 def _sheet_names_dictionary():
@@ -104,6 +94,22 @@ def _sheet_names_dictionary():
     return dict
 
 
+def _open_zarr_schema(remove_store=False):
+    script_dir = Path(__file__).parent
+    root_path = script_dir / "../../.."
+    file_path = root_path / ".secrets_env"
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"{file_path} doesn't exist")
+
+    load_dotenv(dotenv_path=file_path)
+
+    schema_path = script_dir / "wells_schema.yaml"
+    if remove_store:
+        zf.remove_store(schema_path)
+    return zf.open_store(schema_path)
+
+
 def read_water_level(file_paths=None):
     """
     Process water level data of set of wells and store them into DataFrame.
@@ -115,8 +121,6 @@ def read_water_level(file_paths=None):
     """
 
     logging.basicConfig(level=logging.INFO)
-
-    file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
     dfs = []
@@ -213,6 +217,12 @@ def read_draw(xls_file, sheetname):
 
     # convert to base unit (m^3)
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
+    df_result["well_id"] = "1420_1"
+
+    # remove store
+    root_node = _open_zarr_schema(True)
+    water_draw_node = root_node['Uhelna']['water_draw']
+    water_draw_node.update(df_result)
 
     df_result.attrs["units"] = {"cum_draw ": "m^3"}
     logger.info(" ... draw data completely processed")
@@ -319,21 +329,35 @@ def read_sections(section_file, sheetname):
 
     return df
 
-def csv_output(csv_file, df):
+def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths):
     """
-    Perform pandas.DataFrame data to CSV file.
-    """
-    script_dir = Path(__file__).parent
-    workdir = script_dir / "workdir"
-    workdir.mkdir(exist_ok=True)
+    Prepare full data.DataFrame containing combination of water levels data and well sections data.
 
-    full_path = workdir / csv_file
-    df.to_csv(path_or_buf=full_path, header=True, mode='w')
+    Param   section_file_path        Path to Excel input file
+    Param   section_sheetname        Name of sheet in xls_file
+    Param   water_level_file_paths   Set of paths to Excel input files
+    Returns pandas:DataFrame
+    """
+    df_sections = read_sections(section_file_path, section_sheetname)
+    df_water_levels = read_water_level(water_level_file_paths)
+
+    df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
+
+    root_node = _open_zarr_schema(True)
+    water_levels_node = root_node['Uhelna']['water_levels']
+    print(f"Columns in DataFrame: {df_full.columns.tolist()}")
+    print("Looking for:", water_levels_node.dataset)
+    water_levels_node.update(df_full)
+
+    return df_full
 
 
 def main():
-    final_df = read_water_level()
-    print(final_df)
+    well_data_path = Path(__file__).parent
+    xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
+    sheetname = "List1"
+    excel_df = read_sections(xls_file, sheetname)
+    print(excel_df)
 
 if __name__ == "__main__":
    main()
