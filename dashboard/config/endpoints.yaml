@@ -1,0 +1,63 @@
+bukov_endpoint:
+  description: "Bukov production endpoint"
+  version: "1.0.0"
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: "s3://bukov/store_latlon_2024.zarr"
+
+  schema:
+    file: "schemas/bukov_schema.yaml"
+    fields:
+      lat: "latitude"
+      lon: "longitude"
+      time: "date_time"
+      depth: "depth"
+      entity: "borehole"
+
+  defaults:
+    metric: "rock_temp"
+    group_path: "bukov"
+
+  labels:
+    metric: "Temperature"
+    y_axis: "Temperature"
+    entity: "Borehole"
+    depth_unit: "m"
+
+  visualization:
+    map:
+      center_lat: 50.0
+      center_lon: 14.0
+      zoom: 8
+      title: "Geographic Data View"
+      cmap: "viridis"
+      point_size: 10
+      alpha: 0.8
+    timeseries:
+      middle_window_days: 30
+      right_window_hours: 24
+    overlay:
+      enabled: true
+      image_path: "config/bukov_endpoint/overlay.png"
+      georef_path: "config/bukov_endpoint/bukov_georef.json"
+      tile_url: "/tiles/{Z}/{X}/{Y}.png"
+
+  tile_build:
+    enabled: true
+    source_image: "config/bukov_endpoint/overlay.png"
+    georef_file: "config/bukov_endpoint/bukov_georef.json"
+    vrt_file: "config/bukov_endpoint/overlay_gcps.vrt"
+    warped_tif: "config/bukov_endpoint/overlay_3857.tif"
+    rgba_vrt: "config/bukov_endpoint/overlay_3857_rgba.vrt"
+    tiles_dir: "config/bukov_endpoint/tiles"
+    tile_scheme: "xyz"
+    min_zoom: 0
+    max_zoom: 20
+    target_srs: "EPSG:3857"
+    gcp_srs: "EPSG:4326"
+    resampling: "near"
+    cache_dir: "C:/Users/fatih/Documents/GitHub/HLAVO/dashboard/.cache_tiles"
+    add_alpha: true
