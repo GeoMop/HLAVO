@@ -464,6 +464,30 @@ def update_storage(stations_df):
     node.update(stations_df)
 
 
+def update_parflow_input_storage(
+    parflow_clm_ds,
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+):
+    """
+    Save the ParFlow/CLM input dataset into the parflow_input zarr_fuse node.
+    """
+    node, _ = read_storage(
+        CHMI_STATIONS_SCHEMA_PATH,
+        node_path=["parflow_input"],
+        var_names=[],
+        storage_path=CHMI_STATIONS_STORAGE_PATH,
+    )
+    priority_metadata = get_priority_station_metadata(stations_csv_path=stations_csv_path)
+    anchor_station = priority_metadata[0]
+
+    ds_to_store = parflow_clm_ds.rename({"time": "date_time"}).assign_coords(
+        date_time=("date_time", parflow_clm_ds["time"].values),
+        latitude=("latitude", [anchor_station["LAT"]]),
+        longitude=("longitude", [anchor_station["LON"]]),
+    )
+    node.update_from_ds(ds_to_store)
+
+
 def read_station_storage(
     schema_path=CHMI_STATIONS_SCHEMA_PATH,
     storage_path=CHMI_STATIONS_STORAGE_PATH,
@@ -710,6 +734,7 @@ def main():
         update_storage(active_station_df)
 
     parflow_clm_ds = build_parflow_clm_input_dataset()
+    update_parflow_input_storage(parflow_clm_ds)
     print(parflow_clm_ds)
 
 if __name__ == "__main__":

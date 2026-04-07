@@ -15,6 +15,75 @@ ATTRS:
   meteo_domain_max: [15.1817, 50.9800]
 
 
+parflow_input:
+  VARS:
+    APCP:
+      unit: "mm/s"
+      description: "Total precipitation rate for ParFlow/CLM"
+      df_col: "APCP"
+      coords: [ "date_time" ]
+
+    Temp:
+      unit: "K"
+      description: "Air temperature for ParFlow/CLM"
+      df_col: "Temp"
+      coords: [ "date_time" ]
+
+    UGRD:
+      unit: "m/s"
+      description: "Eastward wind component for ParFlow/CLM"
+      df_col: "UGRD"
+      coords: [ "date_time" ]
+
+    VGRD:
+      unit: "m/s"
+      description: "Northward wind component for ParFlow/CLM"
+      df_col: "VGRD"
+      coords: [ "date_time" ]
+
+    Press:
+      unit: "Pa"
+      description: "Atmospheric pressure for ParFlow/CLM"
+      df_col: "Press"
+      coords: [ "date_time" ]
+
+    SPFH:
+      unit: "kg/kg"
+      description: "Specific humidity for ParFlow/CLM"
+      df_col: "SPFH"
+      coords: [ "date_time" ]
+
+    DSWR:
+      unit: "W / m ** 2"
+      description: "Downward shortwave radiation for ParFlow/CLM"
+      df_col: "DSWR"
+      coords: [ "date_time" ]
+
+    DLWR:
+      unit: "W / m ** 2"
+      description: "Downward longwave radiation for ParFlow/CLM"
+      df_col: "DLWR"
+      coords: [ "date_time" ]
+  COORDS:
+    date_time:
+      chunk_size: 1024
+      #      sorted: None
+      merge:
+        step_limits: [ 1, 1, "m" ]
+
+    latitude:
+      chunk_size: 32
+      #      sorted: None
+      merge:
+        step_limits: [ 0.0001, 0.0001, "degrees" ]
+
+    longitude:
+      #      sorted: None
+      chunk_size: 32
+      merge:
+        step_limits: [ 0.0001, 0.0001, "degrees" ]
+
+
 chmi_stations:
   VARS:
     API30:
