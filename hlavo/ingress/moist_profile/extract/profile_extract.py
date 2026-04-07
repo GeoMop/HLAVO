@@ -287,4 +287,10 @@ def extract_df(file_path: str | Path, df_sites,
     # add latitude, longitude
     df = add_location_to_measurements(df, df_sites)
 
+    # TODO: PE 7.4.25
+    #  filter the data:
+    # - update schema with new columns for filtered data
+    # - update schema with a column that flags filtered jumps
+    # - finally, update all to the zarr fuse storage
+
     return df

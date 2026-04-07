@@ -1,0 +1,6 @@
+outs:
+- md5: 4e9afd32b5af3669e84fae576287181b.dir
+  size: 62686661
+  nfiles: 36
+  hash: md5
+  path: 20260301T224908_dataflow_grab
