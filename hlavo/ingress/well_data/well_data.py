@@ -142,6 +142,10 @@ def read_water_level(file_paths=None):
 
             try:
                 df_sheet = _process_water_level_sheet(df, sheetname=sheet, well_in_section_file=full_name_map.get(sheet))
+            except pd._libs.tslibs.parsing.DateParseError as e:
+                logger.info("  ... table contains notes, summary result etc., sheet will be skipped")
+            except KeyError as e:
+                logger.info("  ... invalid format of table, sheet will be skipped")
             except Exception as e:
                 logger.exception("message")
             else:
