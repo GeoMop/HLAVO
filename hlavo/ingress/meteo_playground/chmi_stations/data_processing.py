@@ -21,7 +21,7 @@ CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
                         ]
-CLM_REQUIRED_SOURCE_VARS = ["SRA1H", "T", "P1H", "F", "D10", "H"]
+CLM_REQUIRED_SOURCE_VARS = ["SRA1H", "T", "P", "P1H", "F", "D10", "H"]
 SECONDS_PER_DAY = 24 * 60 * 60
 
 
@@ -381,6 +381,62 @@ def rename_hourly_overlap_columns(active_station_daily_df, active_station_hourly
     )
 
 
+def warn_long_pressure_gap_in_series(pressure_series, max_gap_hours=24):
+    """
+    Warn if a merged hourly pressure series still contains a null gap longer than max_gap_hours.
+    """
+    null_flags = pressure_series.isnull().values.tolist()
+    longest_gap = 0
+    current_gap = 0
+    for is_null in null_flags:
+        if is_null:
+            current_gap += 1
+            longest_gap = max(longest_gap, current_gap)
+        else:
+            current_gap = 0
+
+    if longest_gap > max_gap_hours:
+        LOGGER.warning(
+            "Merged hourly pressure series contains a null gap longer than %sh: %sh",
+            max_gap_hours,
+            longest_gap,
+        )
+
+
+def build_pressure_series(pressure_daily, pressure_hourly, max_gap_hours=24):
+    """
+    Build hourly pressure from preferred P1H and daily P interpolated onto the hourly time axis.
+    """
+    pressure_daily_valid = pressure_daily.dropna(dim="time")
+    if pressure_daily_valid.sizes.get("time", 0) >= 2:
+        pressure_daily_on_hourly = pressure_daily_valid.interp(
+            time=pressure_hourly["time"],
+            method="linear",
+        )
+    elif pressure_daily_valid.sizes.get("time", 0) == 1:
+        pressure_daily_on_hourly = pressure_daily_valid.reindex(time=pressure_hourly["time"], method="nearest")
+    else:
+        pressure_daily_on_hourly = xr.full_like(pressure_hourly, np.nan)
+
+    if pressure_daily_valid.sizes.get("time", 0) >= 1:
+        max_gap = np.timedelta64(max_gap_hours, "h")
+        time_axis = pressure_hourly["time"]
+        first_time = pressure_daily_valid["time"].isel(time=0)
+        last_time = pressure_daily_valid["time"].isel(time=-1)
+        first_value = pressure_daily_valid.isel(time=0)
+        last_value = pressure_daily_valid.isel(time=-1)
+
+        early_tail_mask = (time_axis < first_time) & ((first_time - time_axis) <= max_gap)
+        late_tail_mask = (time_axis > last_time) & ((time_axis - last_time) <= max_gap)
+
+        pressure_daily_on_hourly = xr.where(early_tail_mask, first_value, pressure_daily_on_hourly)
+        pressure_daily_on_hourly = xr.where(late_tail_mask, last_value, pressure_daily_on_hourly)
+
+    pressure_series = pressure_hourly.fillna(pressure_daily_on_hourly)
+    warn_long_pressure_gap_in_series(pressure_series, max_gap_hours=max_gap_hours)
+    return pressure_series
+
+
 def print_dataframe_column_diff(active_station_daily_df, active_station_hourly_df):
     """
     Print daily/hourly column overlap for visual inspection.
@@ -549,6 +605,10 @@ def build_parflow_clm_input_dataset(
 
     wind_direction_rad = np.deg2rad(merged_inputs["D10"] * 10.0)
     template = merged_inputs["T"]
+    pressure_series = build_pressure_series(
+        pressure_daily=merged_inputs["P"],
+        pressure_hourly=merged_inputs["P1H"],
+    )
     parflow_clm_ds = xr.Dataset(
         data_vars={
             "APCP": with_clean_attrs(
@@ -576,20 +636,20 @@ def build_parflow_clm_input_dataset(
                 source_quantities=["F", "D10"],
             ),
             "Press": with_clean_attrs(
-                (merged_inputs["P1H"] * 100.0).rename("Press"),
+                (pressure_series * 100.0).rename("Press"),
                 units="Pa",
                 description="Atmospheric pressure for ParFlow/CLM.",
-                source_quantities=["P1H"],
+                source_quantities=["P1H", "P"],
             ),
             "SPFH": with_clean_attrs(
                 compute_specific_humidity(
                     merged_inputs["T"],
                     merged_inputs["H"],
-                    merged_inputs["P1H"],
+                    pressure_series,
                 ).rename("SPFH"),
                 units="kg/kg",
                 description="Specific humidity for ParFlow/CLM.",
-                source_quantities=["T", "H", "P1H"],
+                source_quantities=["T", "H", "P1H", "P"],
             ),
             "DSWR": with_clean_attrs(
                 xr.full_like(template, np.nan).rename("DSWR"),
