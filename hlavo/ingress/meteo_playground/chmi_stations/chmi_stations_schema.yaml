@@ -84,6 +84,78 @@ parflow_input:
         step_limits: [ 0.0001, 0.0001, "degrees" ]
 
 
+open_meteo:
+  VARS:
+    temperature_2m:
+      unit: "degC"
+      description: "Open-Meteo air temperature at 2 m"
+      df_col: "temperature_2m"
+      coords: [ "date_time", latitude, longitude ]
+
+    relative_humidity_2m:
+      unit: "%"
+      description: "Open-Meteo relative humidity at 2 m"
+      df_col: "relative_humidity_2m"
+      coords: [ "date_time", latitude, longitude ]
+
+    precipitation:
+      unit: "mm"
+      description: "Open-Meteo hourly total precipitation"
+      df_col: "precipitation"
+      coords: [ "date_time", latitude, longitude ]
+
+    surface_pressure:
+      unit: "hPa"
+      description: "Open-Meteo surface pressure"
+      df_col: "surface_pressure"
+      coords: [ "date_time", latitude, longitude ]
+
+    wind_speed_10m:
+      unit: "m/s"
+      description: "Open-Meteo wind speed at 10 m"
+      df_col: "wind_speed_10m"
+      coords: [ "date_time", latitude, longitude ]
+
+    wind_direction_10m:
+      unit: "degree"
+      description: "Open-Meteo wind direction at 10 m"
+      df_col: "wind_direction_10m"
+      coords: [ "date_time", latitude, longitude ]
+
+    shortwave_radiation:
+      unit: "W / m ** 2"
+      description: "Open-Meteo shortwave radiation"
+      df_col: "shortwave_radiation"
+      coords: [ "date_time", latitude, longitude ]
+
+    direct_radiation:
+      unit: "W / m ** 2"
+      description: "Open-Meteo direct radiation"
+      df_col: "direct_radiation"
+      coords: [ "date_time", latitude, longitude ]
+
+    diffuse_radiation:
+      unit: "W / m ** 2"
+      description: "Open-Meteo diffuse radiation"
+      df_col: "diffuse_radiation"
+      coords: [ "date_time", latitude, longitude ]
+  COORDS:
+    date_time:
+      chunk_size: 1024
+      merge:
+        step_limits: [ 1, 1, "m" ]
+
+    latitude:
+      chunk_size: 32
+      merge:
+        step_limits: [ 0.0001, 0.0001, "degrees" ]
+
+    longitude:
+      chunk_size: 32
+      merge:
+        step_limits: [ 0.0001, 0.0001, "degrees" ]
+
+
 chmi_stations:
   VARS:
     API30:

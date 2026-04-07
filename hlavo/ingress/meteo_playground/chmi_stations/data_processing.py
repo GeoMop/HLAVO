@@ -7,6 +7,7 @@ import xarray as xr
 import numpy as np
 
 from hlavo.common.zarr_fuse_reader import read_storage
+from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
 
 LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations_storage"
 ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
 STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
 STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
+OPEN_METEO_DATA_HOURLY_PATH = SCRIPT_DIR / "open_meteo_data_hourly"
 CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
@@ -381,6 +383,57 @@ def rename_hourly_overlap_columns(active_station_daily_df, active_station_hourly
     )
 
 
+def load_open_meteo_dataframe(
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    station_wsi=None,
+    start_date=None,
+    end_date=None,
+    data_dir=OPEN_METEO_DATA_HOURLY_PATH,
+):
+    """
+    Download hourly Open-Meteo data for the selected station location, cache the raw JSON
+    payload, and shape the dataframe for storage update.
+    """
+    assert start_date is not None, "start_date must be provided for Open-Meteo download."
+    assert end_date is not None, "end_date must be provided for Open-Meteo download."
+    if station_wsi is None:
+        station_wsi = CLM_STATION_PRIORITY[0]
+
+    stations_df = pl.read_csv(stations_csv_path)
+    station_rows = stations_df.filter(pl.col("WSI") == station_wsi)
+    assert station_rows.height == 1, f"Expected exactly one station row for {station_wsi!r}."
+    station = station_rows.row(0, named=True)
+
+    open_meteo_df = open_meteo(
+        latitude=station["LAT"],
+        longitude=station["LON"],
+        start=start_date,
+        end=end_date,
+        json_path=(
+            Path(data_dir)
+            / station_wsi
+            / f"open-meteo-{station_wsi}-{start_date[:10]}-{end_date[:10]}.json"
+        ),
+    )
+    return open_meteo_df.with_columns(
+        pl.lit(f"open_meteo:{station_wsi}").alias("STATION"),
+        pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
+        pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
+    ).select(
+        [
+            "STATION",
+            "date_time",
+            "latitude",
+            "longitude",
+            *[
+                column_name
+                for column_name in open_meteo_df.columns
+                if column_name != "date_time"
+            ],
+        ]
+    )
+
+
 def warn_long_pressure_gap_in_series(pressure_series, max_gap_hours=24):
     """
     Warn if a merged hourly pressure series still contains a null gap longer than max_gap_hours.
@@ -462,6 +515,19 @@ def update_storage(stations_df):
 
     # node.update(add_missing_schema_columns(stations_df, node))
     node.update(stations_df)
+
+
+def update_open_meteo_storage(open_meteo_df):
+    """
+    Save Open-Meteo data into a separate zarr_fuse node.
+    """
+    node, _ = read_storage(
+        CHMI_STATIONS_SCHEMA_PATH,
+        node_path=["open_meteo"],
+        var_names=[],
+        storage_path=CHMI_STATIONS_STORAGE_PATH,
+    )
+    node.update(open_meteo_df)
 
 
 def update_parflow_input_storage(
@@ -730,8 +796,19 @@ def main():
         active_station_hourly_df = rename_hourly_overlap_columns(active_station_daily_df,
                                                                  active_station_hourly_df)
 
-        active_station_df = pl.concat([active_station_daily_df, active_station_hourly_df], how="diagonal_relaxed")
+        active_station_df = pl.concat(
+            [active_station_daily_df, active_station_hourly_df],
+            how="diagonal_relaxed",
+        )
         update_storage(active_station_df)
+
+        # Add open meteo data
+        open_meteo_df = load_open_meteo_dataframe(start_date=start_date, end_date=end_date)
+        print("Open-Meteo dataframe preview:")
+        print(open_meteo_df.head())
+        print(f"Open-Meteo dataframe shape: {open_meteo_df.shape}")
+        update_open_meteo_storage(open_meteo_df)
+
 
     parflow_clm_ds = build_parflow_clm_input_dataset()
     update_parflow_input_storage(parflow_clm_ds)
