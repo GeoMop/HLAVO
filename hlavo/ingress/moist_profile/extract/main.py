@@ -365,8 +365,10 @@ if __name__ == '__main__':
     # TO S3
     storage_url = "s3://hlavo-testing/profiles.zarr"
     # remove_storage(storage_path=storage_url)
+    # data from 2025 01-06
     # main(source_dir="../20260301T224908_dataflow_grab",
     #      storage_path=storage_url)
+    # data from 2025 07-12
     # main(source_dir="../20260301T225923_dataflow_grab",
     #      storage_path=storage_url)
     read_storage(storage_url)
