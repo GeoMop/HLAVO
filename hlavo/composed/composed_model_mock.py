@@ -27,7 +27,7 @@ import numpy as np
 from pathlib import Path
 from dask.distributed import Client, LocalCluster, get_client, Queue
 from hlavo.kalman.kalman import KalmanFilter
-from data_processing.load_data import load_data
+from hlavo.ingress.moist_profile.load_data import load_data
 
 
 # ---------------------------------------------------------------------------

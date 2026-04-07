@@ -1,0 +1,12 @@
+{
+  "attributes": {
+    "__structure__": "ATTRS:\n  description: Storage for the moisture profile monitoring network. Optionally amended\n    by the local meteo data.\n  S3_ENDPOINT_URL: https://s3.cl4.du.cesnet.cz\n  STORE_URL: /home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage\n  VERSION: 0.0.0\nCOORDS: {}\nVARS: {}\n",
+    "__empty__": true,
+    "description": "Storage for the moisture profile monitoring network. Optionally amended by the local meteo data.",
+    "S3_ENDPOINT_URL": "https://s3.cl4.du.cesnet.cz",
+    "STORE_URL": "/home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage",
+    "VERSION": "0.0.0"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

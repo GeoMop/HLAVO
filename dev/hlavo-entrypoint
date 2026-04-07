@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -xeuo pipefail
 
-USER_NAME="hlavo"
-TARGET_UID="${HLAVO_UID:?HLAVO_UID not set}"
-TARGET_GID="${HLAVO_GID:?HLAVO_GID not set}"
+CONDA_BASE="${CONDA_BASE:-/home/hlavo/miniconda3}"
+ENV_NAME="${ENV_NAME:-hlavo}"
 
 if [[ $# -eq 0 ]]; then
   set -- bash
 fi
 
-if [[ "$(id -u)" -ne 0 ]]; then
-  exec "$@"
+CONDA_SH="$CONDA_BASE/etc/profile.d/conda.sh"
+if [[ ! -f "$CONDA_SH" ]]; then
+  echo "ERROR: conda.sh not found at $CONDA_SH" >&2
+  exit 1
 fi
 
-groupmod -g "$TARGET_GID" "$USER_NAME" >/dev/null 2>&1 || true
-usermod -u "$TARGET_UID" "$USER_NAME" >/dev/null 2>&1 || true
-usermod -g "$TARGET_GID" "$USER_NAME" >/dev/null 2>&1 || true
-
-exec su -s /bin/bash "$USER_NAME" -c "$(printf '%q ' "$@")"
+# Run directly with conda env active.
+# shellcheck disable=SC1090
+source "$CONDA_SH"
+conda activate "$ENV_NAME"
+exec "$@"

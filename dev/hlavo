@@ -19,26 +19,36 @@ while [[ "${1:-}" == -* ]]; do
   esac
 done
 
+[[ $# -ge 1 ]] || { usage; exit 1; }
+subcmd="$1"
+shift || true
+
+if [[ "$subcmd" == "codex" ]]; then
+    HLAVO_MODE="codex"
+fi
+
 source "$SCRIPT_ROOT/hlavo_common.sh"
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./hlavo run <command> [args...]
-  ./hlavo shell
-  ./hlavo venv [-f]
-  ./hlavo -t run <command> [args...]
-  ./hlavo -t shell
+
+  ./hlavo [-c] run <command> [args...]  
+
 EOF
 }
 
-[[ $# -ge 1 ]] || { usage; exit 1; }
-subcmd="$1"
-shift || true
 
 case "$subcmd" in
   shell)
     run_cmd "${SHELL:-bash}" -i
+    ;;
+  codex)
+    #run_cmd bash -c "echo \$PATH"
+    #run_cmd pwd
+    #run_cmd python3 -c "import filterpy"
+    #run_cmd python3 -c "import sys; print(sys.executable)"
+    run_cmd codex "$@"
     ;;
   run)
     run_cmd "$@"

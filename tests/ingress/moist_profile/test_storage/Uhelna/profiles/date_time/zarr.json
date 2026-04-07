@@ -1,0 +1,72 @@
+{
+  "shape": [
+    2568
+  ],
+  "data_type": "int64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        2568
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "bytes",
+      "configuration": {
+        "endian": "little"
+      }
+    },
+    {
+      "name": "zstd",
+      "configuration": {
+        "level": 0,
+        "checksum": false
+      }
+    }
+  ],
+  "attributes": {
+    "unit": {
+      "tick": "h",
+      "tz": "UTC",
+      "dayfirst": false,
+      "yearfirst": true
+    },
+    "type": "datetime64[h]",
+    "range": null,
+    "description": "Time coordinate",
+    "df_col": "date_time",
+    "source_unit": {
+      "tick": "h",
+      "tz": "UTC",
+      "dayfirst": false,
+      "yearfirst": true
+    },
+    "composed": [
+      "date_time"
+    ],
+    "chunk_size": 1024,
+    "step_limits": [
+      1,
+      12,
+      "hour"
+    ],
+    "sorted": "None",
+    "units": "hours since 2025-01-06 00:00:00",
+    "calendar": "proleptic_gregorian"
+  },
+  "dimension_names": [
+    "date_time"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

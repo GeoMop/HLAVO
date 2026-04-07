@@ -1,12 +1,23 @@
-# Dokumentace
+
+```{image} graphics/ack.svg
+:alt: Acknowledgement
+:align: center
+:width: 90%
+```
+---
+
+# Project HLAVO
+
 
 ```{toctree}
 :maxdepth: 2
 :caption: Contents
 
-
-project_overview
+introduction
 datasets
-et_model
-simulation_engine
-
+ingress-server-deployment
+models
+calibration
+dashboard
+dvc_usage
+```
