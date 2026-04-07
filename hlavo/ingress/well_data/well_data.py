@@ -271,7 +271,7 @@ def read_sections(section_file, sheetname):
     df["confirmed"] = df["sheetname_in_water_file"].notna().astype(int)
 
     expected = ( df["well_id"].str.strip() + " (" + df["collector"].str.strip() + ")" )
-    invalid_mask = df["borehole_full_name"].str.strip() != expected
+    invalid_mask = (df["borehole_full_name"].str.strip() != expected) & (pd.isna(df["collector"]))
     for idx, row in df.loc[invalid_mask].iterrows():
         logger.warning(
             "Invalid value of 'borehole_full_name' in row %s: 'well_id''='%s', 'collector'='%s', 'borehole_full_name'='%s', expected='%s'",
@@ -321,7 +321,7 @@ def read_sections(section_file, sheetname):
 
     expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
     expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
-    invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
+    invalid_mask_interval = ((df["OD"] - expected_from).abs() >= 1) | ((df["DO"] - expected_to).abs() >= 1)
     for idx, row in df.loc[invalid_mask_interval].iterrows():
         logger.warning("Invalid \'OD - DO\' interval at row %s: OD=%s, expected=%s; DO=%s, expected=%s",
                        idx, row['OD'], expected_from.loc[idx], row['DO'], expected_to.loc[idx])
