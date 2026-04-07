@@ -1,8 +1,15 @@
 import json
+import logging
 import math
+import re
 from collections import defaultdict
+from pathlib import Path
+from urllib.parse import urljoin
+from urllib.request import urlopen
 
 import pandas as pd
+
+LOGGER = logging.getLogger(__name__)
 
 
 # -----------------------------
@@ -221,7 +228,9 @@ def build_station_dataframe(
         rec = {
             "WSI": wsi,
             "FULL_NAME": st["FULL_NAME"],
-            "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            # "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            "LAT": st['LAT'],
+            "LON": st['LON'],
             "ELEVATION": st["ELEVATION"],
             "DIST_KM": dist,
             "BEGIN_DATE": st["BEGIN_DATE"],
@@ -240,6 +249,81 @@ def build_station_dataframe(
     return df
 
 
+def filter_active_today(df):
+    """
+    Keep only stations active on today's local date based on BEGIN_DATE/END_DATE.
+    """
+    if df.empty:
+        return df.copy()
+
+    begin_dates = pd.to_datetime(df["BEGIN_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    end_dates = pd.to_datetime(df["END_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    today = pd.Timestamp.now(tz="Europe/Prague").date()
+
+    is_active = begin_dates.le(today) & (end_dates.ge(today) | end_dates.isna())
+    return df.loc[is_active].reset_index(drop=True)
+
+
+def fetch_directory_filenames(index_url):
+    """
+    Load a directory listing and return linked filenames.
+    """
+    with urlopen(index_url) as response:
+        html = response.read().decode("utf-8")
+
+    filenames = re.findall(r'href="([^"]+)"', html)
+    return [
+        filename
+        for filename in filenames
+        if filename not in {"../", "./"} and not filename.endswith("/")
+    ]
+
+
+def find_station_data_urls(active_df, index_url):
+    """
+    Match CHMI daily data filenames whose names contain active station WSI codes.
+    """
+    if active_df.empty:
+        return []
+
+    active_wsis = active_df["WSI"].dropna().astype(str).unique().tolist()
+    filenames = fetch_directory_filenames(index_url)
+
+    matching_filenames = sorted(
+        filename
+        for filename in filenames
+        if any(wsi in filename for wsi in active_wsis)
+    )
+    return [urljoin(index_url, filename) for filename in matching_filenames]
+
+
+def download_station_data(file_urls, output_dir):
+    """
+    Download matched CHMI daily files into a local directory.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    downloaded_paths = []
+    for file_url in file_urls:
+        target_path = output_path / Path(file_url).name
+        with urlopen(file_url) as response:
+            target_path.write_bytes(response.read())
+        downloaded_paths.append(target_path)
+        LOGGER.info("Downloaded %s", target_path.name)
+
+    return downloaded_paths
+
+
+
+def process_chmi_stations_csv():
+    # not found:
+    # wet_bulb_temperature_2m
+    # ventilation_index
+    # cloud_fraction_xxx is not provided by meteostations,
+    # cloud_fraction is N/8 (osminy)
+    pass
+
 # -----------------------------
 # main: call subscripts
 # -----------------------------
@@ -248,7 +332,10 @@ def main():
     meta1_path = "meta1.json"
     meta2_path = "meta2.json"
     output_csv = "stations_nearby.csv"
+    active_output_csv = "stations_nearby_active.csv"
+    stations_data_dir = "stations_data"
     quantity_defs_path = "quantity_definitions.json"  # <--- new output file
+    historical_daily_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
 
     # reference location & radius (example: somewhere near Cheb)
     center_lat = 50.8659928
@@ -295,6 +382,14 @@ def main():
     # 5) output to CSV
     df.to_csv(output_csv, index=False, encoding="utf-8")
     print(f"Written {len(df)} stations to {output_csv}")
+
+    active_df = filter_active_today(df)
+    active_df.to_csv(active_output_csv, index=False, encoding="utf-8")
+    print(f"Written {len(active_df)} active stations to {active_output_csv}")
+
+    station_data_urls = find_station_data_urls(active_df, historical_daily_url)
+    downloaded_paths = download_station_data(station_data_urls, stations_data_dir)
+    print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_dir}")
 
 
 if __name__ == "__main__":
