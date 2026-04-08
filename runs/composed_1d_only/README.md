@@ -40,3 +40,17 @@ python tests/model_1d/model_1d_test_run.py
 * Measurement covariance matrix is simplistic (identity)
 
 ---
+
+
+
+## Charon cluster run - not tested
+First singularity image has to be created:
+```bash
+export SINGULARITY_CACHEDIR="user home dir"
+export SINGULARITY_LOCALCACHEDIR="user scratch dir"
+export SINGULARITY_TMPDIR=$SCRATCHDIR
+
+singularity build hlavo_0_1_0.sif  docker://flow123d/hlavo:0.1.0
+
+
+./pbs_run.sh

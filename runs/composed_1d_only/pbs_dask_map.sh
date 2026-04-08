@@ -12,9 +12,9 @@ set -x
 # CONFIGURATION
 ############################################
 
-work_dir="/storage/liberec3-tul/home/martin_spetlik/HLAVO_distr/runs/deep_model"
-HLAVODIR="/storage/liberec3-tul/home/martin_spetlik/HLAVO_distr"
-CONTAINER="/storage/liberec3-tul/home/martin_spetlik/hlavo_0_1_0.sif"
+work_dir=""
+HLAVODIR=""  # HLAVO repository code dir
+CONTAINER="hlavo_0_1_0.sif"
 
 ENV_PY="/home/hlavo/miniconda3/envs/hlavo/bin/python"
 
