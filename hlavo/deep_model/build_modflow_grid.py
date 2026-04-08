@@ -45,20 +45,24 @@ class BuildConfig:
     stress_periods_days: tuple[float, ...]
 
     @staticmethod
-    def from_yaml(config_path: Path, output_path: Path | None = None) -> "BuildConfig":
+    def from_yaml(
+        config_path: Path,
+        workspace: Path | None = None,
+    ) -> "BuildConfig":
         assert config_path.exists(), f"Config file not found: {config_path}"
         with config_path.open("r", encoding="utf-8") as handle:
             raw = yaml.safe_load(handle)
         assert isinstance(raw, dict), "Config YAML must be a mapping"
         model_raw = raw.get("model", {})
         assert isinstance(model_raw, dict), "model config must be a mapping"
-        model_name = model_raw.get("model_name")
-        assert model_name, "model.model_name is required in the config"
-        model_name = str(model_name)
-        base_workspace = Path(str(model_raw.get("workspace", "model")))
+        model_name = str(model_raw["model_name"])
+        base_workspace = Path(workspace) if workspace is not None else Path(
+            str(model_raw.get("workspace", "model"))
+        )
         run_workspace = base_workspace / model_name
         sim_name = str(model_raw.get("sim_name", "uhelna"))
         exe_name = str(model_raw.get("exe_name", "mf6"))
+
         recharge_rate = float(model_raw.get("recharge_rate", 1.0e-4))
         drain_conductance = float(model_raw.get("drain_conductance", 1.0))
         materials_raw = raw.get("materials", {})
@@ -102,13 +106,12 @@ class BuildConfig:
             )
 
         output_raw = raw.get("grid_output_path")
-        if output_path is None:
-            if output_raw:
-                output_path = Path(str(output_raw))
-                if not output_path.is_absolute():
-                    output_path = run_workspace / output_path
-            else:
-                output_path = run_workspace / "grid_materials.npz"
+        if output_raw:
+            output_path = Path(str(output_raw))
+            if not output_path.is_absolute():
+                output_path = run_workspace / output_path
+        else:
+            output_path = run_workspace / "grid_materials.npz"
         return BuildConfig(
             config_path=config_path,
             output_path=output_path,
@@ -123,6 +126,13 @@ class BuildConfig:
             simulation_days=float(simulation_days),
             stress_periods_days=stress_periods_days,
         )
+
+
+def build_model(config_path: Path, workspace: Path | None = None) -> BuildConfig:
+    build_config = BuildConfig.from_yaml(config_path, workspace=workspace)
+    build_modflow_grid(build_config.config_path, build_config.output_path)
+    write_modflow_inputs(build_config)
+    return build_config
 
 
 def active_mask_from_rasters(
@@ -595,18 +605,16 @@ def main() -> None:
         help="Path to model_config.yaml",
     )
     parser.add_argument(
-        "--output",
+        "--workspace",
         type=Path,
         default=None,
-        help="Optional output path for the grid npz",
+        help="Optional base workspace for generated model outputs.",
     )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-    build_config = BuildConfig.from_yaml(args.config, args.output)
-    build_modflow_grid(build_config.config_path, build_config.output_path)
-    write_modflow_inputs(build_config)
+    build_model(args.config, workspace=args.workspace)
 
 
 if __name__ == "__main__":

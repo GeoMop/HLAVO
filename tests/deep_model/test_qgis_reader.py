@@ -3,16 +3,26 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
+import pytest
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+GIS_DIR = ROOT.parent / "hlavo" / "deep_model" / "GIS"
+QGIS_PROJECT_PATH = GIS_DIR / "uhelna_all.qgs"
+
+pytestmark = pytest.mark.skipif(
+    not QGIS_PROJECT_PATH.exists(),
+    reason=f"QGIS project test data not available: {QGIS_PROJECT_PATH}",
+)
+
 import numpy as np
 from hlavo.deep_model.qgis_reader import ModelInputs, write_vtk_surfaces
 
 def _config_path() -> Path:
-    config = SCRIPT_DIR.parent / "model_config.yaml"
+    config = ROOT.parent / "hlavo" / "deep_model" / "config" / "model_config.yaml"
     assert config.exists(), f"Config file not found: {config}"
     return config
 

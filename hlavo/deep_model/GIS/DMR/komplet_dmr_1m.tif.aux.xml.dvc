@@ -1,0 +1,5 @@
+outs:
+- md5: ea60e4340157c2772bfedaad07a5a107
+  size: 505146
+  hash: md5
+  path: komplet_dmr_1m.tif.aux.xml

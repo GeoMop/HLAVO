@@ -23,12 +23,10 @@ keep relation to the date time series of the measurements.
 
 from __future__ import annotations
 
-import argparse
 import logging
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import attrs
@@ -552,17 +550,9 @@ def _parse_locations(config_data):
     return locations
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("work_dir", help="Path to work dir")
-    parser.add_argument("config_file", help="Path to configuration file")
-    args = parser.parse_args(sys.argv[1:])
-
-    work_dir = Path(args.work_dir).resolve()
-    kalman_config = Path(args.config_file).resolve()
-
+def run_simulation(work_dir: Path, config_path: Path) -> float:
+    work_dir = Path(work_dir).resolve()
+    kalman_config = Path(config_path).resolve()
     with kalman_config.open("r", encoding="utf-8") as handle:
         config_data = yaml.safe_load(handle) or {}
 
@@ -591,8 +581,13 @@ if __name__ == "__main__":
         t_end = float(model_3d_cfg.time_step_days)
     assert t_end > 0.0, "model_3d total simulation time must be > 0"
 
-    final_state = setup_models(n_1d, t_end, work_dir, kalman_config, model_3d_cfg, locations_1d)
-    LOG.info("[MAIN] Final 3D time: %s", final_state)
+    try:
+        final_state = setup_models(n_1d, t_end, work_dir, kalman_config, model_3d_cfg, locations_1d)
+        LOG.info("[MAIN] Final 3D time: %s", final_state)
+        return float(final_state)
+    finally:
+        client.close()
+        cluster.close()
 
-    client.close()
-    cluster.close()
+if __name__ == "__main__":
+    raise SystemExit("Use hlavo/main.py simulate <config_file> [-w <workdir>]")

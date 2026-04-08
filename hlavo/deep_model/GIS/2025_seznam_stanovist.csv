@@ -1,0 +1,47 @@
+loc_id,loc_id_old,logger_id_spaces,logger_id,location_gps,latitude,longitude,logger_group,env_forest,env_medow,env_field,env_undergrowth,terain_flat,terain_slope,terain_dip,soil,forest_litter,bottom_clay,bottom_sand,note
+1, --,U01 - E9F7,U01-E9F7,"50.8635753N, 14.8898442E",50.8635753,14.8898442,Uhelná lesík,,,,1,,,,,,,,
+2, --,U02 - 8F58,U02-8F58,"50.8632706N, 14.8890461E",50.8632706,14.8890461,Uhelná lesík,1,,,1,,,,,,,,
+3, --,U03 - E3A3,U03-E3A3,"50.8633061N, 14.8893614E",50.8633061,14.8893614,Uhelná lesík,,,,1,,,,,,,,
+4, --,U04 - 64F3,U04-64F3,"50.8635417N, 14.8897447E",50.8635417,14.8897447,Uhelná lesík,1,,,,,,,,,,,
+5, --,U05 - 86B8,U05-86B8, --,50.772962,15.071746,Lab,,,,,,,,,,,,kolona
+11,8,U11 - 364C,U11-364C,"50.87449815,14.88278366",50.87449815,14.88278366,Uhelná,,0.5,0.5,,,,,,,,,"3 vrty vedle sebe, mezi hraniční cestou a polem (analýza chyb)"
+12,2,U12 - F644,U12-F644,"50.86466105,14.89220363",50.86466105,14.89220363,Uhelná,1,,,,,,,,,,,"okraj lesa, cesta"
+13,17,U13 - 2657,U13-2657,"50.8624258, 14.8859561",50.8624258,14.8859561,Uhelná,,,,1,,,,,,,,"nad pískovnou od severu, úvoz, vedle modré tyče na JZ ze 4"
+14,7a,U14 - 569B,U14-569B,"50.87019366,14.88764935",50.87019366,14.88764935,Uhelná,,1,,,,,,,,,,"louka mezi lesem a polem, 100 m od hraniční cesty"
+15,9a,U15 - 813A,U15-813A,"50.87456029,14.88266139",50.87456029,14.88266139,Uhelná,,0.5,0.5,,,,,,,,,"3 vrty vedle sebe, mezi hraniční cestou a polem (analýza chyb)"
+16,9b,U16 - 6707,U16-6707,"50.8745678, 14.8826150",50.8745678,14.8826150,Uhelná,,0.5,0.5,,,,,,,,,"3 vrty vedle sebe, mezi hraniční cestou a polem (analýza chyb)"
+17,10,U17 - 2D92,U17-2D92,"50.8704404,14.8796564",50.8704404,14.8796564,Uhelná,,,1,,,,,,,,,"na cestě, rozhraní pole/louka"
+18,11,U18 - 9018,U18-9018,"50.87304722,14.87284959",50.87304722,14.87284959,Uhelná,,,1,,,,,,,,,"2 velké vrty vedle sebe, výsek v poli u cesty, osazeno jen 1 stanoviště"
+19,15,U19 - 04A8,U19-04A8,"50.8534267, 14.8832803",50.8534267,14.8832803,Uhelná,,,1,,,,,,,,,"mezi polem a cestou, vedle sloupku"
+20,16,U20 - B7B2,U20-B7B2,"50.8534842, 14.8832867",50.8534842,14.8832867,Uhelná,1,,,,,,,,,,,okraj lesa vedle pole u silnice Grabštejn - pískovna
+21,13,U21 - 3219,U21-3219,"50.8659732,14.8700112",50.8659732,14.8700112,Uhelná,,,,1,,,0.5,,,,,"2 velké vrty vedle sebe, lesík mezi poli, osazeno jen 1 stanoviště"
+22,12,U22 - 78DD,U22-78DD,"50.8698780,14.8662200",50.8698780,14.8662200,Uhelná,,1,,,,,,,,,,"travnatý pás mezi polem a lesíkem,  cca 15 m nad velkým vrtem (ve výsledku širší díra, bortily se stěny)"
+23,4b,U23 - 714C,U23-714C,"50.8696011, 14.9093625",50.8696011,14.9093625,Uhelná,,,,1,,,,,,,,"přímo u cesty (divné, vrták šel jak po másle)"
+24,19,U24 - 907D,U24-907D,"50.8598947, 14.9000819",50.8598947,14.9000819,Uhelná,,1,,,,,,,,,,hranice louka/les východně nad pískovnou
+25,1,U25 - 5A6E,U25-5A6E,"50.86313472,14.89576663",50.86313472,14.89576663,Uhelná,1,,,,,,,,,,,"okraj lesa, 20 m od cesty"
+26,6,U26 - 8FAD,U26-8FAD,"50.8687356,14.8938567",50.8687356,14.8938567,Uhelná,0.5,,,0.5,,,,,,,,"hraniční cesta v lese (ve výsledku širší díra, bortily se stěny)"
+27,20,U27 - 1D2F,U27-1D2F,"50.8641892, 14.9117578",50.8641892,14.9117578,Uhelná,,0.5,,0.5,,,,,,,,"mezi polem a remízkem (divné, vrták šel jak po másle)"
+28,5,U28 - CC62,U28-CC62,"50.8681017,14.8990330",50.8681017,14.8990330,Uhelná,,1,,,,,,,,,,"louka, vedle stromu"
+29,14,U29 - D104,U29-D104,"50.8559100, 14.8763022",50.8559100,14.8763022,Uhelná,,,1,,,,,,,,,"pole, vedle skruže se sloupkem"
+31,22,U31 - 5FE9,U31-5FE9,"50.8780672, 14.8895597",50.8780672,14.8895597,Uhelná,1,,,,,,,,,,,"smrkový les, cca 30 m pod silnicí"
+32,3,U32 - 0486,U32-0486,"50.8660501,14.8941271",50.8660501,14.8941271,Uhelná,1,,,,,,,,,,,"okraj lesa, vedle plotu vodárny"
+33,23,U33 - 4348,U33-4348,"50.8754539, 14.8944306",50.8754539,14.8944306,Uhelná,1,,,,,,,,,,,řídký smíšený les
+34,21,U34 - AABF,U34-AABF,"50.872158,14.902663",50.872158,14.902663,Uhelná,,,1,,,,,,,,,pole
+5,--,U36 - C4C9,U36-C4C9, --,50.772962,15.071746,Lab,,,,,,,,,,,,
+,7b,,,"50.8703344, 14.8881967",50.8703344,14.8881967,Uhelná,1,,,,,,,,,,,"okraj lesa 40 m od 7a (spodek vrtu se pořád bortí a ucpává, 3 pokusy...)"
+,18,,,"50.8545558, 14.8927639",50.8545558,14.8927639,Uhelná,1,,,,,,,,,,,"nad pískovnou od jihu, plánované"
+,4a,,,"50.8717433,14.9124513",50.8717433,14.9124513,Uhelná,,,,1,,,,,,,,"přímo u cesty, problém s podložím, po 80 cm skála"
+,,,,,,,,8.5,6,6.5,4,,,,,,,,
+,,,,,,,,,,,,,,,,,,,
+,Uhelná,,,,,,,,,,,,,,,,,,
+,Uhelná - meteostanice a blízké okolí,,,,,,,,,,,,,,,,,,
+,Oldřichov,,,,,,,,,,,,,,,,,,
+,Václavice - Grabštejn,,,,,,,,,,,,,,,,,,
+,Polsko,,,,,,,,,,,,,,,,,,
+,neosazené,,,,,,,,,,,,,,,,,,
+,kolona,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,
+ďolíky  mohou být ovlivněny stahováním vody,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,
+pro navigaci:,,,,,,,,,,,,,,,,,,,
+https://mapy.cz/s/leruluceko,,,,,,,,,,,,,,,,,,,

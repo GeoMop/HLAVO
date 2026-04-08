@@ -166,7 +166,7 @@ class ModelInputs:
     def from_yaml(config_path: Path) -> "ModelInputs":
         config = ModelConfig.from_yaml(config_path)
         reader = QgisProjectReader(
-            project_path=config.qgis_project_path,
+            project_path=config_path.parent.parent / config.qgis_project_path,
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
         )
