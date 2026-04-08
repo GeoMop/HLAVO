@@ -829,7 +829,6 @@ class KalmanFilter:
         :param float pressure_at_bottom: Boundary condition for the physical model
         :return: Final estimated velocity from the state model
         """
-
         print(f"[UKF] Running Kalman step (pid={os.getpid()})")
 
         # ------------------------------------------------------------------
@@ -921,7 +920,7 @@ class KalmanFilter:
         # ------------------------------------------------------------------
         # Store results
         # ------------------------------------------------------------------
-        final_time = meteo_times[-1]
+        final_time = t_end
 
         self.results.times.append(final_time)
         self.results.ukf_x.append(ukf.x.copy())

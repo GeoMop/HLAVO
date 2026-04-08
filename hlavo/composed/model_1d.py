@@ -74,7 +74,6 @@ class Model1D:
 
         :return: Configured Unscented Kalman Filter (UKF) instance.
         """
-
         # Load measurement dataset from scheme file
         measurements_xarray = load_measurments_data(
             scheme_file=self.kalman.measurements_config["measurements_scheme_file"]
@@ -84,9 +83,7 @@ class Model1D:
         self.measurements_dataset = measurements_xarray.sel(site_id=self.site_id)
 
         # TODO: Define proper measurement covariance matrix (R)
-        kalman_R_matrix = Model1D.calculate_kalman_R_matrix(
-            len(self.measurements_dataset["depth_level"])
-        )
+        kalman_R_matrix = Model1D.calculate_kalman_R_matrix(len(self.measurements_dataset["depth_level"]))
 
         # Initialize and return configured Kalman filter
         return self.kalman.set_kalman_filter(kalman_R_matrix)

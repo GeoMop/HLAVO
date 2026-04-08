@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 
-from dask.distributed import Client, LocalCluster
+#from dask.distributed import Client, LocalCluster
 
 from hlavo.composed.model_1d import Model1D
 from hlavo.composed.composed_model_mock import relative_to_absolute_paths
@@ -98,10 +98,10 @@ def test_get_long_lat(model):
 
 
 def test_step(model):
-    start = np.datetime64("2025-03-18T00:00:00")
-    target = np.datetime64("2025-03-21T00:00:00")
+    start = np.datetime64("2025-03-06T00:00:00")
+    target = np.datetime64("2025-03-06T02:00:00")
 
-    result = model.step(start, target, pressure_at_bottom=np.zeros(10))
+    result = model.step(start, target, pressure_at_bottom=1.0)
 
     assert result is not None
     assert hasattr(result, "velocity")
@@ -127,7 +127,6 @@ if __name__ == "__main__":
 
     test_step(model)
     print("✓ step passed")
-
 
 
     print("\nAll tests passed.")
