@@ -102,32 +102,28 @@ def _filter_jumps(df):
     return ordered.sort_index()
 
 
-def _plot_single_site_level(df, site_id, depth_level):
+def _plot_single_site_level(ds, site_id, depth_level):
     """
     Plot graph of one site_id and depth_level.
 
-    Param   df            dataframe of moisture data
+    Param   ds            dataset of moisture data
     Param   site_id       Index of site
     Param   depth_level   Order of depth level
     Returns plt object
     """
-    df_filtered = df[
-        (df["site_id"] == site_id) &
-        (df["depth_level"] == depth_level)
-        ]
-    #print(df_filtered)
-    df_filter_jumps = _filter_jumps(df_filtered)
-    ax = df_filter_jumps.plot(
-        x="date_time",
-        y=["moisture", "moisture_filtered"],
-        figsize=(10, 5)
-    )
+    subset = ds.sel(site_id=site_id, depth_level=depth_level)
+    assert "moisture_filtered" in subset, "Expected 'moisture_filtered' variable in dataset."
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    subset["moisture"].plot.line(ax=ax, x="date_time", label="moisture")
+    subset["moisture_filtered"].plot.line(ax=ax, x="date_time", label="moisture_filtered")
 
     ax.set_title("Moisture data of site: '" + str(site_id) + "', level: '" + str(depth_level) + "'")
     ax.set_xlabel("Date")
     ax.set_ylabel("Moisture")
     ax.grid(True)
-    return ax.get_figure()
+    ax.legend()
+    return fig
 
 
 def read_data(site_ids, depth_levels):
@@ -163,17 +159,15 @@ def read_data(site_ids, depth_levels):
     return ds
 
 
-def apply_filter(df, site_ids, depth_levels, out_file):
+def plot_filters(ds, site_ids, depth_levels, out_file):
     """
     IN PROGRESS. Plot data of one side and depth level.
 
-    Param   df            dataframe of moisture data
+    Param   ds            dataset of moisture data
     Param   site_ids      List of indexes of site
     Param   depth_levels  List of orders of depth levels
     Param   out_file      Name of output pdf file
     """
-    df_pandas = df.to_pandas()
-
     workdir = _create_work_dir()
     full_out_file = out_file + ".pdf"
     full_path = workdir / full_out_file
@@ -181,7 +175,7 @@ def apply_filter(df, site_ids, depth_levels, out_file):
 
     for site_id in site_ids:
         for depth_level in depth_levels:
-            fig = _plot_single_site_level(df_pandas, site_id, depth_level)
+            fig = _plot_single_site_level(ds, site_id, depth_level)
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
 

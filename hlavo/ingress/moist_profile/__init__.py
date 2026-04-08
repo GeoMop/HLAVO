@@ -1,1 +1,1 @@
-from .data_filter import read_data, apply_filter
+from .data_filter import read_data, plot_filters
