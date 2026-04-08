@@ -108,8 +108,10 @@ def test_parflow_model_with_clm():
 
 
         # Run and postprocess
+        script_dir = Path(__file__).resolve().parent
         toy.run(init_pressure=pressure,
                 met_data=ds,
+                input_dir=script_dir
                 # precipitation_value=precipitation_flux,
                 # start_time=0.0,
                 # stop_time=stop_time,

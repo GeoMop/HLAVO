@@ -371,12 +371,11 @@ class ToyProblem(AbstractModel):
         self._run.Geom.domain.Porosity.Type = "PFBFile"
         self._run.Geom.domain.Porosity.FileName = filename
 
-    def prepare_clm(self, working_dir, ds):
+    def prepare_clm(self, working_dir, input_dir, ds):
         # We assume these files exist in current dir.
         # They should be either generated runtime or stored somewhere globally.
-        # shutil.copy("drv_clmin.dat", working_dir / "drv_clmin.dat")
-        shutil.copy("drv_vegm.dat", working_dir / "drv_vegm.dat")
-        shutil.copy("drv_vegp.dat", working_dir / "drv_vegp.dat")
+        shutil.copy(input_dir / "drv_vegm.dat", working_dir / "drv_vegm.dat")
+        shutil.copy(input_dir / "drv_vegp.dat", working_dir / "drv_vegp.dat")
 
         # Create subdirectories necessary for Parflow/CLM coupling.
         for dir in [
@@ -511,7 +510,8 @@ class ToyProblem(AbstractModel):
             state_params=None,
             start_time=0, stop_time=20, time_step=0.025,
             met_data:xr.Dataset=None,
-            working_dir=None):
+            working_dir=None,
+            input_dir=None):
         if working_dir is None:
             working_dir = self._workdir
         shutil.rmtree(working_dir)
@@ -523,7 +523,7 @@ class ToyProblem(AbstractModel):
             stop_time = met_data.time_interval / np.timedelta64(1, 'h')
             time_step = met_data.time_step / np.timedelta64(1, 'h')
             precipitation_value = 0 # precipitation is computed by CLM
-            self.prepare_clm(working_dir, met_data)
+            self.prepare_clm(working_dir, input_dir, met_data)
 
         if state_params is not None:
             self.set_dynamic_params(state_params)
