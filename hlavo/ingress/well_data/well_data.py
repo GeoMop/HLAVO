@@ -264,6 +264,13 @@ def read_sections(section_file, sheetname):
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
 
+    # convert columns to correct type
+    df["Z"] = df["Z"].astype(float)
+    df["Z_OD"] = df["Z_OD"].astype(float)
+    df["Z_DO"] = df["Z_DO"].astype(float)
+    df["OD"] = df["OD"].astype(float)
+    df["DO"] = df["DO"].astype(float)
+
     # add sheetname_in_water_file - according name of sheet in excel file if exists
     full_name_map = _sheet_names_dictionary();
     r_full_name_map = dict((v, k) for k, v in full_name_map.items())
@@ -293,10 +300,10 @@ def read_sections(section_file, sheetname):
     df = df.explode("interval", ignore_index=True)
 
     tmp = df["interval"].str.extract(
-        r"(?P<interval_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_max>\d+(?:\.\d+)?)"
+        r"(?P<interval_min>\d+(?:[.,]\d+)?)\s*-\s*(?P<interval_max>\d+(?:[.,]\d+)?)"
     )
-    df["interval_max"] = tmp["interval_max"].astype(float)
-    df["interval_min"] = tmp["interval_min"].astype(float)
+    df["interval_min"] = tmp["interval_min"].str.replace(",", ".").astype(float)
+    df["interval_max"] = tmp["interval_max"].str.replace(",", ".").astype(float)
 
     # add column interval_num_from_top (numbering of rows with same well_id)
     df["interval_num_from_top"] = df.groupby(["well_id", "collector"]).cumcount()
@@ -307,24 +314,19 @@ def read_sections(section_file, sheetname):
     for idx in invalid_rows_interval.index:
         logger.warning("Invalid interval at row %s: min=%s, max=%s", idx, df.at[idx, 'interval_min'], df.at[idx, 'interval_max'])
 
-    invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
+    expected_from = df["Z"] - df["DO"]
+    invalid_mask_from = (df["Z_OD"] - expected_from).abs() < 0.001
     invalid_rows_from = df[invalid_mask_from]
     for idx in invalid_rows_from.index:
         logger.warning("Invalid \'Z_OD\' value at row %s: Z_OD=%s, Z=%s, DO=%s. It should be \'Z_OD = Z - DO\'",
                        idx, df.at[idx, 'Z_OD'], df.at[idx, 'Z'], df.at[idx, 'DO'])
 
-    invalid_mask_to = df["Z_DO"] == df["Z"] - df["OD"]
+    expected_to = df["Z"] - df["OD"]
+    invalid_mask_to = (df["Z_DO"] - expected_to).abs() < 0.001
     invalid_rows_to = df[invalid_mask_to]
     for idx in invalid_rows_to.index:
         logger.warning("Invalid \'Z_DO\' value at row %s: Z_DO=%s, Z=%s, OD=%s. It should be \'Z_DO = Z - OD\'",
                        idx, df.at[idx, 'Z_DO'], df.at[idx, 'Z'], df.at[idx, 'OD'])
-
-    expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
-    expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
-    invalid_mask_interval = ((df["OD"] - expected_from).abs() >= 1) | ((df["DO"] - expected_to).abs() >= 1)
-    for idx, row in df.loc[invalid_mask_interval].iterrows():
-        logger.warning("Invalid \'OD - DO\' interval at row %s: OD=%s, expected=%s; DO=%s, expected=%s",
-                       idx, row['OD'], expected_from.loc[idx], row['DO'], expected_to.loc[idx])
 
     # remove unnecessary columns
     df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
