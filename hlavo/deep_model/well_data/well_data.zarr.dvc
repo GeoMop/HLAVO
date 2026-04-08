@@ -1,0 +1,6 @@
+outs:
+- md5: 2b4c401652aa0972673a59f2be784bc4.dir
+  size: 11928
+  nfiles: 10
+  hash: md5
+  path: well_data.zarr
