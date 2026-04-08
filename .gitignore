@@ -1,3 +1,5 @@
+.secrets_env
+tests/ingress/aladin_data
 dev/.codex_docker
 hlavo/deep_model/model
 hlavo/deep_model/runs
@@ -170,6 +172,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.secrets_env
 
 # Spyder project settings
 .spyderproject
