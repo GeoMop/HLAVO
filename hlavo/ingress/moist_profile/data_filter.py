@@ -142,7 +142,6 @@ def read_data(site_ids, depth_levels):
     water_level_node = root_node['Uhelna']['profiles']
 
     ds = water_level_node.dataset
-    ds = ds.set_index(obs=["date_time", "site_id", "depth_level"])
     ds["moisture_filtered"] = xr.full_like(ds["moisture"], np.nan)
 
     for site_id in site_ids:
@@ -154,21 +153,14 @@ def read_data(site_ids, depth_levels):
                 continue
 
             df_filtered = _filter_jumps(df)
+            filtered_values = xr.DataArray(
+                df_filtered["moisture_filtered"].to_numpy(),
+                dims=subset["moisture"].dims,
+                coords=subset["moisture"].coords,
+            )
+            ds["moisture_filtered"].loc[dict(site_id=site_id, depth_level=depth_level)] = filtered_values
 
-            ds["moisture_filtered"].loc[
-                dict(
-                    date_time=df_filtered["date_time"],
-                    site_id=site_id,
-                    depth_level=depth_level
-                )
-            ] = df_filtered["moisture_filtered"].values
-    print("--------")
-    print(ds)
-    print("--------")
-    # return ds
-    df = water_level_node.read_df(
-        var_names=["date_time", "site_id", "depth_level", "moisture"])
-    return df
+    return ds
 
 
 def apply_filter(df, site_ids, depth_levels, out_file):
