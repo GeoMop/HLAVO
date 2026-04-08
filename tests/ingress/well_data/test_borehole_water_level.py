@@ -36,6 +36,16 @@ def test_borehole_sections():
     csv_output(csv_path, excel_df)
 
 
+def test_borehole_draw():
+    xls_file = well_data_path / "25_09_27_Odbery_Uhelna.xlsx"
+    sheetname = "List1"
+    csv_path = "./borehole_water_draw_out.csv"
+
+    excel_df = well_data.read_draw(xls_file, sheetname)
+    print(excel_df)
+    csv_output(csv_file=csv_path, df=excel_df)
+    
+    
 def test_borehole_water_level():
     # allow to perform plot of set of wells or single well
     plot_set = True
@@ -75,14 +85,7 @@ def test_borehole_water_level():
         well_data_plot.pdf_plot_simple("borehole_water_level_out.pdf", df, "21")
 
 
-def test_borehole_draw():
-    xls_file = well_data_path / "25_09_27_Odbery_Uhelna.xlsx"
-    sheetname = "List1"
-    csv_path = "./borehole_water_draw_out.csv"
 
-    excel_df = well_data.read_draw(xls_file, sheetname)
-    print(excel_df)
-    csv_output(csv_file=csv_path, df=excel_df)
 
 
 if __name__ == "__main__":
