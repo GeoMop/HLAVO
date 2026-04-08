@@ -11,6 +11,7 @@ import numpy as np
 import logging
 import zarr_fuse as zf
 from dotenv import load_dotenv
+import xarray as xr
 import polars as pl
 import matplotlib
 matplotlib.use('Agg')  # for interactive graphs
@@ -129,15 +130,42 @@ def _plot_single_site_level(df, site_id, depth_level):
     return ax.get_figure()
 
 
-def read_data():
+def read_data(site_ids, depth_levels):
     """
     Read moist data from zarr_fuse storage.
 
-    Returns dataframe contains data of moisture dataset
+    Param   site_ids      List of indexes of site
+    Param   depth_levels  List of orders of depth levels
+    Returns xArray.Dataset contains data of moisture dataset
     """
     root_node = _open_zarr_schema()
     water_level_node = root_node['Uhelna']['profiles']
 
+    ds = water_level_node.dataset
+    ds = ds.set_index(obs=["date_time", "site_id", "depth_level"])
+    ds["moisture_filtered"] = xr.full_like(ds["moisture"], np.nan)
+
+    for site_id in site_ids:
+        for depth_level in depth_levels:
+            subset = ds.sel(site_id=site_id, depth_level=depth_level)
+            df = subset.to_dataframe().reset_index()
+
+            if df.empty:
+                continue
+
+            df_filtered = _filter_jumps(df)
+
+            ds["moisture_filtered"].loc[
+                dict(
+                    date_time=df_filtered["date_time"],
+                    site_id=site_id,
+                    depth_level=depth_level
+                )
+            ] = df_filtered["moisture_filtered"].values
+    print("--------")
+    print(ds)
+    print("--------")
+    # return ds
     df = water_level_node.read_df(
         var_names=["date_time", "site_id", "depth_level", "moisture"])
     return df
