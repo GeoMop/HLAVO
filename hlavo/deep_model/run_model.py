@@ -20,6 +20,8 @@ import flopy
 LOG = logging.getLogger(__name__)
 
 
+
+
 @attrs.define(frozen=True)
 class RunConfig:
     config_path: Path
@@ -45,6 +47,8 @@ class RunConfig:
     paraview_quantities: tuple[str, ...]
     paraview_include_inactive: bool
     paraview_z_scale: float
+    paraview_surface_timeseries: bool
+    paraview_surface_timeseries_name: str
     plot_enabled: bool
     plot_output_dir: Path
     plot_dpi: int
@@ -62,6 +66,9 @@ class RunConfig:
     plot_xsection_y_index: int | None
     plot_xsection_x_index: int | None
     plot_xsection_depth_window: float
+    plot_xsection_points: tuple[tuple[int, int], ...]
+    plot_xsection_wells: tuple[str, ...]
+    wells: tuple["WellSpec", ...]
 
     @staticmethod
     def from_yaml(config_path: Path, workspace: Path | None = None) -> "RunConfig":
@@ -196,6 +203,7 @@ class RunConfig:
                 "hk",
                 "idomain",
                 "materials",
+                "groundwater_surface_change",
                 "velocity",
                 "q",
                 "velocity_magnitude",
@@ -207,6 +215,10 @@ class RunConfig:
         paraview_include_inactive = bool(paraview_cfg.get("include_inactive", False))
         paraview_z_scale = float(paraview_cfg.get("z_scale", 1.0))
         assert paraview_z_scale > 0.0, "paraview.z_scale must be > 0"
+        paraview_surface_timeseries = bool(paraview_cfg.get("groundwater_surface_timeseries", False))
+        paraview_surface_timeseries_name = str(
+            paraview_cfg.get("groundwater_surface_timeseries_name", f"{sim_name}_gw_surface_timeseries.pvd")
+        )
 
         plot_raw = raw.get("plots", {})
         assert isinstance(plot_raw, dict), "plots config must be a mapping"
@@ -247,6 +259,10 @@ class RunConfig:
         plot_xsection_depth_window = float(plot_raw.get("xsection_depth_window", 40.0))
         assert plot_xsection_depth_window > 0.0, "plots.xsection_depth_window must be > 0"
 
+        wells = _parse_wells(raw)
+        plot_xsection_points = _parse_plot_xsection_points(plot_raw)
+        plot_xsection_wells = _parse_plot_xsection_wells(plot_raw)
+
         return RunConfig(
             config_path=config_path,
             workspace=run_workspace,
@@ -271,6 +287,8 @@ class RunConfig:
             paraview_quantities=paraview_quantities,
             paraview_include_inactive=paraview_include_inactive,
             paraview_z_scale=paraview_z_scale,
+            paraview_surface_timeseries=paraview_surface_timeseries,
+            paraview_surface_timeseries_name=paraview_surface_timeseries_name,
             plot_enabled=plot_enabled,
             plot_output_dir=plot_output_dir,
             plot_dpi=plot_dpi,
@@ -288,7 +306,131 @@ class RunConfig:
             plot_xsection_y_index=plot_xsection_y_index,
             plot_xsection_x_index=plot_xsection_x_index,
             plot_xsection_depth_window=plot_xsection_depth_window,
+            plot_xsection_points=plot_xsection_points,
+            plot_xsection_wells=plot_xsection_wells,
+            wells=wells,
         )
+
+@attrs.define(frozen=True)
+class WellInterval:
+    top_depth: float
+    bottom_depth: float
+    rate_m3_per_day: float
+
+
+@attrs.define(frozen=True)
+class WellSpec:
+    name: str
+    lon: float
+    lat: float
+    intervals: tuple[WellInterval, ...]
+
+
+def _parse_wells(raw: dict) -> tuple[WellSpec, ...]:
+    wells_raw = raw.get("wells")
+    if wells_raw is None:
+        return ()
+    assert isinstance(wells_raw, list), "wells must be a list"
+    wells: list[WellSpec] = []
+    for idx, well_raw in enumerate(wells_raw):
+        assert isinstance(well_raw, dict), f"wells[{idx}] must be a mapping"
+        name = str(well_raw.get("name") or f"well_{idx + 1}")
+
+        location_raw = well_raw.get("location")
+        assert isinstance(location_raw, dict), f"wells[{idx}].location must be a mapping"
+        location_type = str(location_raw.get("type", "direct"))
+        assert location_type == "direct", (
+            "Only wells.location.type=direct is supported at the moment"
+        )
+        lon = location_raw.get("lon")
+        lat = location_raw.get("lat")
+        assert lon is not None and lat is not None, (
+            f"wells[{idx}].location.lon and wells[{idx}].location.lat are required"
+        )
+        lon = float(lon)
+        lat = float(lat)
+        assert np.isfinite(lon) and np.isfinite(lat), f"wells[{idx}] lon/lat must be finite"
+
+        intervals_raw = well_raw.get("intervals")
+        if intervals_raw is None and "interval" in well_raw:
+            intervals_raw = [well_raw["interval"]]
+        assert intervals_raw is not None, (
+            f"wells[{idx}] must define interval or intervals"
+        )
+        assert isinstance(intervals_raw, (list, tuple)), (
+            f"wells[{idx}].intervals must be a list"
+        )
+        intervals: list[WellInterval] = []
+        for jdx, interval_raw in enumerate(intervals_raw):
+            assert isinstance(interval_raw, dict), (
+                f"wells[{idx}].intervals[{jdx}] must be a mapping"
+            )
+            top_depth = interval_raw.get("top_depth")
+            bottom_depth = interval_raw.get("bottom_depth")
+            assert top_depth is not None and bottom_depth is not None, (
+                f"wells[{idx}].intervals[{jdx}] must define top_depth and bottom_depth"
+            )
+            top_depth = float(top_depth)
+            bottom_depth = float(bottom_depth)
+            assert top_depth >= 0.0, (
+                f"wells[{idx}].intervals[{jdx}].top_depth must be >= 0"
+            )
+            assert bottom_depth > top_depth, (
+                f"wells[{idx}].intervals[{jdx}].bottom_depth must be > top_depth"
+            )
+
+            rate = interval_raw.get("rate_m3_per_day", interval_raw.get("rate"))
+            assert rate is not None, (
+                f"wells[{idx}].intervals[{jdx}] must define rate_m3_per_day"
+            )
+            rate = float(rate)
+            assert np.isfinite(rate), (
+                f"wells[{idx}].intervals[{jdx}].rate_m3_per_day must be finite"
+            )
+            intervals.append(
+                WellInterval(
+                    top_depth=top_depth,
+                    bottom_depth=bottom_depth,
+                    rate_m3_per_day=rate,
+                )
+            )
+        assert intervals, f"wells[{idx}] must contain at least one interval"
+        wells.append(
+            WellSpec(
+                name=name,
+                lon=lon,
+                lat=lat,
+                intervals=tuple(intervals),
+            )
+        )
+    return tuple(wells)
+
+
+def _parse_plot_xsection_points(plot_raw: dict) -> tuple[tuple[int, int], ...]:
+    points_raw = plot_raw.get("xsection_points")
+    if points_raw is None:
+        return ()
+    assert isinstance(points_raw, list), "plots.xsection_points must be a list"
+    points: list[tuple[int, int]] = []
+    for idx, point_raw in enumerate(points_raw):
+        assert isinstance(point_raw, dict), f"plots.xsection_points[{idx}] must be a mapping"
+        x_index = point_raw.get("x_index")
+        y_index = point_raw.get("y_index")
+        assert x_index is not None and y_index is not None, (
+            f"plots.xsection_points[{idx}] must define x_index and y_index"
+        )
+        x_index = int(x_index)
+        y_index = int(y_index)
+        points.append((x_index, y_index))
+    return tuple(points)
+
+
+def _parse_plot_xsection_wells(plot_raw: dict) -> tuple[str, ...]:
+    wells_raw = plot_raw.get("xsection_wells")
+    if wells_raw is None:
+        return ()
+    assert isinstance(wells_raw, (list, tuple)), "plots.xsection_wells must be a list"
+    return tuple(str(value) for value in wells_raw)
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
@@ -308,6 +450,151 @@ def _scalar_from_model_data(
     if cast is bool:
         return bool(float(value))
     return cast(value)
+
+
+def _layer_tops_from_top_botm(top: np.ndarray, botm: np.ndarray) -> np.ndarray:
+    assert top.ndim == 2, "top must be 2D"
+    assert botm.ndim == 3, "botm must be 3D"
+    nz = botm.shape[0]
+    layer_tops = np.empty_like(botm)
+    layer_tops[0] = top
+    if nz > 1:
+        layer_tops[1:] = botm[:-1]
+    return layer_tops
+
+
+def _lonlat_to_local_xy(
+    lon: float,
+    lat: float,
+    boundary_origin: np.ndarray,
+) -> tuple[float, float]:
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs(4326, 5514, always_xy=True)
+    x_global, y_global = transformer.transform(lon, lat)
+    origin = np.asarray(boundary_origin, dtype=float)
+    assert origin.shape[0] >= 2, "boundary_origin must have at least 2 values"
+    x_local = float(x_global - origin[0])
+    y_local = float(y_global - origin[1])
+    return x_local, y_local
+
+
+def _row_col_from_xy(
+    x_local: float,
+    y_local: float,
+    origin: np.ndarray,
+    step: np.ndarray,
+    nx: int,
+    ny: int,
+) -> tuple[int, int]:
+    origin = np.asarray(origin, dtype=float)
+    step = np.asarray(step, dtype=float)
+    assert origin.shape[0] >= 2, "origin must have at least 2 values"
+    assert step.shape[0] >= 2, "step must have at least 2 values"
+    col = int(np.floor((x_local - origin[0]) / step[0]))
+    row = int(np.floor((y_local - origin[1]) / step[1]))
+    assert 0 <= col < nx and 0 <= row < ny, (
+        f"Well location outside grid: row={row}, col={col}, grid={ny}x{nx}"
+    )
+    return row, col
+
+
+def _well_cell_rates(
+    *,
+    row: int,
+    col: int,
+    interval: WellInterval,
+    top: np.ndarray,
+    botm: np.ndarray,
+    layer_tops: np.ndarray,
+    idomain: np.ndarray,
+) -> list[tuple[int, int, int, float]]:
+    nz = botm.shape[0]
+    surface = float(top[row, col])
+    z_top = surface - interval.top_depth
+    z_bottom = surface - interval.bottom_depth
+    overlaps: list[tuple[int, float]] = []
+    for lay in range(nz):
+        if idomain[lay, row, col] <= 0:
+            continue
+        cell_top = float(layer_tops[lay, row, col])
+        cell_bot = float(botm[lay, row, col])
+        overlap = min(cell_top, z_top) - max(cell_bot, z_bottom)
+        if overlap > 0.0:
+            overlaps.append((lay, overlap))
+    assert overlaps, (
+        f"Well interval does not intersect active cells at row={row}, col={col}"
+    )
+    total = float(sum(thick for _, thick in overlaps))
+    assert total > 0.0, "Well interval overlap thickness must be > 0"
+
+    cells: list[tuple[int, int, int, float]] = []
+    for lay, overlap in overlaps:
+        rate = interval.rate_m3_per_day * (overlap / total)
+        cells.append((int(lay), int(row), int(col), float(rate)))
+    return cells
+
+
+def _build_well_spd(
+    wells: tuple[WellSpec, ...],
+    grid_data: dict[str, np.ndarray],
+    top: np.ndarray,
+    botm: np.ndarray,
+    idomain: np.ndarray,
+    nper: int,
+) -> dict[int, list[tuple[int, int, int, float]]]:
+    if not wells:
+        return {}
+
+    el_dims = np.asarray(grid_data["el_dims"], dtype=int)
+    nx = int(el_dims[0])
+    ny = int(el_dims[1])
+    nz = int(el_dims[2])
+    assert botm.shape[0] == nz, "botm nz mismatch"
+    origin = np.asarray(grid_data["origin"], dtype=float)
+    step = np.asarray(grid_data["step"], dtype=float)
+    boundary_origin = np.asarray(grid_data["boundary_origin"], dtype=float)
+    active_mask = np.asarray(grid_data["active_mask"], dtype=bool)
+
+    layer_tops = _layer_tops_from_top_botm(top, botm)
+    aggregated: dict[tuple[int, int, int], float] = {}
+
+    for well in wells:
+        x_local, y_local = _lonlat_to_local_xy(well.lon, well.lat, boundary_origin)
+        row, col = _row_col_from_xy(x_local, y_local, origin, step, nx, ny)
+        assert active_mask[row, col], (
+            f"Well {well.name} is outside active model domain at row={row}, col={col}"
+        )
+        if not np.any(idomain[:, row, col] > 0):
+            raise AssertionError(
+                f"Well {well.name} is in an inactive column at row={row}, col={col}"
+            )
+        for interval in well.intervals:
+            cells = _well_cell_rates(
+                row=row,
+                col=col,
+                interval=interval,
+                top=top,
+                botm=botm,
+                layer_tops=layer_tops,
+                idomain=idomain,
+            )
+            for lay, r, c, rate in cells:
+                key = (lay, r, c)
+                aggregated[key] = aggregated.get(key, 0.0) + float(rate)
+        LOG.info(
+            "Well %s mapped to row=%s col=%s with %s interval(s)",
+            well.name,
+            row,
+            col,
+            len(well.intervals),
+        )
+
+    stress_period_data = [
+        (lay, row, col, rate) for (lay, row, col), rate in aggregated.items()
+    ]
+    assert stress_period_data, "No well cells mapped to the grid"
+    return {iper: stress_period_data for iper in range(nper)}
 
 
 def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
@@ -333,6 +620,17 @@ def _vtk_cell_vectors(
     qy_flat = _vtk_cell_array(qy)
     qz_flat = _vtk_cell_array(qz)
     return np.column_stack([qx_flat, qy_flat, qz_flat])
+
+
+def _surface_to_cell_values(surface: np.ndarray, idomain: np.ndarray) -> np.ndarray:
+    assert surface.ndim == 2, "surface must be 2D"
+    assert idomain.ndim == 3, "idomain must be 3D"
+    nz, ny, nx = idomain.shape
+    assert surface.shape == (ny, nx), "surface shape mismatch"
+    values = np.full((nz, ny, nx), np.nan, dtype=float)
+    active_top = idomain[0] > 0
+    values[0] = np.where(active_top, surface, np.nan)
+    return values
 
 
 def _material_class_from_model_data(
@@ -432,6 +730,8 @@ def _export_results_to_paraview(
     paraview_quantities: tuple[str, ...],
     include_inactive: bool,
     z_scale: float,
+    groundwater_surface: np.ndarray | None = None,
+    groundwater_surface_change: np.ndarray | None = None,
 ) -> Path:
     import pyvista as pv
     from pyvista.core.pointset import UnstructuredGrid
@@ -463,6 +763,12 @@ def _export_results_to_paraview(
         grid.cell_data["material_class"] = _vtk_cell_array(
             _vtk_oriented(material_class.astype(np.int16))
         )
+    if "groundwater_surface" in quantities and groundwater_surface is not None:
+        gw_values = _surface_to_cell_values(groundwater_surface, idomain)
+        grid.cell_data["groundwater_surface"] = _vtk_cell_array(_vtk_oriented(gw_values))
+    if "groundwater_surface_change" in quantities and groundwater_surface_change is not None:
+        gw_change = _surface_to_cell_values(groundwater_surface_change, idomain)
+        grid.cell_data["groundwater_surface_change"] = _vtk_cell_array(_vtk_oriented(gw_change))
 
     needs_vectors = "velocity" in quantities or "q" in quantities
     needs_qmag = "velocity_magnitude" in quantities
@@ -984,19 +1290,15 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     )
 
     # MF6 expects starting heads per layer; use layer tops with optional offset.
-    layer_tops = np.empty_like(botm)
-    layer_tops[0] = top
-    if nz > 1:
-        layer_tops[1:] = botm[:-1]
+    layer_tops = _layer_tops_from_top_botm(top, botm)
     if run_config.initial_head_offset_override is not None:
         offset = float(run_config.initial_head_offset_override)
     elif "initial_head_offset" in model_data:
         offset = float(_scalar_from_model_data(model_data, "initial_head_offset"))
     else:
         offset = 0.0
-    if offset != 0.0:
-        layer_tops = layer_tops + offset
-    flopy.mf6.ModflowGwfic(gwf, strt=layer_tops)
+    layer_tops_for_ic = layer_tops + offset if offset != 0.0 else layer_tops
+    flopy.mf6.ModflowGwfic(gwf, strt=layer_tops_for_ic)
 
     icelltype = np.zeros(nz, dtype=int)
     icelltype[0] = 1
@@ -1113,6 +1415,17 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         else:
             raise AssertionError(f"Unsupported drain mode: {run_config.drain_mode}")
         flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
+
+    well_spd = _build_well_spd(
+        run_config.wells,
+        grid_data,
+        top,
+        botm,
+        idomain,
+        len(run_config.stress_periods_days),
+    )
+    if well_spd:
+        flopy.mf6.ModflowGwfwel(gwf, stress_period_data=well_spd)
 
     flopy.mf6.ModflowGwfoc(
         gwf,

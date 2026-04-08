@@ -134,17 +134,23 @@ materials:
 paraview:
   output_dir: paraview
   quantities:
-  - head
-  - hk
-  - idomain
-  - materials
-  - velocity
-  - q
-  - velocity_magnitude
-  - active
+    - groundwater_surface_change
+    - head
+    - hk
+    - idomain
+    - materials
+    - velocity
+    - q
+    - velocity_magnitude
+    - active
   include_inactive: false
   z_scale: 1.0
+  groundwater_surface_timeseries: true
+  groundwater_surface_timeseries_name: uhelna_gw_surface_timeseries.pvd
 plots:
+  xsection_points: []
+  xsection_wells:
+    - pumping_well_1
   enabled: true
   output_dir: plots
   dpi: 150
@@ -159,3 +165,14 @@ plots:
   xsection_x_times_name: groundwater_x_section_times.png
   xsection_y_times_name: groundwater_y_section_times.png
   xsection_depth_window: 40.0
+
+wells:
+  - name: pumping_well_1
+    location:
+      type: direct
+      lon: 14.8973297
+      lat: 50.8674447
+    intervals:
+      - top_depth: 10.0
+        bottom_depth: 30.0
+        rate_m3_per_day: -1.0

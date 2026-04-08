@@ -10,3 +10,19 @@ materials:
     sands:
       horizontal_conductivity: 3.0e-5
       vertical_conductivity: 2.0e-5
+
+wells:
+  - name: pumping_well_1
+    location:
+      type: direct
+      lon: 14.8973297
+      lat: 50.8674447
+    intervals:
+      - top_depth: 10.0
+        bottom_depth: 30.0
+        rate_m3_per_day: -1.0
+
+plots:
+  xsection_points: []
+  xsection_wells:
+    - pumping_well_1

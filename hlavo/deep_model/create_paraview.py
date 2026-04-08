@@ -13,8 +13,10 @@ from run_model import (
     RunConfig,
     _export_materials_to_paraview,
     _export_results_to_paraview,
+    _groundwater_surface_from_head,
     _grid_arrays_from_npz,
     _material_class_from_model_data,
+    _surface_to_nodes,
 )
 
 LOG = logging.getLogger(__name__)
@@ -54,8 +56,13 @@ def create_paraview(config_path: Path, workspace: Path | None = None) -> None:
     hds = flopy.utils.binaryfile.HeadFile(str(head_path))
     times = hds.get_times()
     assert times, "No time steps found in head file"
+    head_initial = np.asarray(hds.get_data(totim=times[0]), dtype=float)
     head = np.asarray(hds.get_data(totim=times[-1]), dtype=float)
     assert head.shape == (nz, ny, nx), "Head output shape mismatch"
+    assert head_initial.shape == (nz, ny, nx), "Head output shape mismatch"
+    groundwater_surface_initial = _groundwater_surface_from_head(head_initial, idomain, top, botm)
+    groundwater_surface_final = _groundwater_surface_from_head(head, idomain, top, botm)
+    groundwater_surface_change = groundwater_surface_final - groundwater_surface_initial
 
     sim = flopy.mf6.MFSimulation.load(sim_ws=str(workdir), verbosity_level=0)
     gwf = sim.get_model(run_config.sim_name)
@@ -81,6 +88,8 @@ def create_paraview(config_path: Path, workspace: Path | None = None) -> None:
         run_config.paraview_quantities,
         run_config.paraview_include_inactive,
         run_config.paraview_z_scale,
+        groundwater_surface=groundwater_surface_final,
+        groundwater_surface_change=groundwater_surface_change,
     )
     _export_materials_to_paraview(
         run_config.paraview_materials_output_path,
@@ -94,7 +103,66 @@ def create_paraview(config_path: Path, workspace: Path | None = None) -> None:
         run_config.paraview_include_inactive,
         run_config.paraview_z_scale,
     )
+    if run_config.paraview_surface_timeseries:
+        _export_groundwater_surface_timeseries(
+            run_config,
+            grid_data,
+            idomain,
+            top,
+            botm,
+            hds,
+            times,
+        )
     LOG.info("Paraview export complete")
+
+
+def _export_groundwater_surface_timeseries(
+    run_config: RunConfig,
+    grid_data: dict[str, np.ndarray],
+    idomain: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    hds: flopy.utils.binaryfile.HeadFile,
+    times: list[float],
+) -> None:
+    import pyvista as pv
+
+    x_nodes = np.asarray(grid_data["x_nodes"], dtype=float)
+    y_nodes = np.asarray(grid_data["y_nodes"], dtype=float)
+    x_grid, y_grid = np.meshgrid(x_nodes, y_nodes, indexing="ij")
+
+    output_dir = Path(run_config.paraview_output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    series_entries: list[tuple[float, str]] = []
+
+    for idx, time_value in enumerate(times):
+        head = np.asarray(hds.get_data(totim=time_value), dtype=float)
+        groundwater_surface = _groundwater_surface_from_head(head, idomain, top, botm)
+        nodes = _surface_to_nodes(groundwater_surface)
+        z_grid = nodes.T
+        surface = pv.StructuredGrid(x_grid, y_grid, z_grid)
+        surface.point_data["groundwater_surface"] = z_grid.ravel(order="F")
+        filename = f"{run_config.sim_name}_gw_surface_t{idx:04d}.vts"
+        output_path = output_dir / filename
+        surface.save(str(output_path))
+        series_entries.append((float(time_value), filename))
+
+    pvd_path = output_dir / run_config.paraview_surface_timeseries_name
+    _write_pvd(pvd_path, series_entries)
+    LOG.info("Saved groundwater surface time series to %s", pvd_path)
+
+
+def _write_pvd(path: Path, entries: list[tuple[float, str]]) -> None:
+    lines = [
+        '<?xml version="1.0"?>',
+        '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
+        "  <Collection>",
+    ]
+    for time_value, file_name in entries:
+        lines.append(f'    <DataSet timestep="{time_value}" group="" part="0" file="{file_name}"/>')
+    lines.append("  </Collection>")
+    lines.append("</VTKFile>")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> None:

@@ -14,6 +14,8 @@ from run_model import (
     _groundwater_surface_from_head,
     _grid_arrays_from_npz,
     _material_class_from_model_data,
+    _lonlat_to_local_xy,
+    _row_col_from_xy,
     _write_plan_view_plots,
 )
 
@@ -212,6 +214,90 @@ def _write_temporal_groundwater_plots(
     plt.close()
     LOG.info("Saved Y-section time plot to %s", y_times_path)
 
+    extra_targets = _resolve_additional_xsection_targets(run_config, grid_data)
+    if extra_targets:
+        plot_dir = Path(run_config.plot_output_dir)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        for x_idx_extra, y_idx_extra, label in extra_targets:
+            assert 0 <= x_idx_extra < wt_final.shape[1], "xsection point x_index out of range"
+            assert 0 <= y_idx_extra < wt_final.shape[0], "xsection point y_index out of range"
+
+            plt.figure(figsize=(10, 4))
+            for idx in sample_ids:
+                plt.plot(
+                    x_centers,
+                    water_tables[idx][y_idx_extra, :],
+                    linewidth=1.5,
+                    label=f"t={times[idx]:.2f} d",
+                )
+            plt.plot(x_centers, top[y_idx_extra, :], "k--", linewidth=1.0, label="terrain")
+            plt.title(f"Groundwater Surface X-Section in Time ({label})")
+            plt.xlabel("X (local)")
+            plt.ylabel("Z")
+            plt.legend(loc="best")
+            plt.tight_layout()
+            x_path = _labeled_plot_path(plot_dir, run_config.plot_xsection_x_times_name, label)
+            plt.savefig(x_path, dpi=run_config.plot_dpi)
+            plt.close()
+            LOG.info("Saved X-section time plot to %s", x_path)
+
+            plt.figure(figsize=(10, 4))
+            for idx in sample_ids:
+                plt.plot(
+                    y_centers,
+                    water_tables[idx][:, x_idx_extra],
+                    linewidth=1.5,
+                    label=f"t={times[idx]:.2f} d",
+                )
+            plt.plot(y_centers, top[:, x_idx_extra], "k--", linewidth=1.0, label="terrain")
+            plt.title(f"Groundwater Surface Y-Section in Time ({label})")
+            plt.xlabel("Y (local)")
+            plt.ylabel("Z")
+            plt.legend(loc="best")
+            plt.tight_layout()
+            y_path = _labeled_plot_path(plot_dir, run_config.plot_xsection_y_times_name, label)
+            plt.savefig(y_path, dpi=run_config.plot_dpi)
+            plt.close()
+            LOG.info("Saved Y-section time plot to %s", y_path)
+
+
+def _sanitize_label(label: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in label.strip())
+    cleaned = cleaned.strip("_")
+    return cleaned or "section"
+
+
+def _labeled_plot_path(plot_dir: Path, base_name: str, label: str) -> Path:
+    path = plot_dir / base_name
+    safe = _sanitize_label(label)
+    return path.with_name(f"{path.stem}_{safe}{path.suffix}")
+
+
+def _resolve_additional_xsection_targets(
+    run_config: RunConfig,
+    grid_data: dict[str, np.ndarray],
+) -> list[tuple[int, int, str]]:
+    targets: list[tuple[int, int, str]] = []
+    for x_idx, y_idx in run_config.plot_xsection_points:
+        targets.append((x_idx, y_idx, f"x{x_idx}_y{y_idx}"))
+
+    if run_config.plot_xsection_wells:
+        wells_by_name = {well.name: well for well in run_config.wells}
+        boundary_origin = np.asarray(grid_data["boundary_origin"], dtype=float)
+        origin = np.asarray(grid_data["origin"], dtype=float)
+        step = np.asarray(grid_data["step"], dtype=float)
+        el_dims = np.asarray(grid_data["el_dims"], dtype=int)
+        nx = int(el_dims[0])
+        ny = int(el_dims[1])
+        for name in run_config.plot_xsection_wells:
+            assert name in wells_by_name, f"plots.xsection_wells references unknown well: {name}"
+            well = wells_by_name[name]
+            x_local, y_local = _lonlat_to_local_xy(well.lon, well.lat, boundary_origin)
+            row, col = _row_col_from_xy(x_local, y_local, origin, step, nx, ny)
+            targets.append((col, row, f"well_{well.name}"))
+
+    return targets
+
 
 def create_plots(config_path: Path, workspace: Path | None = None) -> None:
     run_config = RunConfig.from_yaml(config_path, workspace)
@@ -252,7 +338,13 @@ def create_plots(config_path: Path, workspace: Path | None = None) -> None:
     hds = flopy.utils.binaryfile.HeadFile(str(head_path))
     times = hds.get_times()
     assert times, "No time steps found in head file"
-    heads = [np.asarray(hds.get_data(totim=time_value), dtype=float) for time_value in times]
+    kstpkper = hds.get_kstpkper()
+    if kstpkper:
+        heads = [np.asarray(hds.get_data(kstpkper=record), dtype=float) for record in kstpkper]
+        if len(times) != len(heads):
+            times = list(range(len(heads)))
+    else:
+        heads = [np.asarray(hds.get_data(totim=time_value), dtype=float) for time_value in times]
     assert all(item.shape == (nz, ny, nx) for item in heads), "Head output shape mismatch"
     head = heads[-1]
 
