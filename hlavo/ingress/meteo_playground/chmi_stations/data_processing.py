@@ -518,29 +518,14 @@ def print_dataframe_column_diff(active_station_daily_df, active_station_hourly_d
     print(sorted(hourly_columns - daily_columns))
 
 
-def update_storage(stations_df):
+def update_storage(stations_df, node_name):
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
-        node_path=["chmi_stations"],
+        node_path=[node_name],
         var_names=[],
         storage_path=CHMI_STATIONS_STORAGE_PATH,
     )
-
-    # node.update(add_missing_schema_columns(stations_df, node))
     node.update(stations_df)
-
-
-def update_open_meteo_storage(open_meteo_df):
-    """
-    Save Open-Meteo data into a separate zarr_fuse node.
-    """
-    node, _ = read_storage(
-        CHMI_STATIONS_SCHEMA_PATH,
-        node_path=["open_meteo"],
-        var_names=[],
-        storage_path=CHMI_STATIONS_STORAGE_PATH,
-    )
-    node.update(open_meteo_df)
 
 
 def update_parflow_input_storage(
@@ -550,12 +535,6 @@ def update_parflow_input_storage(
     """
     Save the ParFlow/CLM input dataset into the parflow_input zarr_fuse node.
     """
-    node, _ = read_storage(
-        CHMI_STATIONS_SCHEMA_PATH,
-        node_path=["parflow_input"],
-        var_names=[],
-        storage_path=CHMI_STATIONS_STORAGE_PATH,
-    )
     priority_metadata = get_priority_station_metadata(stations_csv_path=stations_csv_path)
     anchor_station = priority_metadata[0]
 
@@ -563,6 +542,13 @@ def update_parflow_input_storage(
         date_time=("date_time", parflow_clm_ds["time"].values),
         latitude=("latitude", [anchor_station["LAT"]]),
         longitude=("longitude", [anchor_station["LON"]]),
+    )
+
+    node, _ = read_storage(
+        CHMI_STATIONS_SCHEMA_PATH,
+        node_path=["parflow_input"],
+        var_names=[],
+        storage_path=CHMI_STATIONS_STORAGE_PATH,
     )
     node.update_from_ds(ds_to_store)
 
@@ -800,6 +786,29 @@ def plot_parflow_open_meteo_comparison(
     return output_path
 
 
+def update_parflow_clm_from_open_meteo(
+    parflow_clm_ds,
+    open_meteo_parflow_ds,
+    replace_quantities=("Temp", "UGRD", "VGRD", "SPFH", "DSWR", "DLWR"),
+):
+    """
+    Replace selected ParFlow/CLM forcing quantities with aligned Open-Meteo quantities,
+    while keeping APCP and Press from the CHMI-based dataset.
+    """
+    open_meteo_on_parflow_time = open_meteo_parflow_ds.reindex(time=parflow_clm_ds["time"])
+    updated_ds = parflow_clm_ds.copy()
+
+    for quantity_name in replace_quantities:
+        updated_quantity = open_meteo_on_parflow_time[quantity_name].copy()
+        updated_quantity.attrs = {
+            **parflow_clm_ds[quantity_name].attrs,
+            "replacement_source": "open_meteo",
+        }
+        updated_ds[quantity_name] = updated_quantity
+
+    return updated_ds
+
+
 def build_parflow_clm_input_dataset(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     schema_path=CHMI_STATIONS_SCHEMA_PATH,
@@ -945,15 +954,14 @@ def main():
             [active_station_daily_df, active_station_hourly_df],
             how="diagonal_relaxed",
         )
-        update_storage(active_station_df)
+        update_storage(active_station_df, node_name="chmi_stations")
 
         # Add open meteo data
         open_meteo_df = load_open_meteo_dataframe(start_date=start_date, end_date=end_date)
         print("Open-Meteo dataframe preview:")
         print(open_meteo_df.head())
         print(f"Open-Meteo dataframe shape: {open_meteo_df.shape}")
-        update_open_meteo_storage(open_meteo_df)
-
+        update_storage(open_meteo_df, node_name="open_meteo")
 
     parflow_clm_ds = build_parflow_clm_input_dataset()
     open_meteo_parflow_ds = build_open_meteo_parflow_comparison_dataset()
@@ -962,11 +970,14 @@ def main():
         open_meteo_parflow_ds,
     )
 
-    # TODO: update quantity columns in parflow_clm_ds from open_meteo_parflow_ds
-    #  (i.e. all except APCP and Press)
+    parflow_clm_ds = update_parflow_clm_from_open_meteo(
+        parflow_clm_ds,
+        open_meteo_parflow_ds,
+    )
     update_parflow_input_storage(parflow_clm_ds)
     print(parflow_clm_ds)
     print(f"Saved ParFlow/Open-Meteo comparison plot to: {comparison_plot_path}")
+
 
 if __name__ == "__main__":
     main()
