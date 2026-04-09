@@ -134,6 +134,55 @@ def _plot_single_site_level(ds, site_id, depth_level):
     return fig
 
 
+def _plot_bokeh_site_level(ds, site_id, depth_level):
+    """
+    Plot bokeh graph of one site_id and depth_level.
+
+    Param   ds            dataset of moisture data
+    Param   site_id       Index of site
+    Param   depth_level   Order of depth level
+    Returns plt object
+    """
+    subset = ds.sel(site_id=site_id, depth_level=depth_level)
+    assert "moisture_filtered" in subset, "Expected 'moisture_filtered' variable in dataset."
+
+    from bokeh.models import ColumnDataSource
+    from bokeh.plotting import figure
+
+    df = subset[["moisture", "moisture_filtered"]].to_dataframe().reset_index()
+    source = ColumnDataSource(df)
+
+    fig = figure(
+        width=1000,
+        height=500,
+        x_axis_type="datetime",
+        title=f"Moisture data of site: '{site_id}', level: '{depth_level}'",
+        tools="pan,wheel_zoom,box_zoom,reset,save",
+    )
+    fig.line(
+        x="date_time",
+        y="moisture",
+        source=source,
+        legend_label="moisture",
+        line_width=2,
+    )
+    fig.line(
+        x="date_time",
+        y="moisture_filtered",
+        source=source,
+        legend_label="moisture_filtered",
+        line_width=2,
+        color="orange",
+    )
+
+    fig.xaxis.axis_label = "Date"
+    fig.yaxis.axis_label = "Moisture"
+    fig.grid.visible = True
+    fig.legend.location = "top_left"
+
+    return fig
+
+
 def read_data(fparams: FilterParams, site_ids, depth_levels):
     """
     Read moist data from zarr_fuse storage.
@@ -174,20 +223,31 @@ def plot_filters(ds, site_ids, depth_levels, out_file):
     Param   ds            dataset of moisture data
     Param   site_ids      List of indexes of site
     Param   depth_levels  List of orders of depth levels
-    Param   out_file      Name of output pdf file
+    Param   out_file      Base name of output files
     """
+    from bokeh.io import output_file as bokeh_output_file, save as bokeh_save
+    from bokeh.layouts import column
+
     workdir = _create_work_dir()
-    full_out_file = out_file + ".pdf"
-    full_path = workdir / full_out_file
-    pdf = PdfPages(full_path)
+    pdf_path = workdir / f"{out_file}.pdf"
+    html_path = workdir / f"{out_file}.html"
+    pdf = PdfPages(pdf_path)
+    bokeh_figures = []
 
     for site_id in site_ids:
         for depth_level in depth_levels:
             fig = _plot_single_site_level(ds, site_id, depth_level)
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
+            bokeh_figures.append(_plot_bokeh_site_level(ds, site_id, depth_level))
 
     pdf.close()
+    if not bokeh_figures:
+        logger.warning("No plots generated for output '%s'.", out_file)
+        return
+
+    bokeh_output_file(str(html_path))
+    bokeh_save(column(*bokeh_figures))
 
 
 def main():
