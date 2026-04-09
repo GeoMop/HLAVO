@@ -1,0 +1,19 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# author:   David Flanderka
+
+import sys
+from hlavo.ingress.moist_profile import data_filter
+
+
+def test_data_filter():
+    site_ids = [1, 2, 3]
+    depth_levels = [1, 2, 3, 4, 5]
+    filter_params = data_filter.FilterParams(1.4826, 6.0, 8.0)
+
+    final_ds = data_filter.read_data(filter_params, site_ids, depth_levels)
+    print(final_ds)
+    data_filter.plot_filters(final_ds, site_ids, depth_levels, "plot_all")
+
+if __name__ == "__main__":
+    test_data_filter()
