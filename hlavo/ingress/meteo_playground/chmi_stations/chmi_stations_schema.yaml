@@ -3,7 +3,7 @@ ATTRS:
 #  S3_STORE_URL: "s3://hlavo-release/hlavo-release.zarr"
   #  note:  STORE_URL: "s3://<bucket>>/<zarr_storage>"
   #    STORE_URL: "s3://hlavo-release/profiles.zarr"
-  STORE_URL: "s3://hlavo-release/meteo.zarr"
+  STORE_URL: "s3://hlavo-release/chmi_stations.zarr"
   #    STORE_URL: "file:///home/paulie/Workspace/HLAVO/tests/ingress/moist_profile/test_storage/"
 
   grid_min: [50.840000, 14.850000] # unit deg
