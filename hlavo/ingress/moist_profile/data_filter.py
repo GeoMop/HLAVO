@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import logging
 import zarr_fuse as zf
+from dataclasses import dataclass
 from dotenv import load_dotenv
 import xarray as xr
 import polars as pl
@@ -23,6 +24,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rcParams['hatch.linewidth'] = 6
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FilterParams:
+    robust_sigma_coef: float
+    local_threshold_coef: float
+    global_threshold_coef: float
 
 
 def _create_work_dir():
@@ -45,7 +53,7 @@ def _open_zarr_schema():
     return zf.open_store(schema_path)
 
 
-def _filter_jumps(df):
+def _filter_jumps(fparams: FilterParams, df: pd.DataFrame):
     """
     Input arg of type pandas.DataFrame contains columns 'date_time' and 'moisture'.
     For values in column 'moisture':
@@ -74,10 +82,10 @@ def _filter_jumps(df):
 
     diff_center = diff.median(skipna=True)
     diff_mad = (diff - diff_center).abs().median(skipna=True)
-    robust_sigma = 1.4826 * diff_mad if pd.notna(diff_mad) else 0.0
+    robust_sigma = fparams.robust_sigma_coef * diff_mad if pd.notna(diff_mad) else 0.0
 
-    local_threshold = 6.0 * neighbourhood_diff
-    global_threshold = 8.0 * robust_sigma
+    local_threshold = fparams.local_threshold_coef * neighbourhood_diff
+    global_threshold = fparams.global_threshold_coef * robust_sigma
     min_threshold = max(float(abs_diff.median(skipna=True) or 0.0), 1e-9)
     jump_threshold = np.maximum(local_threshold.to_numpy(), max(global_threshold, min_threshold))
 
@@ -126,7 +134,7 @@ def _plot_single_site_level(ds, site_id, depth_level):
     return fig
 
 
-def read_data(site_ids, depth_levels):
+def read_data(fparams: FilterParams, site_ids, depth_levels):
     """
     Read moist data from zarr_fuse storage.
 
@@ -148,7 +156,7 @@ def read_data(site_ids, depth_levels):
             if df.empty:
                 continue
 
-            df_filtered = _filter_jumps(df)
+            df_filtered = _filter_jumps(fparams, df)
             filtered_values = xr.DataArray(
                 df_filtered["moisture_filtered"].to_numpy(),
                 dims=subset["moisture"].dims,
