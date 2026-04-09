@@ -98,6 +98,12 @@ open_meteo:
       df_col: "relative_humidity_2m"
       coords: [ "date_time", latitude, longitude ]
 
+    cloud_cover:
+      unit: "%"
+      description: "Open-Meteo total cloud cover"
+      df_col: "cloud_cover"
+      coords: [ "date_time", latitude, longitude ]
+
     precipitation:
       unit: "mm"
       description: "Open-Meteo hourly total precipitation"
@@ -138,6 +144,12 @@ open_meteo:
       unit: "W / m ** 2"
       description: "Open-Meteo diffuse radiation"
       df_col: "diffuse_radiation"
+      coords: [ "date_time", latitude, longitude ]
+
+    dlwr_estimate:
+      unit: "W / m ** 2"
+      description: "Estimated downward longwave radiation from Open-Meteo temperature, humidity, and cloud cover"
+      df_col: "dlwr_estimate"
       coords: [ "date_time", latitude, longitude ]
   COORDS:
     date_time:
@@ -603,75 +615,6 @@ chmi_stations:
       chunk_size: 32
       merge:
         step_limits: [ 0.0001, 0.0001, "degrees" ]
-
-
-parflow_data:
-  VARS:
-    air_pressure:
-      unit: "Pa"
-      description: "Sea-level pressure"
-      df_col: "MSLPRESSURE"
-      coords: [ "date_time", latitude, longitude ]
-
-    surface_temperature:
-      unit: "K"
-      description: "Surface (skin) temperature"
-      df_col: "SURFTEMPERATURE"
-      coords: [ "date_time", latitude, longitude ]
-
-    rainfall_amount_accum:
-      unit: "kg/m^2"
-      description: "Rainfall amount (accumulated since forecast start)"
-      df_col: "SURFRAINFALL"
-      coords: [ "date_time", latitude, longitude ]
-
-#    air_temperature_2m:
-#      unit: "K"
-#      description: "2 m air temperature"
-#      df_col: "CLSTEMPERATURE"
-#      coords: [ "date_time", latitude, longitude ]
-#
-#    cloud_fraction:
-#      unit: "1"
-#      description: "Total cloud fraction"
-#      df_col: "SURFNEBUL_TOTALE"
-#      coords: [ "date_time", latitude, longitude ]
-#
-#    relative_humidity_2m:
-#      unit: "1"
-#      description: "2 m relative humidity (0–1 fraction)"
-#      df_col: "CLSHUMI_RELATIVE"
-#      coords: [ "date_time", latitude, longitude ]
-#
-#    wind_speed_10m:
-#      unit: "m/s"
-#      description: "10 m wind speed"
-#      df_col: "CLSWIND_SPEED"
-#      coords: [ "date_time", latitude, longitude ]
-#
-#    wind_from_direction_10m:
-#      unit: "degrees"
-#      description: "10 m wind direction (meteorological degrees)"
-#      df_col: "CLSWIND_DIREC"
-#      coords: [ "date_time", latitude, longitude ]
-
-  COORDS:
-    date_time:
-      chunk_size: 1024
-      merge:
-        step_limits: [ 1, 1, "m" ]
-
-    latitude:
-      chunk_size: 32
-      merge:
-        step_limits: [ 0.0001, 0.0001, "degrees" ]
-
-    longitude:
-      chunk_size: 32
-      merge:
-        step_limits: [ 0.0001, 0.0001, "degrees" ]
-
-
 
 
 chmi_aladin_10m:

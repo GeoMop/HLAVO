@@ -5,6 +5,7 @@ from pathlib import Path
 import polars as pl
 import xarray as xr
 import numpy as np
+import matplotlib.pyplot as plt
 
 from hlavo.common.zarr_fuse_reader import read_storage
 from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
@@ -19,12 +20,24 @@ ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
 STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
 STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
 OPEN_METEO_DATA_HOURLY_PATH = SCRIPT_DIR / "open_meteo_data_hourly"
+PARFLOW_OPEN_METEO_COMPARISON_PLOT_PATH = SCRIPT_DIR / "parflow_clm_vs_open_meteo.pdf"
 CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
                         ]
 CLM_REQUIRED_SOURCE_VARS = ["SRA1H", "T", "P", "P1H", "F", "D10", "H"]
+OPEN_METEO_REQUIRED_VARS = [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "precipitation",
+    "surface_pressure",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "shortwave_radiation",
+    "dlwr_estimate",
+]
 SECONDS_PER_DAY = 24 * 60 * 60
+SECONDS_PER_HOUR = 60 * 60
 
 
 def get_data_block(doc):
@@ -572,6 +585,24 @@ def read_station_storage(
     return ds
 
 
+def read_open_meteo_storage(
+    schema_path=CHMI_STATIONS_SCHEMA_PATH,
+    storage_path=CHMI_STATIONS_STORAGE_PATH,
+    var_names=None,
+):
+    """
+    Read Open-Meteo data from zarr_fuse storage.
+    """
+    read_var_names = [] if var_names is None else var_names
+    _, ds = read_storage(
+        schema_path=schema_path,
+        node_path=["open_meteo"],
+        var_names=read_var_names,
+        storage_path=storage_path,
+    )
+    return ds
+
+
 def get_priority_station_metadata(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     station_priority=CLM_STATION_PRIORITY,
@@ -653,6 +684,120 @@ def with_clean_attrs(data_array, *, units, description, source_quantities):
         "source_quantities": source_quantities,
     }
     return data_array
+
+
+def build_open_meteo_parflow_comparison_dataset(
+    schema_path=CHMI_STATIONS_SCHEMA_PATH,
+    storage_path=CHMI_STATIONS_STORAGE_PATH,
+    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+):
+    """
+    Read the stored Open-Meteo data and convert it to ParFlow/CLM-like quantities
+    for comparison against parflow_clm_ds.
+    """
+    station = get_priority_station_metadata(stations_csv_path=stations_csv_path)[0]
+    open_meteo_ds = read_open_meteo_storage(
+        schema_path=schema_path,
+        storage_path=storage_path,
+        var_names=OPEN_METEO_REQUIRED_VARS,
+    )
+    open_meteo_inputs = {
+        var_name: select_station_variable(open_meteo_ds, var_name, station).rename({"date_time": "time"})
+        for var_name in OPEN_METEO_REQUIRED_VARS
+    }
+
+    wind_direction_rad = np.deg2rad(open_meteo_inputs["wind_direction_10m"])
+    pressure_hpa = open_meteo_inputs["surface_pressure"]
+    template = open_meteo_inputs["temperature_2m"]
+    return xr.Dataset(
+        data_vars={
+            "APCP": (open_meteo_inputs["precipitation"] / SECONDS_PER_HOUR).rename("APCP"),
+            "Temp": (open_meteo_inputs["temperature_2m"] + 273.15).rename("Temp"),
+            "UGRD": (-open_meteo_inputs["wind_speed_10m"] * np.sin(wind_direction_rad)).rename("UGRD"),
+            "VGRD": (-open_meteo_inputs["wind_speed_10m"] * np.cos(wind_direction_rad)).rename("VGRD"),
+            "Press": (pressure_hpa * 100.0).rename("Press"),
+            "SPFH": compute_specific_humidity(
+                open_meteo_inputs["temperature_2m"],
+                open_meteo_inputs["relative_humidity_2m"],
+                pressure_hpa,
+            ).rename("SPFH"),
+            "DSWR": open_meteo_inputs["shortwave_radiation"].rename("DSWR"),
+            "DLWR": open_meteo_inputs["dlwr_estimate"].rename("DLWR"),
+        },
+        coords={"time": template["time"].values},
+        attrs={"source": "Open-Meteo archive"},
+    )
+
+
+def plot_parflow_open_meteo_comparison(
+    parflow_clm_ds,
+    open_meteo_parflow_ds,
+    output_path=PARFLOW_OPEN_METEO_COMPARISON_PLOT_PATH,
+):
+    """
+    Create a quantity-by-quantity comparison plot between ParFlow/CLM forcing data
+    and converted Open-Meteo data.
+    """
+    quantity_units = {
+        "APCP": "mm/s",
+        "Temp": "K",
+        "UGRD": "m/s",
+        "VGRD": "m/s",
+        "Press": "Pa",
+        "SPFH": "kg/kg",
+        "DSWR": "W / m ** 2",
+        "DLWR": "W / m ** 2",
+    }
+    figure, axes = plt.subplots(nrows=4, ncols=2, figsize=(18, 14), sharex=True)
+    axes = axes.ravel()
+
+    for axis, quantity_name in zip(axes, quantity_units, strict=False):
+        parflow_da, open_meteo_da = xr.align(
+            parflow_clm_ds[quantity_name],
+            open_meteo_parflow_ds[quantity_name],
+            join="inner",
+        )
+        parflow_mask = np.isfinite(parflow_da.values)
+        open_meteo_mask = np.isfinite(open_meteo_da.values)
+        axis.plot(
+            parflow_da["time"].values[parflow_mask],
+            parflow_da.values[parflow_mask],
+            label="parflow_clm_ds",
+            linewidth=0.9,
+            linestyle="--",
+            alpha=0.9,
+        )
+        axis.plot(
+            open_meteo_da["time"].values[open_meteo_mask],
+            open_meteo_da.values[open_meteo_mask],
+            label="open_meteo",
+            linewidth=1.0,
+            linestyle=":",
+            alpha=0.75,
+        )
+        axis.set_title(quantity_name)
+        axis.set_ylabel(quantity_units[quantity_name])
+        axis.grid(True, alpha=0.3)
+        if quantity_name == "DLWR":
+            axis.text(
+                0.5,
+                0.5,
+                "Open-Meteo DLWR unavailable",
+                transform=axis.transAxes,
+                ha="center",
+                va="center",
+            )
+        if quantity_name == "APCP":
+            axis.legend(loc="upper right")
+
+    figure.suptitle("ParFlow/CLM vs Open-Meteo comparison")
+    figure.tight_layout()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=150)
+    plt.show()
+    # plt.close(figure)
+    return output_path
 
 
 def build_parflow_clm_input_dataset(
@@ -811,8 +956,17 @@ def main():
 
 
     parflow_clm_ds = build_parflow_clm_input_dataset()
+    open_meteo_parflow_ds = build_open_meteo_parflow_comparison_dataset()
+    comparison_plot_path = plot_parflow_open_meteo_comparison(
+        parflow_clm_ds,
+        open_meteo_parflow_ds,
+    )
+
+    # TODO: update quantity columns in parflow_clm_ds from open_meteo_parflow_ds
+    #  (i.e. all except APCP and Press)
     update_parflow_input_storage(parflow_clm_ds)
     print(parflow_clm_ds)
+    print(f"Saved ParFlow/Open-Meteo comparison plot to: {comparison_plot_path}")
 
 if __name__ == "__main__":
     main()

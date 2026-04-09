@@ -9,9 +9,11 @@ import requests
 LOGGER = logging.getLogger(__name__)
 
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+STEFAN_BOLTZMANN_CONSTANT = 5.670374419e-8
 OPEN_METEO_HOURLY_VARIABLES = [
     "temperature_2m",
     "relative_humidity_2m",
+    "cloud_cover",
     "precipitation",
     "surface_pressure",
     "wind_speed_10m",
@@ -57,6 +59,24 @@ def _download_open_meteo_json(latitude, longitude, start, end, *, hourly_variabl
     return payload
 
 
+def estimate_dlwr_expression():
+    """
+    Estimate downward longwave radiation from temperature, humidity, and cloud cover.
+    Brutsaert clear-sky emissivity with a simple cloud correction.
+    """
+    temperature_k = pl.col("temperature_2m") + 273.15
+    saturation_vapor_pressure_hpa = 6.112 * (
+        (17.67 * pl.col("temperature_2m") / (pl.col("temperature_2m") + 243.5)).exp()
+    )
+    vapor_pressure_kpa = (pl.col("relative_humidity_2m") / 100.0) * saturation_vapor_pressure_hpa / 10.0
+    clear_sky_emissivity = 1.24 * (vapor_pressure_kpa / temperature_k) ** (1.0 / 7.0)
+    cloud_fraction = pl.col("cloud_cover") / 100.0
+    all_sky_emissivity = (clear_sky_emissivity * (1.0 + 0.22 * cloud_fraction ** 2)).clip(upper_bound=1.0)
+    return (
+        STEFAN_BOLTZMANN_CONSTANT * all_sky_emissivity * temperature_k ** 4
+    ).alias("dlwr_estimate")
+
+
 def open_meteo(latitude, longitude, start, end, *, json_path=None, hourly_variables=None, refresh=False):
     """
     Download hourly historical Open-Meteo data for one location, optionally cache the raw
@@ -94,7 +114,8 @@ def open_meteo(latitude, longitude, start, end, *, json_path=None, hourly_variab
     ).with_columns(
         pl.col("date_time")
         .str.to_datetime(format="%Y-%m-%dT%H:%M", strict=False)
-        .dt.replace_time_zone("UTC")
+        .dt.replace_time_zone("UTC"),
+        estimate_dlwr_expression(),
     )
 
     LOGGER.info(
