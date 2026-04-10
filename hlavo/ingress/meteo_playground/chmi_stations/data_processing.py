@@ -479,24 +479,24 @@ def build_pressure_series(pressure_daily, pressure_hourly, max_gap_hours=24):
     """
     Build hourly pressure from preferred P1H and daily P interpolated onto the hourly time axis.
     """
-    pressure_daily_valid = pressure_daily.dropna(dim="time")
-    if pressure_daily_valid.sizes.get("time", 0) >= 2:
+    pressure_daily_valid = pressure_daily.dropna(dim="date_time")
+    if pressure_daily_valid.sizes.get("date_time", 0) >= 2:
         pressure_daily_on_hourly = pressure_daily_valid.interp(
-            time=pressure_hourly["time"],
+            date_time=pressure_hourly["date_time"],
             method="linear",
         )
-    elif pressure_daily_valid.sizes.get("time", 0) == 1:
-        pressure_daily_on_hourly = pressure_daily_valid.reindex(time=pressure_hourly["time"], method="nearest")
+    elif pressure_daily_valid.sizes.get("date_time", 0) == 1:
+        pressure_daily_on_hourly = pressure_daily_valid.reindex(date_time=pressure_hourly["date_time"], method="nearest")
     else:
         pressure_daily_on_hourly = xr.full_like(pressure_hourly, np.nan)
 
-    if pressure_daily_valid.sizes.get("time", 0) >= 1:
+    if pressure_daily_valid.sizes.get("date_time", 0) >= 1:
         max_gap = np.timedelta64(max_gap_hours, "h")
-        time_axis = pressure_hourly["time"]
-        first_time = pressure_daily_valid["time"].isel(time=0)
-        last_time = pressure_daily_valid["time"].isel(time=-1)
-        first_value = pressure_daily_valid.isel(time=0)
-        last_value = pressure_daily_valid.isel(time=-1)
+        time_axis = pressure_hourly["date_time"]
+        first_time = pressure_daily_valid["date_time"].isel(date_time=0)
+        last_time = pressure_daily_valid["date_time"].isel(date_time=-1)
+        first_value = pressure_daily_valid.isel(date_time=0)
+        last_value = pressure_daily_valid.isel(date_time=-1)
 
         early_tail_mask = (time_axis < first_time) & ((first_time - time_axis) <= max_gap)
         late_tail_mask = (time_axis > last_time) & ((time_axis - last_time) <= max_gap)
@@ -541,14 +541,8 @@ def update_parflow_input_storage(
     """
     Save the ParFlow/CLM input dataset into the parflow_input zarr_fuse node.
     """
-    priority_metadata = get_priority_station_metadata(stations_csv_path=stations_csv_path)
-    anchor_station = priority_metadata[0]
-
-    ds_to_store = parflow_clm_ds.rename({"time": "date_time"}).assign_coords(
-        date_time=("date_time", parflow_clm_ds["time"].values),
-        latitude=("latitude", [anchor_station["LAT"]]),
-        longitude=("longitude", [anchor_station["LON"]]),
-    )
+    # priority_metadata = get_priority_station_metadata(stations_csv_path=stations_csv_path)
+    ds_to_store = parflow_clm_ds
 
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
@@ -659,7 +653,7 @@ def build_open_meteo_parflow_comparison_dataset(
         storage_path=storage_path,
     )
     open_meteo_inputs = {
-        var_name: select_station_variable(open_meteo_ds, var_name, station).rename({"date_time": "time"})
+        var_name: select_station_variable(open_meteo_ds, var_name, station)
         for var_name in OPEN_METEO_REQUIRED_VARS
     }
 
@@ -681,7 +675,7 @@ def build_open_meteo_parflow_comparison_dataset(
             "DSWR": open_meteo_inputs["shortwave_radiation"].rename("DSWR"),
             "DLWR": open_meteo_inputs["dlwr_estimate"].rename("DLWR"),
         },
-        coords={"time": template["time"].values},
+        coords={"date_time": template["date_time"].values},
         attrs={"source": "Open-Meteo archive"},
     )
 
@@ -717,7 +711,7 @@ def plot_parflow_open_meteo_comparison(
         parflow_mask = np.isfinite(parflow_da.values)
         open_meteo_mask = np.isfinite(open_meteo_da.values)
         axis.plot(
-            parflow_da["time"].values[parflow_mask],
+            parflow_da["date_time"].values[parflow_mask],
             parflow_da.values[parflow_mask],
             label="parflow_clm_ds",
             linewidth=0.9,
@@ -725,7 +719,7 @@ def plot_parflow_open_meteo_comparison(
             alpha=0.9,
         )
         axis.plot(
-            open_meteo_da["time"].values[open_meteo_mask],
+            open_meteo_da["date_time"].values[open_meteo_mask],
             open_meteo_da.values[open_meteo_mask],
             label="open_meteo",
             linewidth=1.0,
@@ -766,7 +760,7 @@ def update_parflow_clm_from_open_meteo(
     Replace selected ParFlow/CLM forcing quantities with aligned Open-Meteo quantities,
     while keeping APCP and Press from the CHMI-based dataset.
     """
-    open_meteo_on_parflow_time = open_meteo_parflow_ds.reindex(time=parflow_clm_ds["time"])
+    open_meteo_on_parflow_time = open_meteo_parflow_ds.reindex(date_time=parflow_clm_ds["date_time"])
     updated_ds = parflow_clm_ds.copy()
 
     for quantity_name in replace_quantities:
@@ -811,11 +805,11 @@ def build_parflow_clm_input_dataset(
         )
 
     merged_inputs = {
-        var_name: data_array.rename({"date_time": "time"})
+        var_name: data_array
         for var_name, data_array in merged_inputs.items()
     }
     source_station_vars = {
-        var_name: data_array.rename({"date_time": "time"})
+        var_name: data_array
         for var_name, data_array in source_station_vars.items()
     }
 
@@ -880,7 +874,7 @@ def build_parflow_clm_input_dataset(
                 source_quantities=[],
             ),
         },
-        coords={"time": template["time"].values},
+        coords={"date_time": template["date_time"].values},
         attrs={
             "station_priority": station_priority,
             "notes": (
@@ -893,7 +887,7 @@ def build_parflow_clm_input_dataset(
     for var_name, source_station in source_station_vars.items():
         parflow_clm_ds[source_station.name] = source_station
 
-    time_values = parflow_clm_ds["time"].values
+    time_values = parflow_clm_ds["date_time"].values
     assert time_values.size >= 2, "Need at least two time steps to determine forcing interval."
     parflow_clm_ds["time_step"] = xr.DataArray(time_values[1] - time_values[0])
     parflow_clm_ds["time_interval"] = xr.DataArray(time_values[-1] - time_values[0])
