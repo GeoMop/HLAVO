@@ -12,10 +12,16 @@ from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
 
 LOGGER = logging.getLogger(__name__)
 
-STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
 SCRIPT_DIR = Path(__file__).resolve().parent
+
 CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
 CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations_storage"
+# CHMI_STATIONS_STORAGE_PATH = None
+NODE_OPEN_METEO = ["Uhelna", "raw_data", "open_meteo"]
+NODE_CHMI_STATIONS = ["Uhelna", "raw_data", "chmi_stations"]
+NODE_PARFLOW = ["Uhelna", "parflow", "version_01"]
+
+STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
 ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
 STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
 STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
@@ -518,10 +524,10 @@ def print_dataframe_column_diff(active_station_daily_df, active_station_hourly_d
     print(sorted(hourly_columns - daily_columns))
 
 
-def update_storage(stations_df, node_name):
+def update_storage(stations_df, node_path: list[str]):
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
-        node_path=[node_name],
+        node_path=node_path,
         var_names=[],
         storage_path=CHMI_STATIONS_STORAGE_PATH,
     )
@@ -546,47 +552,11 @@ def update_parflow_input_storage(
 
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
-        node_path=["parflow_input"],
+        node_path=NODE_PARFLOW,
         var_names=[],
         storage_path=CHMI_STATIONS_STORAGE_PATH,
     )
     node.update_from_ds(ds_to_store)
-
-
-def read_station_storage(
-    schema_path=CHMI_STATIONS_SCHEMA_PATH,
-    storage_path=CHMI_STATIONS_STORAGE_PATH,
-    var_names=None,
-):
-    """
-    Read station data from zarr_fuse storage.
-    """
-    read_var_names = [] if var_names is None else var_names
-    _, ds = read_storage(
-        schema_path=schema_path,
-        node_path=["chmi_stations"],
-        var_names=read_var_names,
-        storage_path=storage_path,
-    )
-    return ds
-
-
-def read_open_meteo_storage(
-    schema_path=CHMI_STATIONS_SCHEMA_PATH,
-    storage_path=CHMI_STATIONS_STORAGE_PATH,
-    var_names=None,
-):
-    """
-    Read Open-Meteo data from zarr_fuse storage.
-    """
-    read_var_names = [] if var_names is None else var_names
-    _, ds = read_storage(
-        schema_path=schema_path,
-        node_path=["open_meteo"],
-        var_names=read_var_names,
-        storage_path=storage_path,
-    )
-    return ds
 
 
 def get_priority_station_metadata(
@@ -682,10 +652,11 @@ def build_open_meteo_parflow_comparison_dataset(
     for comparison against parflow_clm_ds.
     """
     station = get_priority_station_metadata(stations_csv_path=stations_csv_path)[0]
-    open_meteo_ds = read_open_meteo_storage(
+    _, open_meteo_ds = read_storage(
         schema_path=schema_path,
-        storage_path=storage_path,
+        node_path=NODE_OPEN_METEO,
         var_names=OPEN_METEO_REQUIRED_VARS,
+        storage_path=storage_path,
     )
     open_meteo_inputs = {
         var_name: select_station_variable(open_meteo_ds, var_name, station).rename({"date_time": "time"})
@@ -819,10 +790,11 @@ def build_parflow_clm_input_dataset(
     Read stored CHMI station data, merge station priorities, and convert the result
     to a preliminary ParFlow/CLM forcing dataset.
     """
-    source_ds = read_station_storage(
+    _, source_ds = read_storage(
         schema_path=schema_path,
-        storage_path=storage_path,
+        node_path=NODE_CHMI_STATIONS,
         var_names=CLM_REQUIRED_SOURCE_VARS,
+        storage_path=storage_path,
     )
     priority_metadata = get_priority_station_metadata(
         stations_csv_path=stations_csv_path,
@@ -954,14 +926,14 @@ def main():
             [active_station_daily_df, active_station_hourly_df],
             how="diagonal_relaxed",
         )
-        update_storage(active_station_df, node_name="chmi_stations")
+        update_storage(active_station_df, node_path=NODE_CHMI_STATIONS)
 
         # Add open meteo data
         open_meteo_df = load_open_meteo_dataframe(start_date=start_date, end_date=end_date)
         print("Open-Meteo dataframe preview:")
         print(open_meteo_df.head())
         print(f"Open-Meteo dataframe shape: {open_meteo_df.shape}")
-        update_storage(open_meteo_df, node_name="open_meteo")
+        update_storage(open_meteo_df, node_path=NODE_OPEN_METEO)
 
     parflow_clm_ds = build_parflow_clm_input_dataset()
     open_meteo_parflow_ds = build_open_meteo_parflow_comparison_dataset()
