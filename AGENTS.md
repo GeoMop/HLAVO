@@ -15,17 +15,19 @@ assimilate in surface models, and build deep vadose zone MODFLOW 6 models from
 GIS sources.
 
 ## CODEX Ignore Folders
-
 - `DeepSensor`
 - `microchip_SW`
 - `notebooks`
 - `_*`
 
 ## CODEX Readonly Folders
-
 - `dev`
 - `hlavo/deep_model/GIS`
 
+## Project Structure
+- `hlavo` - sources of the digital twin prediction system
+- `tests` - pytest based unit tests of individual source blocks
+- `runs`  - integrated tests and production configurations
 
 ## `hlavo/` Project Source Structure
 
@@ -35,6 +37,13 @@ GIS sources.
 - `kalman/` - surface model assimilation (using profile measurements)
 - `soil_parflow/` - ParFlow based surface model (Richards)
 - `soil_py/` - Pure Python minimalistic Richards' solver.
+
+## `runs` Guidelines
+- User will use bash scripts `runs/run.sh` ans `runs/run_c.sh`. Directly or through custom scripts in the 
+  individual testcase subdirs.
+- CODEX already run in the docker environment so you should use `runs/run_0.sh` exclusively and mimic the 
+  user custom scripts. E.g. if you are asked to test through `build_model.sh` in the `runs` subdir, you should 
+  inspect the custom script and mimic its call using `run_0.sh`.
 
 
 ## CODEX Guidelines

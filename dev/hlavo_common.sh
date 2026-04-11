@@ -6,6 +6,7 @@ REPO_ROOT="$( cd -- "$COMMON_ROOT/.." >/dev/null 2>&1 ; pwd -P )"
 IMAGE_NAME="flow123d/hlavo"
 HLAVO_MODE="${HLAVO_MODE:-docker}"
 ENV_YAML="$REPO_ROOT/dev/conda-requirements.yml"
+ACTIVATE_AND_RUN="$COMMON_ROOT/hlavo_activate_and_run.sh"
 
 CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
 CONDA_BIN="${CONDA_BIN:-$CONDA_BASE/bin/conda}"
@@ -141,13 +142,41 @@ base_run_conda() {
   "$CONDA_BIN" run -n "$ENV_NAME" --no-capture-output "$@"
 }
 
+
+translate_path_arg() {
+  local arg="$1"
+  local abs rel
+
+  [[ "$arg" != /* ]] && {
+    printf '%s\n' "$arg"
+    return 0
+  }
+
+  abs="$(realpath -m -- "$arg")"
+  rel="$(realpath -m --relative-to="$REPO_ROOT" -- "$abs")"
+
+  case "$rel" in
+    ..|../*)
+      printf 'ERROR: absolute path is outside repo root: %s\n' "$arg" >&2
+      return 1
+      ;;
+    .)
+      printf '%s\n' "$ENV_REPO_ROOT"
+      ;;
+    *)
+      printf '%s\n' "$ENV_REPO_ROOT/$rel"
+      ;;
+  esac
+}
+
 base_run_docker() {
-  local img_workspace workdir host_pwd rel_pwd tty_arg
+  local img_workspace workdir host_pwd rel_pwd tty_arg_local
+  local -a docker_args
 
   set_image_vars
   command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
   img_workspace="$ENV_REPO_ROOT"
-  tty_arg="${tty_arg:-}"
+  tty_arg_local="${tty_arg:-}"
   host_pwd="$(pwd -P)"
   rel_pwd="${host_pwd#$REPO_ROOT}"
   if [[ "$rel_pwd" != "$host_pwd" ]]; then
@@ -156,18 +185,24 @@ base_run_docker() {
     workdir="$img_workspace"
   fi
 
+  docker_args=()
+  for arg in "$@"; do
+    docker_args+=("$(translate_path_arg "$arg")") || exit 1
+  done
+
   MSYS_NO_PATHCONV=1 \
   docker run --rm \
-    ${tty_arg} \
+    ${tty_arg_local} \
     --user "$(id -u):$(id -g)" \
     -v "$REPO_ROOT:$img_workspace" \
     -w "$workdir" \
     "$IMAGE_REF" \
-    "$@"
+    "${docker_args[@]}"
 }
 
 base_run_codex() {
   local img_workspace workdir host_pwd rel_pwd
+  local -a codex_args
 
   set_image_vars
   command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
@@ -181,13 +216,18 @@ base_run_codex() {
     workdir="$img_workspace"
   fi
 
+  codex_args=()
+  for arg in "$@"; do
+    codex_args+=("$(translate_path_arg "$arg")") || exit 1
+  done
+
   MSYS_NO_PATHCONV=1 \
   HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
   BASE_IMAGE="$IMAGE_REF" \
   docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
     -e CODEX_HOME="$ENV_REPO_ROOT/dev/.codex_docker" \
     -w "$workdir" \
-    codex_env "$@"
+    codex_env "${codex_args[@]}"
 }
 
 
@@ -199,8 +239,7 @@ env_build() {
 run_cmd() {
   venv_ensure
   [[ $# -ge 1 ]] || die "Missing command."
-  cmd="$(printf '%q ' "$@")"
-  base_run bash -c "source \"$VENV_DIR/bin/activate\"; exec $cmd"
+  base_run "$ACTIVATE_AND_RUN" "$HOST_VENV_DIR" "$@"
 }
 
 case "$HLAVO_MODE" in
@@ -250,22 +289,98 @@ venv_ensure() {
 }
 
 venv_overlay() {
+  local img_workspace workdir host_pwd rel_pwd
+
   if [[ "${1:-}" == "-f" ]]; then
     rm -rf "$VENV_DIR"
   fi
 
-  base_run bash -c "
-    [ -d "$VENV_DIR" ] || python -m venv --system-site-packages "$VENV_DIR"
+  case "$HLAVO_MODE" in
+    conda)
+      ensure_conda
+      "$CONDA_BIN" run -n "$ENV_NAME" --no-capture-output bash -c "
+        [ -d \"$VENV_DIR\" ] || python -m venv --system-site-packages \"$VENV_DIR\"
 
-    source \"$VENV_DIR/bin/activate\"
-    python -m pip install --upgrade pip
-    if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
-      python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
-    fi
-    if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
-      python -m pip install -e \"$ENV_REPO_ROOT\"
-    else
-      echo \"Note: $ENV_REPO_ROOT/pyproject.toml not found — skipping editable install.\"
-    fi
-  "
+        source \"$VENV_DIR/bin/activate\"
+        python -m pip install --upgrade pip
+        if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
+          python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
+        fi
+        if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
+          python -m pip install -e \"$ENV_REPO_ROOT\"
+        else
+          echo \"Note: $ENV_REPO_ROOT/pyproject.toml not found — skipping editable install.\"
+        fi
+      "
+      ;;
+    docker)
+      set_image_vars
+      command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+      img_workspace="$ENV_REPO_ROOT"
+      host_pwd="$(pwd -P)"
+      rel_pwd="${host_pwd#$REPO_ROOT}"
+      if [[ "$rel_pwd" != "$host_pwd" ]]; then
+        workdir="${img_workspace}${rel_pwd}"
+      else
+        workdir="$img_workspace"
+      fi
+
+      MSYS_NO_PATHCONV=1 \
+      docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        -v "$REPO_ROOT:$img_workspace" \
+        -w "$workdir" \
+        "$IMAGE_REF" \
+        bash -c "
+          [ -d \"$VENV_DIR\" ] || python -m venv --system-site-packages \"$VENV_DIR\"
+
+          source \"$VENV_DIR/bin/activate\"
+          python -m pip install --upgrade pip
+          if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
+            python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
+          fi
+          if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
+            python -m pip install -e \"$ENV_REPO_ROOT\"
+          else
+            echo \"Note: $ENV_REPO_ROOT/pyproject.toml not found — skipping editable install.\"
+          fi
+        "
+      ;;
+    codex)
+      set_image_vars
+      command -v docker >/dev/null 2>&1 || die "docker not found on PATH"
+      img_workspace="$ENV_REPO_ROOT"
+      host_pwd="$(pwd -P)"
+      rel_pwd="${host_pwd#$REPO_ROOT}"
+      if [[ "$rel_pwd" != "$host_pwd" ]]; then
+        workdir="${img_workspace}${rel_pwd}"
+      else
+        workdir="$img_workspace"
+      fi
+
+      MSYS_NO_PATHCONV=1 \
+      HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+      BASE_IMAGE="$IMAGE_REF" \
+      docker compose -f "$SCRIPT_ROOT/docker-compose.yml" run --rm --build \
+        -e CODEX_HOME="$ENV_REPO_ROOT/dev/.codex_docker" \
+        -w "$workdir" \
+        codex_env bash -c "
+          [ -d \"$VENV_DIR\" ] || python -m venv --system-site-packages \"$VENV_DIR\"
+
+          source \"$VENV_DIR/bin/activate\"
+          python -m pip install --upgrade pip
+          if [[ -f \"$ENV_REPO_ROOT/requirements.txt\" ]]; then
+            python -m pip install -r \"$ENV_REPO_ROOT/requirements.txt\"
+          fi
+          if [[ -f \"$ENV_REPO_ROOT/pyproject.toml\" ]]; then
+            python -m pip install -e \"$ENV_REPO_ROOT\"
+          else
+            echo \"Note: $ENV_REPO_ROOT/pyproject.toml not found — skipping editable install.\"
+          fi
+        "
+      ;;
+    *)
+      die "Unknown HLAVO_MODE: $HLAVO_MODE"
+      ;;
+  esac
 }

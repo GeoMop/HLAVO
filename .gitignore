@@ -1,3 +1,5 @@
+
+
 dev/.codex_docker
 hlavo/deep_model/model
 runs/composed_mock/3d_models
@@ -30,7 +32,7 @@ DeepSensor/EM_models/**/*.pdf
 DeepSensor/EM_models/**/*.vti
 DeepSensor/EM_models/**/*.png
 DeepSensor/EM_models/**/*.zip
-
+DeepSensor/EM_results*
 
 # secret files
 dvc_secret_config.sh
