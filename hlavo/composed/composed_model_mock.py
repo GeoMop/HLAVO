@@ -217,19 +217,13 @@ class Model3DConfig:
     def from_yaml(cls, config_data: dict, work_dir: Path) -> "Model3DConfig":
         model_3d = config_data.get("model_3d", {})
         assert isinstance(model_3d, dict), "model_3d config must be a mapping"
-
         model_name = str(model_3d.get("name", "uhelna"))
-        folder_raw = model_3d.get("folder", "runs/composed_mock/3d_models/model_with_mine")
-        model_folder = Path(str(folder_raw))
-        if not model_folder.is_absolute():
-            model_folder = (work_dir / model_folder).resolve()
+
+        model_folder = (work_dir / "model_with_mine").resolve()
         assert model_folder.exists(), f"model_3d.folder does not exist: {model_folder}"
         assert model_folder.is_dir(), f"model_3d.folder must be a directory: {model_folder}"
 
-        work_folder_raw = model_3d.get("work_folder", "runs/composed_mock/3d_models/model_with_mine_work")
-        work_folder = Path(str(work_folder_raw))
-        if not work_folder.is_absolute():
-            work_folder = (work_dir / work_folder).resolve()
+        work_folder = (work_dir / "model_with_mine_work").resolve()
         assert work_folder != model_folder, "model_3d.work_folder must be different from model_3d.folder"
 
         time_step_days = float(model_3d.get("time_step_days", 5.0))
@@ -254,23 +248,19 @@ class Model3DConfig:
 class Model3D:
     def __init__(self, n_1d, model_3d_cfg: Model3DConfig, locations_1d, initial_time=0.0):
         self.n_1d = n_1d
-        self.model_cfg = model_3d_cfg
+        self.cfg = model_3d_cfg
         self.locations_1d = locations_1d
         self.time: float = 0.0
         # simulation time in days from start of simulated interval
-        self.base_dt = model_3d_cfg.time_step_days
-        self.source_model_folder = model_3d_cfg.model_folder
-        self.model_folder = model_3d_cfg.work_folder
-        self.model_name = model_3d_cfg.model_name
 
         self._prepare_model_workspace()
 
-        self.dis_file = self.model_folder / f"{self.model_name}.dis"
-        self.nam_file = self.model_folder / f"{self.model_name}.nam"
-        self.rcha_file = self.model_folder / f"{self.model_name}.rcha"
-        self.ic_file = self.model_folder / f"{self.model_name}.ic"
-        self.tdis_file = self.model_folder / f"{self.model_name}.tdis"
-        self.hds_file = self.model_folder / f"{self.model_name}.hds"
+        self.dis_file = self.cfg.work_folder / f"{self.cfg.model_name}.dis"
+        self.nam_file = self.cfg.work_folder / f"{self.cfg.model_name}.nam"
+        self.rcha_file = self.cfg.work_folder / f"{self.cfg.model_name}.rcha"
+        self.ic_file = self.cfg.work_folder / f"{self.cfg.model_name}.ic"
+        self.tdis_file = self.cfg.work_folder / f"{self.cfg.model_name}.tdis"
+        self.hds_file = self.cfg.work_folder / f"{self.cfg.model_name}.hds"
 
         self.nlay, self.nrow, self.ncol = self._read_dis_dimensions(self.dis_file)
         self.lon_sw, self.lat_sw, self.lon_ne, self.lat_ne = self._read_grid_corners(self.nam_file)
@@ -278,18 +268,18 @@ class Model3D:
         self.cell_owner = None
 
     def resolve_t_end(self) -> float:
-        if self.model_cfg.total_time_days is not None:
-            t_end = self.model_cfg.total_time_days
-        elif self.model_cfg.n_steps is not None:
-            t_end = self.base_dt * float(self.model_cfg.n_steps)
+        if self.cfg.total_time_days is not None:
+            t_end = self.cfg.total_time_days
+        elif self.cfg.n_steps is not None:
+            t_end = self.cfg.time_step_days * float(self.cfg.n_steps)
         else:
-            t_end = self.base_dt
+            t_end = self.cfg.time_step_days
         assert t_end > 0.0, "model_3d total simulation time must be > 0"
         return t_end
 
     def _prepare_model_workspace(self):
-        src = self.source_model_folder
-        dst = self.model_folder
+        src = self.cfg.model_folder
+        dst = self.cfg.work_folder
         assert src.exists(), f"3D source model folder not found: {src}"
         assert src.is_dir(), f"3D source model folder must be a directory: {src}"
         if dst.exists():
@@ -353,8 +343,8 @@ class Model3D:
         self.tdis_file.write_text(text, encoding="utf-8")
 
     def _read_active_mask_3d(self):
-        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.model_folder), verbosity_level=0)
-        gwf = sim.get_model(self.model_name)
+        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.cfg.work_folder), verbosity_level=0)
+        gwf = sim.get_model(self.cfg.model_name)
         idomain = np.asarray(gwf.dis.idomain.array, dtype=int)
         assert idomain.shape == (self.nlay, self.nrow, self.ncol), "Unexpected idomain shape"
         return idomain > 0
@@ -369,14 +359,14 @@ class Model3D:
             handle.write("END period  1\n")
 
     def _run_mf6(self):
-        executable = self.model_cfg.executable
+        executable = self.cfg.executable
         resolved_executable = shutil.which(executable)
         assert resolved_executable is not None, f"MODFLOW executable not found: {executable}"
 
-        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", resolved_executable, self.model_folder)
+        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", resolved_executable, self.cfg.work_folder)
         result = subprocess.run(
             [resolved_executable],
-            cwd=self.model_folder,
+            cwd=self.cfg.work_folder,
             check=False,
         )
         if result.returncode != 0:
@@ -390,8 +380,8 @@ class Model3D:
             return np.asarray(hds.get_data(totim=times[-1]), dtype=float)
 
         LOG.info("[3D] head file missing at startup, using initial conditions from %s", self.ic_file)
-        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.model_folder), verbosity_level=0)
-        gwf = sim.get_model(self.model_name)
+        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.cfg.work_folder), verbosity_level=0)
+        gwf = sim.get_model(self.cfg.model_name)
         heads = np.asarray(gwf.ic.strt.array, dtype=float)
         assert heads.shape == (self.nlay, self.nrow, self.ncol), "Unexpected initial head shape"
         return heads
@@ -449,7 +439,7 @@ class Model3D:
 
     def choose_dt(self, t_end):
         remaining = t_end - self.time
-        return max(min(self.base_dt, remaining), 0.0)
+        return max(min(self.cfg.time_step_days, remaining), 0.0)
 
     def model_step(self, dt, contributions):
         recharge = self._spread_recharges(contributions)
