@@ -11,10 +11,10 @@ from itertools import groupby
 # from joblib import Memory
 # memory = Memory(location='cache_dir', verbose=10)
 from hlavo.kalman.kalman_result import KalmanResults
-from hlavo.soil_parflow.parflow_model import ToyProblem
 from filterpy.kalman import MerweScaledSigmaPoints
 # from soil_model.evapotranspiration_fce import ET0
 from hlavo.misc.auxiliary_functions import sqrt_func, add_noise
+from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
@@ -115,10 +115,11 @@ class KalmanFilter:
 
         :return: Model instance
         """
-        if self.model_config["model_class_name"] == "ToyProblem":
-            model_class = ToyProblem
-        else:
-            raise NotImplemented("Import desired class")
+        model_class_name = self.model_config["model_class_name"]
+        model_class = resolve_named_class(
+            model_class_name,
+            ("hlavo.soil_parflow", "hlavo.soil_parflow.parflow_model"),
+        )
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
     def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag):

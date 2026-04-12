@@ -57,7 +57,6 @@ GIS sources.
 
 
 ## Coding rules
-
 - Best code, is no code!
 - prefere functional style with poor functions;
   idealy do not change objects after construction, all methods do calculations 
@@ -72,9 +71,12 @@ GIS sources.
   That means error inputs must raise early. Therefore only check for existing keys in input dicts
   if these will be required down in a long calculation. Otherwise just let KeyError do the job.
 - do not use "guess" default values, only obvious defaults
+- Do not use other config keys in the case of a KeyError, just throw early.
 - Do just basic asserts for consistency for function inputs.
 - Can add more asserts if needed during debugging.
 - NEVER resolve test errors by try blocks
+- NEVER write "self explanatory" into comments
+- in comments indicate by ?? if you are not certain about intent of particular variable, function, parameter ...
 
 
 ## How to verify your changes

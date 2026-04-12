@@ -2,21 +2,34 @@ seed: 123456
 start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
-  # AGENT: remove, use fixed subdirs
   folder: "model_with_mine"
-  # folder where the original files for 3d model are stored
-  name: "uhelna"
-  # file with this name and extension .nam should exist in the folder - main file for modflow
   # AGENT: remove, use fixed subdirs
+  # folder where the original files for 3d model are stored
+
+  name: "uhelna"
+  # AGENT: remove, use fixed subdirs
+  # file with this name and extension .nam should exist in the folder - main file for modflow
+
   work_folder: "model_with_mine_work"
+  # AGENT: remove, use fixed subdirs
   # in this folder the simulation is run, not to spoil original data
+
   time_step_days: 5.0
+  # AGENT: improve the comment according to the code
   # self explanatory. Maybe some time in future a list, maybe time units
+
   total_time_days: 15.0
+  # AGENT: improve the comment according to the code
   # self explanatory. Should not be lower than time_step_days
+
   executable: "mf6"
   # executable to run for the 3d model - some version of modflow
+
 model_1d:
+  class_name: "Model1DMock"
+  # AGENT: implement a dynamic class resolution and us it systematicaly for:
+  # Model1D, Model3D, Richards
+
   sites:
     - longitude: 14.8800
       latitude: 50.8600
@@ -26,6 +39,8 @@ model_1d:
       latitude: 50.8900
   model_config:
     model_class_name: "ToyProblem"
+    # AGENT: reuse dynamic resolution mentioned above
+
     init_pressure: [-40, -100] #[-0.1, -4]   # bottom, top ; [temporary solution]
     static_params:
       ComputationalGrid:
