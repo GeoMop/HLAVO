@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -xeuo pipefail
+set -euo pipefail
 
 COMMON_ROOT="$( cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 ; pwd -P )"
 REPO_ROOT="$( cd -- "$COMMON_ROOT/.." >/dev/null 2>&1 ; pwd -P )"

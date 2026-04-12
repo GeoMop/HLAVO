@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -xeuo pipefail
 
 # This wrapper is injected by run_cmd before the user command.
 # It keeps base_run_* as raw environment entry points while still ensuring
@@ -13,5 +13,6 @@ set -euo pipefail
 venv_dir="$1"
 shift
 
+echo "Activating VENV: $venv_dir" 
 source "$venv_dir/bin/activate"
 exec "$@"
