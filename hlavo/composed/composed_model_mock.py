@@ -357,9 +357,13 @@ class Model3D:
             handle.write("END period  1\n")
 
     def _run_mf6(self):
-        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", self.model_cfg.executable, self.model_folder)
+        executable = self.model_cfg.executable
+        resolved_executable = shutil.which(executable)
+        assert resolved_executable is not None, f"MODFLOW executable not found: {executable}"
+
+        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", resolved_executable, self.model_folder)
         result = subprocess.run(
-            [self.model_cfg.executable],
+            [resolved_executable],
             cwd=self.model_folder,
             check=False,
         )
@@ -367,11 +371,18 @@ class Model3D:
             raise RuntimeError(f"MODFLOW 6 execution failed with exit code {result.returncode}")
 
     def _read_last_heads(self):
-        assert self.hds_file.exists(), f"Head file not found: {self.hds_file}"
-        hds = HeadFile(str(self.hds_file))
-        times = hds.get_times()
-        assert times, "No times in head file"
-        return np.asarray(hds.get_data(totim=times[-1]), dtype=float)
+        if self.hds_file.exists():
+            hds = HeadFile(str(self.hds_file))
+            times = hds.get_times()
+            assert times, "No times in head file"
+            return np.asarray(hds.get_data(totim=times[-1]), dtype=float)
+
+        LOG.info("[3D] head file missing at startup, using initial conditions from %s", self.ic_file)
+        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.model_folder), verbosity_level=0)
+        gwf = sim.get_model(self.model_name)
+        heads = np.asarray(gwf.ic.strt.array, dtype=float)
+        assert heads.shape == (self.nlay, self.nrow, self.ncol), "Unexpected initial head shape"
+        return heads
 
     def _sanitize_heads(self, heads):
         assert heads.shape == (self.nlay, self.nrow, self.ncol)
