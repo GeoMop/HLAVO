@@ -1,0 +1,7 @@
+interface:
+  display_name: "Update Status"
+  short_description: "Refresh STATUS.md from recent thread and repo evidence"
+  default_prompt: "Update STATUS.md from the work completed in this thread."
+
+policy:
+  allow_implicit_invocation: false
