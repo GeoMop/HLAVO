@@ -5,12 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import sys
 import yaml
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 from hlavo.composed.composed_model_mock import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
@@ -60,8 +55,8 @@ def _configure_logging() -> None:
 
 
 def _run_build_model(*, config_path: Path, workdir: Path) -> int:
-    translated_config_path = _translate_build_model_config(config_path, workdir)
-    build_config = build_model(config_path=translated_config_path, workspace=workdir)
+    config_source = _translate_build_model_config(config_path, workdir)
+    build_config = build_model(config_source=config_source, workspace=workdir)
     LOG.info("3D model built in %s", build_config.workspace)
     return 0
 
@@ -71,52 +66,28 @@ def _run_simulate(*, config_path: Path, workdir: Path) -> int:
     return 0
 
 
-def _translate_build_model_config(config_path: Path, workdir: Path) -> Path:
-    defaults_path = REPO_ROOT / "hlavo" / "deep_model" / "config" / "model_config.yaml"
-    defaults_root = defaults_path.parent.parent
-    with defaults_path.open("r", encoding="utf-8") as handle:
-        translated = yaml.safe_load(handle) or {}
-
+def _translate_build_model_config(config_path: Path, workdir: Path) -> dict:
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
     assert isinstance(raw, dict), "Config YAML must be a mapping"
     if "model" in raw:
-        return config_path
+        return raw
 
     model_3d = raw["model_3d"]
     assert isinstance(model_3d, dict), "model_3d config must be a mapping"
 
-    model_folder = Path(str(model_3d.get("folder", "3d_models/model_with_mine")))
-    qgis_project_path = Path(str(raw.get("qgis_project_path", translated["qgis_project_path"])))
-    if not qgis_project_path.is_absolute():
-        qgis_project_path = (defaults_root / qgis_project_path).resolve()
-    translated["qgis_project_path"] = str(qgis_project_path)
-    if "boundary_layer_name" in raw:
-        translated["boundary_layer_name"] = raw["boundary_layer_name"]
-    if "raster_group_name" in raw:
-        translated["raster_group_name"] = raw["raster_group_name"]
-    if "meshsteps" in raw:
-        translated["meshsteps"] = raw["meshsteps"]
+    translated = dict(raw)
+    translated["_config_path"] = str(config_path)
     translated["model"] = {
-        "model_name": model_folder.name,
-        "workspace": str(model_folder.parent),
-        "sim_name": str(model_3d.get("name", translated["model"]["sim_name"])),
+        "model_name": "model_with_mine",
+        "workspace": str(workdir),
+        "sim_name": str(model_3d.get("name", "uhelna")),
         "exe_name": str(model_3d.get("executable", "mf6")),
-        "simulation_days": float(model_3d.get("total_time_days", translated["model"]["simulation_days"])),
-        "drain_conductance": float(
-            model_3d.get("drain_conductance", translated["model"].get("drain_conductance", 1.0))
-        ),
+        "simulation_days": float(model_3d.get("total_time_days", 1.0)),
+        "drain_conductance": float(model_3d.get("drain_conductance", 1.0)),
     }
-    for key in ("materials", "plots"):
-        if key in raw:
-            translated[key] = raw[key]
-
-    translated_path = workdir / ".build_model_config.yaml"
-    translated_path.parent.mkdir(parents=True, exist_ok=True)
-    with translated_path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(translated, handle, sort_keys=False)
-    return translated_path
+    return translated
 
 
 def main(argv: list[str] | None = None) -> int:

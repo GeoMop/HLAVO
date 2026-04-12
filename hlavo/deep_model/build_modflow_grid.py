@@ -35,12 +35,17 @@ class BuildConfig:
 
     @staticmethod
     def from_yaml(
-        config_path: Path,
+        config_source: Path | dict,
         workspace: Path | None = None,
     ) -> "BuildConfig":
-        assert config_path.exists(), f"Config file not found: {config_path}"
-        with config_path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
+        if isinstance(config_source, dict):
+            raw = config_source
+            resolved_config_path = Path(str(raw["_config_path"]))
+        else:
+            assert config_source.exists(), f"Config file not found: {config_source}"
+            with config_source.open("r", encoding="utf-8") as handle:
+                raw = yaml.safe_load(handle)
+            resolved_config_path = config_source
         assert isinstance(raw, dict), "Config YAML must be a mapping"
         model_raw = raw.get("model", {})
         assert isinstance(model_raw, dict), "model config must be a mapping"
@@ -102,7 +107,7 @@ class BuildConfig:
         else:
             output_path = run_workspace / "grid_materials.npz"
         return BuildConfig(
-            config_path=config_path,
+            config_path=resolved_config_path,
             output_path=output_path,
             workspace=run_workspace,
             model_name=model_name,
@@ -117,8 +122,11 @@ class BuildConfig:
         )
 
 
-def build_model(config_path: Path, workspace: Path | None = None) -> BuildConfig:
-    build_config = BuildConfig.from_yaml(config_path, workspace=workspace)
+def build_model(
+    config_source: Path | dict,
+    workspace: Path | None = None,
+) -> BuildConfig:
+    build_config = BuildConfig.from_yaml(config_source, workspace=workspace)
     build_modflow_grid(build_config.config_path, build_config.output_path)
     write_modflow_inputs(build_config)
     return build_config

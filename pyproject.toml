@@ -54,7 +54,12 @@ dependencies = [
     #weasyprint
     "openpyxl",     # for reading original input datasets
 
+    # deep_model parallel calibration; combine with dask.distributed map  
+    "deap"
 ]
+
+[project.scripts]
+hlavo = "hlavo.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
