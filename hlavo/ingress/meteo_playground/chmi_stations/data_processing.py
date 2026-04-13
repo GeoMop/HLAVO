@@ -32,6 +32,8 @@ from hlavo.ingress.meteo_playground.chmi_stations.config import (
 )
 from hlavo.ingress.moist_profile.extract.main import load_site_coords_csv
 from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
+from hlavo.ingress.meteo_playground.chmi_stations.data_scrapper import get_station_coordinates
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -393,8 +395,9 @@ def rename_hourly_overlap_columns(active_station_daily_df, active_station_hourly
 
 
 def load_cached_open_meteo_dataframe(
-    stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
-    station_wsi=None,
+    latitude,
+    longitude,
+    site_id,
     start_date=None,
     end_date=None,
     data_dir=OPEN_METEO_DATA_HOURLY_PATH,
@@ -404,34 +407,26 @@ def load_cached_open_meteo_dataframe(
     """
     assert start_date is not None, "start_date must be provided for Open-Meteo cache loading."
     assert end_date is not None, "end_date must be provided for Open-Meteo cache loading."
-    if station_wsi is None:
-        station_wsi = CLM_STATION_PRIORITY[0]
-
-    stations_df = pl.read_csv(stations_csv_path)
-    station_rows = stations_df.filter(pl.col("WSI") == station_wsi)
-    assert station_rows.height == 1, f"Expected exactly one station row for {station_wsi!r}."
-    station = station_rows.row(0, named=True)
 
     json_path = (
         Path(data_dir)
-        / station_wsi
-        / f"open-meteo-{station_wsi}-{start_date[:10]}-{end_date[:10]}.json"
+        / f"open-meteo-{site_id}-{start_date[:10]}-{end_date[:10]}.json"
     )
     open_meteo_df = open_meteo(
-        latitude=station["LAT"],
-        longitude=station["LON"],
+        latitude=latitude,
+        longitude=longitude,
         start=start_date,
         end=end_date,
         json_path=json_path,
         refresh=False,
     )
     return open_meteo_df.with_columns(
-        pl.lit(f"open_meteo:{station_wsi}").alias("STATION"),
-        pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
-        pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
+        # pl.lit(f"open_meteo:{site_id}").alias("STATION"),
+        pl.lit(latitude).cast(pl.Float64).alias("latitude"),
+        pl.lit(longitude).cast(pl.Float64).alias("longitude"),
     ).select(
         [
-            "STATION",
+            # "STATION",
             "date_time",
             "latitude",
             "longitude",
@@ -998,19 +993,25 @@ def main():
         )
         update_storage(active_station_df, node_path=NODE_CHMI_STATIONS)
 
-        open_meteo_df = load_cached_open_meteo_dataframe(start_date=start_date, end_date=end_date)
+        # latitude, longitude, site_id = get_station_coordinates(active_station_df)
+        latitude, longitude, site_id = (50.863565, 14.889853, '1')  # U01
+        open_meteo_df = load_cached_open_meteo_dataframe(latitude, longitude, site_id,
+                                                         start_date=start_date, end_date=end_date)
         print("Open-Meteo dataframe preview:")
         print(open_meteo_df.head())
         print(f"Open-Meteo dataframe shape: {open_meteo_df.shape}")
         update_storage(open_meteo_df, node_path=NODE_OPEN_METEO)
 
+    # computes input fields for Parflow/CLM from chmi data
     parflow_clm_ds = build_parflow_clm_input_dataset()
+
     open_meteo_parflow_ds = build_open_meteo_parflow_comparison_dataset()
     comparison_plot_path = plot_parflow_open_meteo_comparison(
         parflow_clm_ds,
         open_meteo_parflow_ds,
     )
 
+    # fill nulls from OpenMeteo source
     parflow_clm_ds = update_parflow_clm_from_open_meteo(
         parflow_clm_ds,
         open_meteo_parflow_ds,

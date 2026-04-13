@@ -82,6 +82,19 @@ def load_active_stations(stations_csv_path=ACTIVE_STATIONS_CSV_PATH):
     return pd.read_csv(stations_csv_path)
 
 
+def get_station_coordinates(active_df, station_wsi=None):
+    """
+    Resolve latitude and longitude for the selected active station.
+    """
+    if station_wsi is None:
+        station_wsi = CLM_STATION_PRIORITY[0]
+
+    station_rows = active_df.loc[active_df["WSI"].astype(str) == str(station_wsi)]
+    assert len(station_rows) == 1, f"Expected exactly one active station row for {station_wsi!r}."
+    station = station_rows.iloc[0]
+    return float(station["LAT"]), float(station["LON"]), str(station_wsi)
+
+
 def download_chmi_station_data(
     active_df,
     *,
@@ -106,32 +119,25 @@ def download_chmi_station_data(
 
 
 def download_open_meteo_data(
-    active_df,
     *,
+    latitude,
+    longitude,
     start_date,
     end_date,
-    station_wsi=None,
+    site_id="site",
     output_dir=OPEN_METEO_DATA_HOURLY_PATH,
     refresh=False,
 ):
     """
-    Download or refresh cached Open-Meteo JSON for the selected priority station.
+    Download or refresh cached Open-Meteo JSON for the selected coordinates.
     """
-    if station_wsi is None:
-        station_wsi = CLM_STATION_PRIORITY[0]
-
-    station_rows = active_df.loc[active_df["WSI"].astype(str) == str(station_wsi)]
-    assert len(station_rows) == 1, f"Expected exactly one active station row for {station_wsi!r}."
-    station = station_rows.iloc[0]
-
     json_path = (
         Path(output_dir)
-        / str(station_wsi)
-        / f"open-meteo-{station_wsi}-{start_date[:10]}-{end_date[:10]}.json"
+        / f"open-meteo-{site_id}-{start_date[:10]}-{end_date[:10]}.json"
     )
     open_meteo(
-        latitude=float(station["LAT"]),
-        longitude=float(station["LON"]),
+        latitude=latitude,
+        longitude=longitude,
         start=start_date,
         end=end_date,
         json_path=json_path,
@@ -149,18 +155,25 @@ def main():
     hourly_years = [str(year) for year in range(start_year, end_year + 1)]
 
     active_df = load_active_stations()
+
     downloaded_daily, downloaded_hourly = download_chmi_station_data(
         active_df,
         hourly_years=hourly_years,
     )
-    open_meteo_json_path = download_open_meteo_data(
-        active_df,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
     print(f"Downloaded {len(downloaded_daily)} daily CHMI files to {STATIONS_DATA_DAILY_PATH}")
     print(f"Downloaded {len(downloaded_hourly)} hourly CHMI files to {STATIONS_DATA_HOURLY_PATH}")
+
+    # latitude, longitude, site_id = get_station_coordinates(active_df) # top priority station
+    latitude, longitude, site_id = (50.863565, 14.889853, '1') # U01
+    open_meteo_json_path = download_open_meteo_data(
+        latitude=latitude,
+        longitude=longitude,
+        start_date=start_date,
+        end_date=end_date,
+        site_id=site_id,
+    )
+
+
     print(f"Cached Open-Meteo JSON to {open_meteo_json_path}")
 
 
