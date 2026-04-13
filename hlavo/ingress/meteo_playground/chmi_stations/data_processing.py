@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from hlavo.common.zarr_fuse_reader import read_storage
+from hlavo.ingress.moist_profile.extract.main import load_site_coords_csv
 from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
 
 LOGGER = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
 STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
 OPEN_METEO_DATA_HOURLY_PATH = SCRIPT_DIR / "open_meteo_data_hourly"
 PARFLOW_OPEN_METEO_COMPARISON_PLOT_PATH = SCRIPT_DIR / "parflow_clm_vs_open_meteo.pdf"
+SITE_COORDS_CSV_PATH = SCRIPT_DIR.parents[1] / "moist_profile" / "extract" / "site_coords.csv"
 CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
                         "0-203-0-11601", # "Frýdlant"
                         "0-20000-0-11603", # "Liberec"
@@ -44,6 +46,8 @@ OPEN_METEO_REQUIRED_VARS = [
 ]
 SECONDS_PER_DAY = 24 * 60 * 60
 SECONDS_PER_HOUR = 60 * 60
+GRAVITY_M_S2 = 9.80665
+DRY_AIR_GAS_CONSTANT = 287.05
 
 
 def get_data_block(doc):
@@ -537,12 +541,29 @@ def update_storage(stations_df, node_path: list[str]):
 def update_parflow_input_storage(
     parflow_clm_ds,
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
+    site_coords_csv_path=SITE_COORDS_CSV_PATH,
 ):
     """
     Save the ParFlow/CLM input dataset into the parflow_input zarr_fuse node.
     """
-    # priority_metadata = get_priority_station_metadata(stations_csv_path=stations_csv_path)
-    ds_to_store = parflow_clm_ds
+    site_metadata_ds = build_site_metadata_dataset(site_coords_csv_path=site_coords_csv_path)
+    station_elevation_lookup = get_station_elevation_lookup(stations_csv_path=stations_csv_path)
+    pressure_source_station = build_pressure_source_station_series(parflow_clm_ds)
+    site_pressure = correct_pressure_to_site_elevations(
+        pressure_pa=parflow_clm_ds["Press"],
+        station_source=pressure_source_station,
+        air_temperature_k=parflow_clm_ds["Temp"],
+        site_elevation_m=site_metadata_ds["elevation"],
+        station_elevation_lookup=station_elevation_lookup,
+    ).transpose("date_time", "site_id").rename("Press")
+    site_pressure.attrs = parflow_clm_ds["Press"].attrs
+
+    ds_to_store = parflow_clm_ds.copy()
+    ds_to_store["Press"] = site_pressure
+    ds_to_store["latitude"] = site_metadata_ds["latitude"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
+    ds_to_store["longitude"] = site_metadata_ds["longitude"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
+    ds_to_store["elevation"] = site_metadata_ds["elevation"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
+    ds_to_store = ds_to_store.assign_coords(site_id=site_metadata_ds["site_id"])
 
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
@@ -567,6 +588,50 @@ def get_priority_station_metadata(
         assert station_rows.height == 1, f"Expected exactly one station row for {station_wsi!r}."
         priority_metadata.append(station_rows.row(0, named=True))
     return priority_metadata
+
+
+def get_station_elevation_lookup(stations_csv_path=ACTIVE_STATIONS_CSV_PATH):
+    """
+    Return a mapping from station WSI to station elevation in meters above sea level.
+    """
+    stations_df = pl.read_csv(stations_csv_path)
+    return {
+        row["WSI"]: float(row["ELEVATION"])
+        for row in stations_df.select(["WSI", "ELEVATION"]).iter_rows(named=True)
+    }
+
+
+def build_pressure_source_station_series(parflow_clm_ds):
+    """
+    Reconstruct the station source series used for the merged pressure field.
+    """
+    hourly_source = parflow_clm_ds["P1H_source_station"]
+    daily_source = parflow_clm_ds["P_source_station"]
+    hourly_pressure = parflow_clm_ds["Press"]
+    return xr.where(hourly_pressure.notnull() & hourly_source.notnull(), hourly_source, daily_source)
+
+
+def build_site_metadata_dataset(site_coords_csv_path=SITE_COORDS_CSV_PATH):
+    """
+    Load site coordinates and elevations and convert them to a small xarray dataset keyed by site_id.
+    """
+    site_coords_df = load_site_coords_csv(str(site_coords_csv_path))
+    site_metadata_df = (
+        site_coords_df
+        .sort(["site_id", "site_datetime"])
+        .group_by("site_id")
+        .first()
+        .sort("site_id")
+        .select(["site_id", "latitude", "longitude", "elevation"])
+    )
+    return xr.Dataset(
+        data_vars={
+            "latitude": ("site_id", site_metadata_df["latitude"].to_list()),
+            "longitude": ("site_id", site_metadata_df["longitude"].to_list()),
+            "elevation": ("site_id", site_metadata_df["elevation"].to_list()),
+        },
+        coords={"site_id": site_metadata_df["site_id"].cast(pl.Int32).to_list()},
+    )
 
 
 def select_station_variable(ds, var_name, station):
@@ -622,6 +687,30 @@ def compute_specific_humidity(temperature_c, relative_humidity_pct, pressure_hpa
     saturation_vapor_pressure_hpa = 6.112 * np.exp(17.67 * temperature_c / (temperature_c + 243.5))
     vapor_pressure_hpa = (relative_humidity_pct / 100.0) * saturation_vapor_pressure_hpa
     return 0.622 * vapor_pressure_hpa / (pressure_hpa - 0.378 * vapor_pressure_hpa)
+
+
+def correct_pressure_to_site_elevations(
+    pressure_pa,
+    station_source,
+    air_temperature_k,
+    site_elevation_m,
+    station_elevation_lookup,
+):
+    """
+    Correct station pressure to all site elevations using the hypsometric relation.
+    """
+    station_elevation = xr.full_like(pressure_pa, np.nan, dtype=float)
+    for station_wsi, elevation_m in station_elevation_lookup.items():
+        station_elevation = xr.where(station_source == station_wsi, float(elevation_m), station_elevation)
+
+    site_ids = site_elevation_m["site_id"]
+    pressure_2d = pressure_pa.expand_dims(site_id=site_ids)
+    station_elevation_2d = station_elevation.expand_dims(site_id=site_ids)
+    temperature_2d = air_temperature_k.expand_dims(site_id=site_ids).clip(min=200.0)
+    site_elevation_2d = site_elevation_m.expand_dims(date_time=pressure_pa["date_time"]).transpose("date_time", "site_id")
+    height_delta = site_elevation_2d - station_elevation_2d
+
+    return pressure_2d * np.exp(-(GRAVITY_M_S2 * height_delta) / (DRY_AIR_GAS_CONSTANT * temperature_2d))
 
 
 def with_clean_attrs(data_array, *, units, description, source_quantities):
