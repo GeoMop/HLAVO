@@ -163,10 +163,14 @@ class ModelInputs:
     # Rectangular grid covering the domain.
 
     @staticmethod
-    def from_yaml(config_path: Path) -> "ModelInputs":
-        config = ModelConfig.from_yaml(config_path)
+    def from_source(config_source: Path | dict) -> "ModelInputs":
+        config = ModelConfig.from_source(config_source)
+        if isinstance(config_source, dict):
+            project_path = config.qgis_project_path
+        else:
+            project_path = _resolve_project_path(config_source, config.qgis_project_path)
         reader = QgisProjectReader(
-            project_path=config_path.parent.parent / config.qgis_project_path,
+            project_path=project_path,
             boundary_layer_name=config.boundary_layer_name,
             raster_group_name=config.raster_group_name,
         )
@@ -229,11 +233,14 @@ class ModelConfig:
     # Mesh steps (x, y, z) in model units.
 
     @staticmethod
-    def from_yaml(path: Path) -> "ModelConfig":
-        assert path.exists(), f"Config file not found: {path}"
-        with path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-
+    def from_source(config_source: Path | dict) -> "ModelConfig":
+        if isinstance(config_source, dict):
+            raw = config_source
+        else:
+            path = config_source
+            assert path.exists(), f"Config file not found: {path}"
+            with path.open("r", encoding="utf-8") as handle:
+                raw = yaml.safe_load(handle)
         assert isinstance(raw, dict), "Config YAML must be a mapping"
         assert "qgis_project_path" in raw, "Missing required config key: qgis_project_path"
         qgis_project_path = Path(raw["qgis_project_path"])
@@ -254,6 +261,12 @@ class ModelConfig:
             raster_group_name=raster_group_name,
             meshsteps=meshsteps,
         )
+
+
+def _resolve_project_path(config_path: Path, project_path: Path) -> Path:
+    if project_path.is_absolute():
+        return project_path
+    return config_path.parent.parent / project_path
 
 
 @attrs.define(frozen=True)

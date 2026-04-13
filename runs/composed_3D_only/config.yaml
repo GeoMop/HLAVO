@@ -4,6 +4,7 @@ end_datetime: "2025-08-13T23:40:51"
 model_3d:
   class_name: "Model3D"
   name: "uhelna"
+  model_name: "model_with_mine"
 
   time_step_days: 5.0
   # Duration of a single 3D MODFLOW step in days.
@@ -13,6 +14,70 @@ model_3d:
 
   executable: "mf6"
   # executable to run for the 3d model - some version of modflow
+
+  qgis_project_path: /home/hlavo/workspace/hlavo/deep_model/GIS/uhelna_all.qgs
+  boundary_layer_name: domain_around_mine
+  raster_group_name: HG model layers
+  grid_output_path: grid_materials.npz
+  material_parameters_output_path: material_parameters.npz
+  meshsteps:
+    x: 40.0
+    y: 40.0
+    z: 4.0
+  materials:
+    all:
+      horizontal_conductivity: 1.0e-06
+      vertical_conductivity: 1.0e-06
+      porosity: 0.3
+      vG_n: 2.0
+      vG_alpha: 1.0
+      recharge_rate: 0.0001
+      vks: 1.0e-06
+      thtr: 0.05
+      thts: 0.3
+      thti: 0.2
+      eps: 3.5
+      surfdep: 0.0
+      pet: 0.0
+      extdp: 1.0
+      extwc: 0.1
+      ha: 0.0
+      hroot: 0.0
+      rootact: 0.0
+      ntrailwaves: 7
+      nwavesets: 40
+      simulate_et: false
+      unsat_etwc: false
+      unsat_etae: false
+      simulate_gwseep: true
+      hydraulic_conductivity: 1.0e-06
+      specific_yield: 0.1
+      specific_storage: 1.0e-05
+      initial_head_offset: -1.0
+      perlen: 1.0
+      nstp: 1
+      tsmult: 1.0
+    sand:
+      horizontal_conductivity: 1.0e-05
+      vertical_conductivity: 1.0e-05
+    clay:
+      horizontal_conductivity: 1.0e-07
+      vertical_conductivity: 1.0e-07
+  plots:
+    enabled: true
+    output_dir: plots
+    dpi: 150
+    active_mask_name: grid_active_mask.png
+    idomain_name: idomain_top.png
+    head_name: head_groundplan.png
+    groundwater_surface_name: groundwater_surface.png
+    groundwater_change_name: groundwater_change.png
+    hydrograph_name: groundwater_hydrograph.png
+    xsection_x_name: materials_x_section.png
+    xsection_y_name: materials_y_section.png
+    xsection_x_times_name: groundwater_x_section_times.png
+    xsection_y_times_name: groundwater_y_section_times.png
+    xsection_depth_window: 40.0
 
 model_1d:
   class_name: "Model1DMock"

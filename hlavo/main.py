@@ -66,21 +66,40 @@ def _run_simulate(*, config_path: Path, workdir: Path) -> int:
     return 0
 
 
-def _translate_build_model_config(config_path: Path, workdir: Path) -> dict:
+def _load_yaml_mapping(config_path: Path) -> dict:
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
     assert isinstance(raw, dict), "Config YAML must be a mapping"
+    return raw
+
+
+def _translate_build_model_config(config_path: Path, workdir: Path) -> Path | dict:
+    raw = _load_yaml_mapping(config_path)
     if "model" in raw:
-        return raw
+        return config_path
 
     model_3d = raw["model_3d"]
     assert isinstance(model_3d, dict), "model_3d config must be a mapping"
 
-    translated = dict(raw)
-    translated["_config_path"] = str(config_path)
+    translated = {
+        "_config_path": str(config_path),
+    }
+    for key in (
+        "qgis_project_path",
+        "boundary_layer_name",
+        "raster_group_name",
+        "grid_output_path",
+        "material_parameters_output_path",
+        "meshsteps",
+        "materials",
+        "plots",
+    ):
+        if key in model_3d:
+            translated[key] = model_3d[key]
+
     translated["model"] = {
-        "model_name": "model_with_mine",
+        "model_name": str(model_3d.get("model_name", "model_with_mine")),
         "workspace": str(workdir),
         "sim_name": str(model_3d.get("name", "uhelna")),
         "exe_name": str(model_3d.get("executable", "mf6")),

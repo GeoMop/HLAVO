@@ -127,7 +127,7 @@ def build_model(
     workspace: Path | None = None,
 ) -> BuildConfig:
     build_config = BuildConfig.from_yaml(config_source, workspace=workspace)
-    build_modflow_grid(build_config.config_path, build_config.output_path)
+    build_modflow_grid(config_source, build_config.output_path)
     write_modflow_inputs(build_config)
     return build_config
 
@@ -317,8 +317,8 @@ def materials_from_rasters_per_column(
     return materials
 
 
-def build_modflow_grid(config_path: Path, output_path: Path) -> Path:
-    model_inputs = ModelInputs.from_yaml(config_path)
+def build_modflow_grid(config_source: Path | dict, output_path: Path) -> Path:
+    model_inputs = ModelInputs.from_source(config_source)
     grid = model_inputs.grid
     boundary_origin = np.asarray(model_inputs.boundary.origin, dtype=float)
 
