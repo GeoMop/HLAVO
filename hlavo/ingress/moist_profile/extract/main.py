@@ -1,10 +1,10 @@
 # from __future__ import annotations
 from pathlib import Path
 import polars as pl
-from profile_extract import extract_df
+from .profile_extract import extract_df
 import zarr_fuse
 
-from hlavo.common.zarr_fuse_reader import load_schema
+from hlavo.common.zarr_fuse_reader import load_schema, remove_storage
 
 def list_csv_filepaths(dir_path: str | Path) -> list[Path]:
     """
@@ -344,11 +344,6 @@ def read_storage(storage_path: str | Path = None):
     pass
 
 
-def remove_storage(storage_path: str | Path = None):
-    schema = load_schema(Path("../profile_schema.yaml"))
-    zarr_fuse.remove_store(schema, STORE_URL=storage_path)
-
-
 if __name__ == '__main__':
     root_path = Path(__file__).parents[4]
     # main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab",
@@ -366,7 +361,8 @@ if __name__ == '__main__':
 
     # TO S3
     storage_url = "s3://hlavo-testing/profiles.zarr"
-    # remove_storage(storage_path=storage_url)
+    # storage_url = "s3://hlavo-release/profiles.zarr"
+    # remove_storage(schema_path=Path("../profile_schema.yaml"), storage_path=storage_url)
     # data from 2025 01-06
     # main(source_dir="../20260301T224908_dataflow_grab",
     #      storage_path=storage_url)
