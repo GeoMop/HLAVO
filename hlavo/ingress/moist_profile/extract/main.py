@@ -50,6 +50,7 @@ def load_site_coords_csv(
     uid_col: str = "site_id",
     lat_col: str = "latitude",
     lon_col: str = "longitude",
+    elevation_col: str = "elevation",
     dt_col_out: str = "site_datetime",
 ) -> pl.DataFrame:
     """
@@ -58,7 +59,7 @@ def load_site_coords_csv(
       2025-04-29,11:32:16,1,50.863565,14.889853
 
     Returns a DataFrame with columns:
-      site_id, site_datetime, latitude, longitude
+      site_id, site_datetime, latitude, longitude, elevation
     """
     df = pl.read_csv(path)
 
@@ -70,7 +71,8 @@ def load_site_coords_csv(
 
         pl.col(lat_col).cast(pl.Float64),
         pl.col(lon_col).cast(pl.Float64),
-    ).select([uid_col, dt_col_out, lat_col, lon_col])
+        pl.col(elevation_col).cast(pl.Float64),
+    ).select([uid_col, dt_col_out, lat_col, lon_col, elevation_col])
 
     # join_asof requires sorting
     return df.sort([uid_col, dt_col_out])
