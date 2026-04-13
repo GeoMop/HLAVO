@@ -6,22 +6,13 @@ from pathlib import Path
 import polars as pl
 import requests
 
-LOGGER = logging.getLogger(__name__)
+from hlavo.ingress.meteo_playground.chmi_stations.config import (
+    OPEN_METEO_ARCHIVE_URL,
+    OPEN_METEO_HOURLY_VARIABLES,
+    STEFAN_BOLTZMANN_CONSTANT,
+)
 
-OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
-STEFAN_BOLTZMANN_CONSTANT = 5.670374419e-8
-OPEN_METEO_HOURLY_VARIABLES = [
-    "temperature_2m",
-    "relative_humidity_2m",
-    "cloud_cover",
-    "precipitation",
-    "surface_pressure",
-    "wind_speed_10m",
-    "wind_direction_10m",
-    "shortwave_radiation",
-    "direct_radiation",
-    "diffuse_radiation",
-]
+LOGGER = logging.getLogger(__name__)
 
 
 def _normalize_date(value):

@@ -8,46 +8,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from hlavo.common.zarr_fuse_reader import read_storage
+from hlavo.ingress.meteo_playground.chmi_stations.config import (
+    ACTIVE_STATIONS_CSV_PATH,
+    CHMI_STATIONS_SCHEMA_PATH,
+    CHMI_STATIONS_STORAGE_PATH,
+    CLM_REQUIRED_SOURCE_VARS,
+    CLM_STATION_PRIORITY,
+    DRY_AIR_GAS_CONSTANT,
+    GRAVITY_M_S2,
+    NODE_CHMI_STATIONS,
+    NODE_OPEN_METEO,
+    NODE_PARFLOW,
+    OPEN_METEO_DATA_HOURLY_PATH,
+    OPEN_METEO_REQUIRED_VARS,
+    PARFLOW_OPEN_METEO_COMPARISON_PLOT_PATH,
+    SCRIPT_DIR,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+    SITE_COORDS_CSV_PATH,
+    STATIONS_DATA_DAILY_PATH,
+    STATIONS_DATA_HOURLY_PATH,
+    STATION_DF_METADATA_COLUMNS,
+)
 from hlavo.ingress.moist_profile.extract.main import load_site_coords_csv
 from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
 
 LOGGER = logging.getLogger(__name__)
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
-CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations_storage"
-# CHMI_STATIONS_STORAGE_PATH = None
-NODE_OPEN_METEO = ["Uhelna", "raw_data", "open_meteo"]
-NODE_CHMI_STATIONS = ["Uhelna", "raw_data", "chmi_stations"]
-NODE_PARFLOW = ["Uhelna", "parflow", "version_01"]
-
-STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
-ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
-STATIONS_DATA_DAILY_PATH = SCRIPT_DIR / "stations_data_daily"
-STATIONS_DATA_HOURLY_PATH = SCRIPT_DIR / "stations_data_hourly"
-OPEN_METEO_DATA_HOURLY_PATH = SCRIPT_DIR / "open_meteo_data_hourly"
-PARFLOW_OPEN_METEO_COMPARISON_PLOT_PATH = SCRIPT_DIR / "parflow_clm_vs_open_meteo.pdf"
-SITE_COORDS_CSV_PATH = SCRIPT_DIR.parents[1] / "moist_profile" / "extract" / "site_coords.csv"
-CLM_STATION_PRIORITY = ["0-203-0-20407036001", #"Chotyně"
-                        "0-203-0-11601", # "Frýdlant"
-                        "0-20000-0-11603", # "Liberec"
-                        ]
-CLM_REQUIRED_SOURCE_VARS = ["SRA1H", "T", "P", "P1H", "F", "D10", "H"]
-OPEN_METEO_REQUIRED_VARS = [
-    "temperature_2m",
-    "relative_humidity_2m",
-    "precipitation",
-    "surface_pressure",
-    "wind_speed_10m",
-    "wind_direction_10m",
-    "shortwave_radiation",
-    "dlwr_estimate",
-]
-SECONDS_PER_DAY = 24 * 60 * 60
-SECONDS_PER_HOUR = 60 * 60
-GRAVITY_M_S2 = 9.80665
-DRY_AIR_GAS_CONSTANT = 287.05
 
 
 def get_data_block(doc):
@@ -406,7 +392,7 @@ def rename_hourly_overlap_columns(active_station_daily_df, active_station_hourly
     )
 
 
-def load_open_meteo_dataframe(
+def load_cached_open_meteo_dataframe(
     stations_csv_path=ACTIVE_STATIONS_CSV_PATH,
     station_wsi=None,
     start_date=None,
@@ -414,11 +400,10 @@ def load_open_meteo_dataframe(
     data_dir=OPEN_METEO_DATA_HOURLY_PATH,
 ):
     """
-    Download hourly Open-Meteo data for the selected station location, cache the raw JSON
-    payload, and shape the dataframe for storage update.
+    Read cached Open-Meteo JSON for the selected station location and shape it for storage update.
     """
-    assert start_date is not None, "start_date must be provided for Open-Meteo download."
-    assert end_date is not None, "end_date must be provided for Open-Meteo download."
+    assert start_date is not None, "start_date must be provided for Open-Meteo cache loading."
+    assert end_date is not None, "end_date must be provided for Open-Meteo cache loading."
     if station_wsi is None:
         station_wsi = CLM_STATION_PRIORITY[0]
 
@@ -427,16 +412,18 @@ def load_open_meteo_dataframe(
     assert station_rows.height == 1, f"Expected exactly one station row for {station_wsi!r}."
     station = station_rows.row(0, named=True)
 
+    json_path = (
+        Path(data_dir)
+        / station_wsi
+        / f"open-meteo-{station_wsi}-{start_date[:10]}-{end_date[:10]}.json"
+    )
     open_meteo_df = open_meteo(
         latitude=station["LAT"],
         longitude=station["LON"],
         start=start_date,
         end=end_date,
-        json_path=(
-            Path(data_dir)
-            / station_wsi
-            / f"open-meteo-{station_wsi}-{start_date[:10]}-{end_date[:10]}.json"
-        ),
+        json_path=json_path,
+        refresh=False,
     )
     return open_meteo_df.with_columns(
         pl.lit(f"open_meteo:{station_wsi}").alias("STATION"),
@@ -986,7 +973,7 @@ def build_parflow_clm_input_dataset(
 
 def main():
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    start_date = "2024-01-01T00:00:00Z"
+    start_date = "2020-01-01T00:00:00Z"
     end_date = "2025-12-31T23:59:59Z"
 
     if not Path("chmi_stations_storage").exists():
@@ -1011,8 +998,7 @@ def main():
         )
         update_storage(active_station_df, node_path=NODE_CHMI_STATIONS)
 
-        # Add open meteo data
-        open_meteo_df = load_open_meteo_dataframe(start_date=start_date, end_date=end_date)
+        open_meteo_df = load_cached_open_meteo_dataframe(start_date=start_date, end_date=end_date)
         print("Open-Meteo dataframe preview:")
         print(open_meteo_df.head())
         print(f"Open-Meteo dataframe shape: {open_meteo_df.shape}")

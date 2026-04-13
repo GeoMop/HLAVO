@@ -1,13 +1,16 @@
 import json
 import logging
 import math
-import re
 from collections import defaultdict
 from pathlib import Path
-from urllib.parse import urljoin
-from urllib.request import urlopen
 
 import pandas as pd
+
+from hlavo.ingress.meteo_playground.chmi_stations.config import (
+    ACTIVE_STATIONS_CSV_PATH,
+    QUANTITY_DEFINITIONS_PATH,
+    STATIONS_NEARBY_CSV_PATH,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -264,62 +267,6 @@ def filter_active_today(df):
     return df.loc[is_active].reset_index(drop=True)
 
 
-def fetch_directory_filenames(index_url):
-    """
-    Load a directory listing and return linked filenames.
-    """
-    with urlopen(index_url) as response:
-        html = response.read().decode("utf-8")
-
-    filenames = re.findall(r'href="([^"]+)"', html)
-    return [
-        filename
-        for filename in filenames
-        if filename not in {"../", "./"} and not filename.endswith("/")
-    ]
-
-
-def find_station_data_urls(active_df, index_url):
-    """
-    Match CHMI daily data filenames whose names contain active station WSI codes.
-    """
-    if active_df.empty:
-        return []
-
-    active_wsis = active_df["WSI"].dropna().astype(str).unique().tolist()
-    filenames = fetch_directory_filenames(index_url)
-
-    matching_filenames = sorted(
-        filename
-        for filename in filenames
-        if any(wsi in filename for wsi in active_wsis)
-    )
-    return [urljoin(index_url, filename) for filename in matching_filenames]
-
-
-def download_station_data(file_urls, output_dir):
-    """
-    Download matched CHMI daily files into a local directory.
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    downloaded_paths = []
-    total_files = len(file_urls)
-    for index, file_url in enumerate(file_urls, start=1):
-        print(f"\r{index}/{total_files} files downloading", end="", flush=True)
-        target_path = output_path / Path(file_url).name
-        with urlopen(file_url) as response:
-            target_path.write_bytes(response.read())
-        downloaded_paths.append(target_path)
-        LOGGER.info("Downloaded %s", target_path.name)
-    if total_files > 0:
-        print()
-
-    return downloaded_paths
-
-
-
 def process_chmi_stations_csv():
     # not found:
     # wet_bulb_temperature_2m
@@ -335,9 +282,6 @@ def main():
     # --- parameters you can tweak ---
     meta1_path = "meta1.json"
     meta2_path = "meta2.json"
-    output_csv = "stations_nearby.csv"
-    active_output_csv = "stations_nearby_active.csv"
-    quantity_defs_path = "quantity_definitions.json"  # <--- new output file
 
     # reference location & radius (example: somewhere near Cheb)
     center_lat = 50.8659928
@@ -359,10 +303,10 @@ def main():
         for abbr, pairs in quantity_defs.items()
     }
 
-    with open(quantity_defs_path, "w", encoding="utf-8") as f:
+    with Path(QUANTITY_DEFINITIONS_PATH).open("w", encoding="utf-8") as f:
         json.dump(serializable_defs, f, ensure_ascii=False, indent=2)
 
-    print(f"Quantity definitions written to {quantity_defs_path}")
+    print(f"Quantity definitions written to {QUANTITY_DEFINITIONS_PATH}")
     # 2) station -> available quantities from meta2
     all_abbrs, station_to_quantities = build_station_quantity_map(meta2_path)
     print(f"Found {len(all_abbrs)} distinct abbreviations in meta2.")
@@ -382,27 +326,12 @@ def main():
     )
 
     # 5) output to CSV
-    df.to_csv(output_csv, index=False, encoding="utf-8")
-    print(f"Written {len(df)} stations to {output_csv}")
+    df.to_csv(STATIONS_NEARBY_CSV_PATH, index=False, encoding="utf-8")
+    print(f"Written {len(df)} stations to {STATIONS_NEARBY_CSV_PATH}")
 
     active_df = filter_active_today(df)
-    active_df.to_csv(active_output_csv, index=False, encoding="utf-8")
-    print(f"Written {len(active_df)} active stations to {active_output_csv}")
-
-    stations_data_daily_dir = Path("stations_data_daily")
-    stations_data_hourly_dir = Path("stations_data_hourly")
-    historical_daily_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
-    historical_hourly_url = "https://opendata.chmi.cz/meteorology/climate/historical/data/1hour/"
-    station_data_urls = find_station_data_urls(active_df, historical_daily_url)
-    downloaded_paths = download_station_data(station_data_urls, stations_data_daily_dir)
-    print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_daily_dir}")
-
-    # for y in ['2018','2019','2020','2021','2022','2023','2024','2025']:
-    for y in ['2024', '2025']:
-        station_data_urls = find_station_data_urls(active_df, f"{historical_hourly_url}{y}/")
-        downloaded_paths = download_station_data(station_data_urls, stations_data_hourly_dir / y)
-        print(f"Downloaded {len(downloaded_paths)} station data files to {stations_data_hourly_dir / y}")
-
+    active_df.to_csv(ACTIVE_STATIONS_CSV_PATH, index=False, encoding="utf-8")
+    print(f"Written {len(active_df)} active stations to {ACTIVE_STATIONS_CSV_PATH}")
 
 
 if __name__ == "__main__":
