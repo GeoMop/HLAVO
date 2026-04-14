@@ -75,10 +75,13 @@ def main():
     #              node_path=['chmi_stations'],
     #              var_names=[],
     #              storage_path=root_path / "hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_storage")
+    # read_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml",
+    #              node_path=['Uhelna', 'parflow', 'version_01'],
+    #              var_names=[],
+    #              storage_path=root_path / "hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_storage")
     read_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml",
                  node_path=['Uhelna', 'parflow', 'version_01'],
-                 var_names=[],
-                 storage_path=root_path / "hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_storage")
+                 var_names=[])
 
     # remove_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml")
 

@@ -971,7 +971,7 @@ def main():
     start_date = "2020-01-01T00:00:00Z"
     end_date = "2025-12-31T23:59:59Z"
 
-    if not Path("chmi_stations_storage").exists():
+    if not Path("chmi_stations.zarr").exists():
         active_station_daily_df = load_active_station_daily_data(start_date=start_date, end_date=end_date)
         # active_station_daily_df.sort(["date_time"])
         print("Active stations daily dataframe preview:")
