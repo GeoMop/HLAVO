@@ -685,14 +685,10 @@ def correct_pressure_to_site_elevations(
     for station_wsi, elevation_m in station_elevation_lookup.items():
         station_elevation = xr.where(station_source == station_wsi, float(elevation_m), station_elevation)
 
-    site_ids = site_elevation_m["site_id"]
-    pressure_2d = pressure_pa.expand_dims(site_id=site_ids)
-    station_elevation_2d = station_elevation.expand_dims(site_id=site_ids)
-    temperature_2d = air_temperature_k.expand_dims(site_id=site_ids).clip(min=200.0)
-    site_elevation_2d = site_elevation_m.expand_dims(date_time=pressure_pa["date_time"]).transpose("date_time", "site_id")
-    height_delta = site_elevation_2d - station_elevation_2d
+    site_elevation = site_elevation_m.expand_dims(date_time=pressure_pa["date_time"]).transpose("date_time", "site_id")
+    height_delta = site_elevation - station_elevation
 
-    return pressure_2d * np.exp(-(GRAVITY_M_S2 * height_delta) / (DRY_AIR_GAS_CONSTANT * temperature_2d))
+    return pressure_pa * np.exp(-(GRAVITY_M_S2 * height_delta) / (DRY_AIR_GAS_CONSTANT * air_temperature_k))
 
 
 def with_clean_attrs(data_array, *, units, description, source_quantities):
@@ -770,6 +766,10 @@ def plot_parflow_open_meteo_comparison(
         "DSWR": "W / m ** 2",
         "DLWR": "W / m ** 2",
     }
+
+    # select only U01
+    parflow_clm_ds = parflow_clm_ds.sel(site_id=1)
+
     figure, axes = plt.subplots(nrows=4, ncols=2, figsize=(18, 14), sharex=True)
     axes = axes.ravel()
 
@@ -836,6 +836,13 @@ def update_parflow_clm_from_open_meteo(
 
     for quantity_name in replace_quantities:
         updated_quantity = open_meteo_on_parflow_time[quantity_name].copy()
+        if "site_id" in updated_ds[quantity_name].dims and "site_id" not in updated_quantity.dims:
+            expanded_dims = [*updated_quantity.dims, "site_id"]
+            updated_quantity = (
+                updated_quantity
+                .expand_dims(site_id=updated_ds["site_id"])
+                .transpose(*expanded_dims)
+            )
         updated_quantity.attrs = {
             **parflow_clm_ds[quantity_name].attrs,
             "replacement_source": "open_meteo",
@@ -962,6 +969,14 @@ def build_parflow_clm_input_dataset(
     assert time_values.size >= 2, "Need at least two time steps to determine forcing interval."
     parflow_clm_ds["time_step"] = xr.DataArray(time_values[1] - time_values[0])
     parflow_clm_ds["time_interval"] = xr.DataArray(time_values[-1] - time_values[0])
+    site_ids = build_site_metadata_dataset()["site_id"]
+    parflow_clm_ds = parflow_clm_ds.assign_coords(site_id=site_ids)
+
+    for var_name, data_array in parflow_clm_ds.data_vars.items():
+        if "date_time" not in data_array.dims or "site_id" in data_array.dims:
+            continue
+        expanded_dims = [*data_array.dims, "site_id"]
+        parflow_clm_ds[var_name] = data_array.expand_dims(site_id=site_ids).transpose(*expanded_dims)
 
     return parflow_clm_ds
 

@@ -556,25 +556,25 @@ Uhelna:
           unit: "mm/s"
           description: "Total precipitation rate for ParFlow/CLM"
           df_col: "APCP"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         Temp:
           unit: "K"
           description: "Air temperature for ParFlow/CLM"
           df_col: "Temp"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         UGRD:
           unit: "m/s"
           description: "Eastward wind component for ParFlow/CLM"
           df_col: "UGRD"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         VGRD:
           unit: "m/s"
           description: "Northward wind component for ParFlow/CLM"
           df_col: "VGRD"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         Press:
           unit: "Pa"
@@ -586,19 +586,19 @@ Uhelna:
           unit: "kg/kg"
           description: "Specific humidity for ParFlow/CLM"
           df_col: "SPFH"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         DSWR:
           unit: "W / m ** 2"
           description: "Downward shortwave radiation for ParFlow/CLM"
           df_col: "DSWR"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         DLWR:
           unit: "W / m ** 2"
           description: "Downward longwave radiation for ParFlow/CLM"
           df_col: "DLWR"
-          coords: [ "date_time" ]
+          coords: [ "date_time", "site_id" ]
 
         longitude:
           description: "GPS. Signed Earth longitude. Indicated by the probe itself."
