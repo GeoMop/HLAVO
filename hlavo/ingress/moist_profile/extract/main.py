@@ -1,7 +1,7 @@
 # from __future__ import annotations
 from pathlib import Path
 import polars as pl
-from .profile_extract import extract_df
+from hlavo.ingress.moist_profile.extract.profile_extract import extract_df
 import zarr_fuse
 
 from hlavo.common.zarr_fuse_reader import load_schema, remove_storage
@@ -69,6 +69,7 @@ def load_site_coords_csv(
           .str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S", strict=True)
           .alias(dt_col_out),
 
+        pl.col(uid_col).cast(pl.Int32),
         pl.col(lat_col).cast(pl.Float64),
         pl.col(lon_col).cast(pl.Float64),
         pl.col(elevation_col).cast(pl.Float64),
