@@ -550,7 +550,8 @@ Uhelna:
 
   parflow:
     version_01:
-#      ATTRS:
+      ATTRS:
+        description: "This is the ultimate first version of meteorologic data to be swalled by Parflow/CLM."
       VARS:
         APCP:
           unit: "mm/s"

@@ -542,10 +542,21 @@ def update_parflow_input_storage(
 
     ds_to_store = parflow_clm_ds.copy()
     ds_to_store["Press"] = site_pressure
-    ds_to_store["latitude"] = site_metadata_ds["latitude"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
-    ds_to_store["longitude"] = site_metadata_ds["longitude"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
-    ds_to_store["elevation"] = site_metadata_ds["elevation"].expand_dims(date_time=ds_to_store["date_time"]).transpose("date_time", "site_id")
+    ds_to_store["latitude"] = site_metadata_asof(site_metadata_ds["latitude"], ds_to_store["date_time"])
+    ds_to_store["longitude"] = site_metadata_asof(site_metadata_ds["longitude"], ds_to_store["date_time"])
+    ds_to_store["elevation"] = site_metadata_asof(site_metadata_ds["elevation"], ds_to_store["date_time"])
     ds_to_store = ds_to_store.assign_coords(site_id=site_metadata_ds["site_id"])
+
+    time_values = parflow_clm_ds["date_time"].values
+    assert time_values.size >= 2, "Need at least two time steps to determine forcing interval."
+    time_step = time_values[1] - time_values[0]
+    time_interval = time_values[-1] - time_values[0]
+    ds_to_store.attrs = {
+        **ds_to_store.attrs,
+        "time_step": time_step,
+        "time_interval": time_interval,
+    }
+
 
     node, _ = read_storage(
         CHMI_STATIONS_SCHEMA_PATH,
@@ -595,25 +606,74 @@ def build_pressure_source_station_series(parflow_clm_ds):
 
 def build_site_metadata_dataset(site_coords_csv_path=SITE_COORDS_CSV_PATH):
     """
-    Load site coordinates and elevations and convert them to a small xarray dataset keyed by site_id.
+    Load site coordinates and elevations into an xarray dataset keyed by site_id and site_datetime.
     """
-    site_coords_df = load_site_coords_csv(str(site_coords_csv_path))
-    site_metadata_df = (
-        site_coords_df
-        .sort(["site_id", "site_datetime"])
-        .group_by("site_id")
-        .first()
-        .sort("site_id")
-        .select(["site_id", "latitude", "longitude", "elevation"])
-    )
+    site_metadata_df = load_site_coords_csv(str(site_coords_csv_path))
+    site_ids = site_metadata_df.select(pl.col("site_id")).unique().sort("site_id")["site_id"].to_numpy()
+    site_times = site_metadata_df.select("site_datetime").unique().sort("site_datetime")["site_datetime"].to_numpy()
+    # site_ids = np.array(
+    #     site_metadata_df.select(pl.col("site_id").cast(pl.Int32)).unique().sort("site_id")["site_id"].to_list(),
+    #     dtype=np.int32,
+    # )
+    # site_times = np.array(
+    #     site_metadata_df.select("site_datetime").unique().sort("site_datetime")["site_datetime"].to_list(),
+    # )
+
+    data_vars = {}
+    for var_name in ["latitude", "longitude", "elevation"]:
+        wide_df = (
+            site_metadata_df
+            .select(["site_datetime", "site_id", var_name])
+            .pivot(
+                values=var_name,
+                index="site_datetime",
+                on="site_id",
+                aggregate_function="first",
+                sort_columns=True,
+            )
+            .sort("site_datetime")
+        )
+        wide_df = wide_df.select(
+            [
+                "site_datetime",
+                *[
+                    pl.col(str(site_id)).cast(pl.Float64, strict=False)
+                    for site_id in site_ids
+                ],
+            ]
+        )
+        data_vars[var_name] = (("site_datetime", "site_id"), wide_df.drop("site_datetime").to_numpy())
+
     return xr.Dataset(
-        data_vars={
-            "latitude": ("site_id", site_metadata_df["latitude"].to_list()),
-            "longitude": ("site_id", site_metadata_df["longitude"].to_list()),
-            "elevation": ("site_id", site_metadata_df["elevation"].to_list()),
+        data_vars=data_vars,
+        coords={
+            "site_datetime": site_times,
+            "site_id": site_ids,
         },
-        coords={"site_id": site_metadata_df["site_id"].cast(pl.Int32).to_list()},
     )
+
+
+def site_metadata_asof(site_metadata_da, date_time):
+    """
+    Resolve site metadata onto a target date_time axis using backward-looking "as of" selection.
+    """
+    if "site_datetime" not in site_metadata_da.dims:
+        return site_metadata_da.expand_dims(date_time=date_time).transpose("date_time", "site_id")
+
+    resolved_da = (
+        site_metadata_da
+        .rename(site_datetime="date_time")
+        .reindex(date_time=date_time, method="ffill")
+        .transpose("date_time", "site_id")
+    )
+    first_value = (
+        site_metadata_da
+        .isel(site_datetime=0)
+        .drop_vars("site_datetime")
+        .expand_dims(date_time=date_time)
+        .transpose("date_time", "site_id")
+    )
+    return resolved_da.fillna(first_value)
 
 
 def select_station_variable(ds, var_name, station):
@@ -685,7 +745,7 @@ def correct_pressure_to_site_elevations(
     for station_wsi, elevation_m in station_elevation_lookup.items():
         station_elevation = xr.where(station_source == station_wsi, float(elevation_m), station_elevation)
 
-    site_elevation = site_elevation_m.expand_dims(date_time=pressure_pa["date_time"]).transpose("date_time", "site_id")
+    site_elevation = site_metadata_asof(site_elevation_m, pressure_pa["date_time"])
     height_delta = site_elevation - station_elevation
 
     return pressure_pa * np.exp(-(GRAVITY_M_S2 * height_delta) / (DRY_AIR_GAS_CONSTANT * air_temperature_k))
@@ -965,10 +1025,6 @@ def build_parflow_clm_input_dataset(
     for var_name, source_station in source_station_vars.items():
         parflow_clm_ds[source_station.name] = source_station
 
-    time_values = parflow_clm_ds["date_time"].values
-    assert time_values.size >= 2, "Need at least two time steps to determine forcing interval."
-    parflow_clm_ds["time_step"] = xr.DataArray(time_values[1] - time_values[0])
-    parflow_clm_ds["time_interval"] = xr.DataArray(time_values[-1] - time_values[0])
     site_ids = build_site_metadata_dataset()["site_id"]
     parflow_clm_ds = parflow_clm_ds.assign_coords(site_id=site_ids)
 
