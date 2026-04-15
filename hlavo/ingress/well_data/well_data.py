@@ -10,8 +10,11 @@ import pandas as pd
 import logging
 import zarr_fuse as zf
 from dotenv import load_dotenv
+from pyproj import Transformer
 
 logger = logging.getLogger(__name__)
+
+_S_JTSK_TO_WGS84 = Transformer.from_crs("EPSG:5514", "EPSG:4326", always_xy=True)
 
 
 def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
@@ -108,6 +111,61 @@ def _open_zarr_schema(remove_store=False):
     if remove_store:
         zf.remove_store(schema_path)
     return zf.open_store(schema_path)
+
+
+def _jtsk_to_wgs84(x_values: pd.Series, y_values: pd.Series) -> pd.DataFrame:
+    """
+    Convert SJTSK / Krovak East North coordinates to WGS84 longitude/latitude.
+
+    Input files can mix the common negative "south-west" convention with
+    accidentally sign-flipped values. We normalize both axes to the south-west
+    convention before conversion.
+    """
+    x_numeric = pd.to_numeric(x_values, errors="coerce")
+    y_numeric = pd.to_numeric(y_values, errors="coerce")
+    valid_mask = x_numeric.notna() & y_numeric.notna()
+
+    longitude = pd.Series(index=x_values.index, dtype=float)
+    latitude = pd.Series(index=y_values.index, dtype=float)
+
+    if not valid_mask.any():
+        return pd.DataFrame({"longitude": longitude, "latitude": latitude})
+
+    x_normalized = -x_numeric.loc[valid_mask].abs()
+    y_normalized = -y_numeric.loc[valid_mask].abs()
+    lon_values, lat_values = _S_JTSK_TO_WGS84.transform(
+        x_normalized.to_numpy(),
+        y_normalized.to_numpy(),
+    )
+    longitude.loc[valid_mask] = lon_values
+    latitude.loc[valid_mask] = lat_values
+
+    changed_sign_mask = valid_mask & (
+        (x_numeric != x_normalized.reindex(x_numeric.index))
+        | (y_numeric != y_normalized.reindex(y_numeric.index))
+    )
+    if changed_sign_mask.any():
+        logger.info(
+            "Normalized SJTSK sign convention for %s rows before WGS84 conversion.",
+            int(changed_sign_mask.sum()),
+        )
+
+    return pd.DataFrame({"longitude": longitude, "latitude": latitude})
+
+
+def _well_spatial_metadata(section_file: Path, sheetname: str, well_id: str) -> pd.DataFrame:
+    """
+    Return a single-row dataframe with spatial metadata for one well.
+    """
+    df_sections = read_sections(section_file, sheetname)
+    df_well = (
+        df_sections.loc[df_sections["well_id"] == well_id, ["well_id", "longitude", "latitude"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    if df_well.empty:
+        raise ValueError(f"Well '{well_id}' not found in section file '{section_file}'.")
+    return df_well
 
 
 def read_water_level(file_paths=None):
@@ -219,7 +277,11 @@ def read_draw(xls_file, sheetname):
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
     df_result["well_id"] = "1420_1"
 
-    # remove store
+    section_file = Path(__file__).parent / "Vrty_souradnice_perforace.xlsx"
+    df_well_meta = _well_spatial_metadata(section_file, "List1", df_result["well_id"].iat[0])
+    df_result["longitude"] = df_well_meta["longitude"].iat[0]
+    df_result["latitude"] = df_well_meta["latitude"].iat[0]
+
     root_node = _open_zarr_schema(True)
     water_draw_node = root_node['Uhelna']['water_draw']
     water_draw_node.update(df_result)
@@ -259,6 +321,7 @@ def read_sections(section_file, sheetname):
     }
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
+    df[["longitude", "latitude"]] = _jtsk_to_wgs84(df["X"], df["Y"])
 
     # add sheetname_in_water_file - according name of sheet in excel file if exists
     full_name_map = _sheet_names_dictionary();
@@ -325,7 +388,16 @@ def read_sections(section_file, sheetname):
     # remove unnecessary columns
     df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
 
-    df.attrs["units"] = { "X": "m", "Y": "m", "Z": "m", "depth": "m", "interval_max": "m", "interval_min": "m"}
+    df.attrs["units"] = {
+        "X": "m",
+        "Y": "m",
+        "Z": "m",
+        "depth": "m",
+        "interval_max": "m",
+        "interval_min": "m",
+        "longitude": "deg",
+        "latitude": "deg",
+    }
 
     return df
 

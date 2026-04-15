@@ -32,9 +32,9 @@ profiles:
 
   visualization:
     map:
-      # TODO: set interactively
-      center_lat: 49.459       # initial coords
-      center_lon: 16.225
+      # TODO: set interactively; coordinates are mean of the wells positions
+      center_lat: 50.869878       # initial coords
+      center_lon: 14.866236
       zoom: 14                 # 0 (macro) - 20 (detail);  
       title: "Uhelná site overview."
       point_size: 6
@@ -54,7 +54,7 @@ wells:
   source:
     type: "s3"
     store_type: "zarr"
-    uri: "s3://hlavo-release/wellss.zarr"    
+    uri: "s3://hlavo-release/wells.zarr"    
     schema_path: "schemas/wells_schema.yaml"
 
   variable_map: # follow structure of the schema, but we can omit some nodes
@@ -92,8 +92,8 @@ wells:
 
   visualization:
     map:
-      center_lat: 49.459       # initial coords
-      center_lon: 16.225
+      center_lat: 50.869878       # initial coords
+      center_lon: 14.866236
       zoom: 14                 # 0 (macro) - 20 (detail);  
       title: "Geographic Data View"
       point_size: 10        
