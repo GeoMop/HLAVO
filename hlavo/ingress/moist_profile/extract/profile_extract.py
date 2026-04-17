@@ -201,10 +201,10 @@ def add_location_to_measurements(
         .select(
             pl.col("datetime").alias("event_dt"),
             pl.col("active_probe").alias("event_probe"),
-            pl.lit(None).cast(pl.Int64).alias("site_id"),
+            pl.lit(None).cast(pl.Int32).alias("site_id"),
             pl.lit(None).cast(pl.Float64).alias("latitude"),
             pl.lit(None).cast(pl.Float64).alias("longitude"),
-            pl.lit(0).cast(pl.Int64).alias("site_status"),
+            pl.lit(0).cast(pl.Int32).alias("site_status"),
             pl.lit(True).alias("is_unassign"),
         )
     )
