@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 import pandas as pd
 import logging
+import zarr_fuse as zf
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +40,6 @@ def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
     df.attrs["units"] = {"water_depth ": "m", "water_level": "m above see level"}
 
     return df
-
-
-def _prepare_default_filepaths(file_paths):
-    """
-    Set default paths to input files if file_paths is not set.
-    """
-    if file_paths is None:
-        defautl_files = ["./25_09_27_vrty_III.etapa_vše.xlsx", "./25_09_27_vrty_nové_vše.xlsx",
-                         "./25_09_27_vrty_staré_vše.xlsx"]
-        script_path = Path(__file__).resolve().parent
-        file_paths = {script_path / f for f in defautl_files}
-    return file_paths
 
 
 def _sheet_names_dictionary():
@@ -104,6 +94,22 @@ def _sheet_names_dictionary():
     return dict
 
 
+def _open_zarr_schema(remove_store=False):
+    script_dir = Path(__file__).parent
+    root_path = script_dir / "../../.."
+    file_path = root_path / ".secrets_env"
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"{file_path} doesn't exist")
+
+    load_dotenv(dotenv_path=file_path)
+
+    schema_path = script_dir / "wells_schema.yaml"
+    if remove_store:
+        zf.remove_store(schema_path)
+    return zf.open_store(schema_path)
+
+
 def read_water_level(file_paths=None):
     """
     Process water level data of set of wells and store them into DataFrame.
@@ -115,8 +121,6 @@ def read_water_level(file_paths=None):
     """
 
     logging.basicConfig(level=logging.INFO)
-
-    file_paths = _prepare_default_filepaths(file_paths)
 
     # List of DataFrames of sheets with required data format
     dfs = []
@@ -138,6 +142,10 @@ def read_water_level(file_paths=None):
 
             try:
                 df_sheet = _process_water_level_sheet(df, sheetname=sheet, well_in_section_file=full_name_map.get(sheet))
+            except pd._libs.tslibs.parsing.DateParseError as e:
+                logger.info("  ... table contains notes, summary result etc., sheet will be skipped")
+            except KeyError as e:
+                logger.info("  ... invalid format of table, sheet will be skipped")
             except Exception as e:
                 logger.exception("message")
             else:
@@ -213,6 +221,12 @@ def read_draw(xls_file, sheetname):
 
     # convert to base unit (m^3)
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
+    df_result["well_id"] = "1420_1"
+
+    # remove store
+    root_node = _open_zarr_schema(True)
+    water_draw_node = root_node['Uhelna']['water_draw']
+    water_draw_node.update(df_result)
 
     df_result.attrs["units"] = {"cum_draw ": "m^3"}
     logger.info(" ... draw data completely processed")
@@ -250,6 +264,13 @@ def read_sections(section_file, sheetname):
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
 
+    # convert columns to correct type
+    df["Z"] = df["Z"].astype(float)
+    df["Z_OD"] = df["Z_OD"].astype(float)
+    df["Z_DO"] = df["Z_DO"].astype(float)
+    df["OD"] = df["OD"].astype(float)
+    df["DO"] = df["DO"].astype(float)
+
     # add sheetname_in_water_file - according name of sheet in excel file if exists
     full_name_map = _sheet_names_dictionary();
     r_full_name_map = dict((v, k) for k, v in full_name_map.items())
@@ -257,7 +278,7 @@ def read_sections(section_file, sheetname):
     df["confirmed"] = df["sheetname_in_water_file"].notna().astype(int)
 
     expected = ( df["well_id"].str.strip() + " (" + df["collector"].str.strip() + ")" )
-    invalid_mask = df["borehole_full_name"].str.strip() != expected
+    invalid_mask = (df["borehole_full_name"].str.strip() != expected) & (pd.isna(df["collector"]))
     for idx, row in df.loc[invalid_mask].iterrows():
         logger.warning(
             "Invalid value of 'borehole_full_name' in row %s: 'well_id''='%s', 'collector'='%s', 'borehole_full_name'='%s', expected='%s'",
@@ -279,10 +300,10 @@ def read_sections(section_file, sheetname):
     df = df.explode("interval", ignore_index=True)
 
     tmp = df["interval"].str.extract(
-        r"(?P<interval_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_max>\d+(?:\.\d+)?)"
+        r"(?P<interval_min>\d+(?:[.,]\d+)?)\s*-\s*(?P<interval_max>\d+(?:[.,]\d+)?)"
     )
-    df["interval_max"] = tmp["interval_max"].astype(float)
-    df["interval_min"] = tmp["interval_min"].astype(float)
+    df["interval_min"] = tmp["interval_min"].str.replace(",", ".").astype(float)
+    df["interval_max"] = tmp["interval_max"].str.replace(",", ".").astype(float)
 
     # add column interval_num_from_top (numbering of rows with same well_id)
     df["interval_num_from_top"] = df.groupby(["well_id", "collector"]).cumcount()
@@ -293,24 +314,19 @@ def read_sections(section_file, sheetname):
     for idx in invalid_rows_interval.index:
         logger.warning("Invalid interval at row %s: min=%s, max=%s", idx, df.at[idx, 'interval_min'], df.at[idx, 'interval_max'])
 
-    invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
+    expected_from = df["Z"] - df["DO"]
+    invalid_mask_from = (df["Z_OD"] - expected_from).abs() < 0.001
     invalid_rows_from = df[invalid_mask_from]
     for idx in invalid_rows_from.index:
         logger.warning("Invalid \'Z_OD\' value at row %s: Z_OD=%s, Z=%s, DO=%s. It should be \'Z_OD = Z - DO\'",
                        idx, df.at[idx, 'Z_OD'], df.at[idx, 'Z'], df.at[idx, 'DO'])
 
-    invalid_mask_to = df["Z_DO"] == df["Z"] - df["OD"]
+    expected_to = df["Z"] - df["OD"]
+    invalid_mask_to = (df["Z_DO"] - expected_to).abs() < 0.001
     invalid_rows_to = df[invalid_mask_to]
     for idx in invalid_rows_to.index:
         logger.warning("Invalid \'Z_DO\' value at row %s: Z_DO=%s, Z=%s, OD=%s. It should be \'Z_DO = Z - OD\'",
                        idx, df.at[idx, 'Z_DO'], df.at[idx, 'Z'], df.at[idx, 'OD'])
-
-    expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
-    expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
-    invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
-    for idx, row in df.loc[invalid_mask_interval].iterrows():
-        logger.warning("Invalid \'OD - DO\' interval at row %s: OD=%s, expected=%s; DO=%s, expected=%s",
-                       idx, row['OD'], expected_from.loc[idx], row['DO'], expected_to.loc[idx])
 
     # remove unnecessary columns
     df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
@@ -319,21 +335,35 @@ def read_sections(section_file, sheetname):
 
     return df
 
-def csv_output(csv_file, df):
+def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths):
     """
-    Perform pandas.DataFrame data to CSV file.
-    """
-    script_dir = Path(__file__).parent
-    workdir = script_dir / "workdir"
-    workdir.mkdir(exist_ok=True)
+    Prepare full data.DataFrame containing combination of water levels data and well sections data.
 
-    full_path = workdir / csv_file
-    df.to_csv(path_or_buf=full_path, header=True, mode='w')
+    Param   section_file_path        Path to Excel input file
+    Param   section_sheetname        Name of sheet in xls_file
+    Param   water_level_file_paths   Set of paths to Excel input files
+    Returns pandas:DataFrame
+    """
+    df_sections = read_sections(section_file_path, section_sheetname)
+    df_water_levels = read_water_level(water_level_file_paths)
+
+    df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
+
+    root_node = _open_zarr_schema(True)
+    water_levels_node = root_node['Uhelna']['water_levels']
+    print(f"Columns in DataFrame: {df_full.columns.tolist()}")
+    print("Looking for:", water_levels_node.dataset)
+    water_levels_node.update(df_full)
+
+    return df_full
 
 
 def main():
-    final_df = read_water_level()
-    print(final_df)
+    well_data_path = Path(__file__).parent
+    xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
+    sheetname = "List1"
+    excel_df = read_sections(xls_file, sheetname)
+    print(excel_df)
 
 if __name__ == "__main__":
    main()

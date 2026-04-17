@@ -39,16 +39,16 @@ active_scrappers:
     fn_module: inputs.extract.chmi_aladin_1km_extract
 
     runs:
-      - cron: "52 4 * * *"
+      - cron: "0 20 * * *"
         set:
           time: "00"
-      - cron: "52 11 * * *"
+      - cron: "0 21 * * *"
         set:
           time: "06"
-      - cron: "52 13 * * *"
+      - cron: "0 22 * * *"
         set:
           time: "12"
-      - cron: "52 20 * * *"
+      - cron: "0 23 * * *"
         set:
           time: "18"
 
@@ -64,5 +64,5 @@ active_scrappers:
     iterate:
       - name: quantity
         source: schema
-        dataset_name: "chmi_aladin_10m"
+        target_node: "chmi_aladin_10m"
         schema_regex: "VARS.*.df_col"

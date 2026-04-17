@@ -25,6 +25,7 @@
 - keep a single HLAVO_MODE case to set VENV_DIR and mode-specific functions (base_run/base_build)
   
 ## Guidelines
+- treat keyword 'AGENT:' in comments as a source context dependent message for your further development
 - minimise the code,
 - constantly try to reduce duplicated code
 - avoid state branching, no checks with workarounds, just assert and fail with proper indication of the cause.

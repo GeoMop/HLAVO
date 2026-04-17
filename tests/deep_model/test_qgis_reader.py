@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import numpy as np
-from qgis_reader import ModelInputs, write_vtk_surfaces
+from hlavo.deep_model.qgis_reader import ModelInputs, write_vtk_surfaces
 
 def _config_path() -> Path:
     config = SCRIPT_DIR.parent / "model_config.yaml"
