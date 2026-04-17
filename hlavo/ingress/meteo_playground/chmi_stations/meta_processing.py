@@ -15,40 +15,19 @@ from hlavo.ingress.meteo_playground.chmi_stations.config import (
 LOGGER = logging.getLogger(__name__)
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def get_data_block(doc):
+def get_data_block(doc: dict) -> dict:
     """
-    For CHMI-style JSON:
+    Return the CHMI payload block containing ``header`` and ``values``.
 
-    {
-      "data": {
-        "type": "DataCollection",
-        "data": {
-          "header": "...",
-          "values": [...]
-        }
-      }
-    }
+    Supported layouts:
 
-    or sometimes:
-
-    {
-      "type": "DataCollection",
-      "data": {
-        "header": "...",
-        "values": [...]
-      }
-    }
-
-    return the dict that has 'header' and 'values'.
+    - ``{"header": ..., "values": ...}``
+    - ``{"data": {"header": ..., "values": ...}}``
+    - ``{"data": {"data": {"header": ..., "values": ...}}}``
     """
-    # case 1: top level is DataCollection
     if "header" in doc and "values" in doc:
         return doc
 
-    # case 2: outer 'data' with inner 'data'
     data = doc.get("data")
     if isinstance(data, dict):
         if "header" in data and "values" in data:

@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from hlavo.common.zarr_fuse_reader import read_storage
+from hlavo.ingress.meteo_playground.chmi_stations.meta_processing import get_data_block
 from hlavo.ingress.meteo_playground.chmi_stations.config import (
     ACTIVE_STATIONS_CSV_PATH,
     CHMI_STATIONS_SCHEMA_PATH,
@@ -36,24 +37,6 @@ from hlavo.ingress.meteo_playground.chmi_stations.data_scrapper import get_stati
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-def get_data_block(doc):
-    """
-    Return the dict that contains CHMI 'header' and 'values'.
-    """
-    if "header" in doc and "values" in doc:
-        return doc
-
-    data = doc.get("data")
-    if isinstance(data, dict):
-        if "header" in data and "values" in data:
-            return data
-        inner = data.get("data")
-        if isinstance(inner, dict) and "header" in inner and "values" in inner:
-            return inner
-
-    raise RuntimeError("Could not find 'header'/'values' block in JSON document.")
 
 
 def find_station_data_paths(wsi, stations_data_dir, pattern, *, require_single=False):
