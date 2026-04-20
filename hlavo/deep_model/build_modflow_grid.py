@@ -8,126 +8,87 @@ from pathlib import Path
 
 import attrs
 import numpy as np
-import yaml
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
 
 import flopy
-from .qgis_reader import BoundaryPolygon, Grid, ModelInputs, RasterLayer
+from . import model_3d_cfg as cfg3d
+from .add_material_parameters import write_material_model_files
+from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
 
 @attrs.define(frozen=True)
 class BuildConfig:
-    config_path: Path
-    output_path: Path
-    workspace: Path
-    model_name: str
-    sim_name: str
-    exe_name: str
-    recharge_rate: float
-    drain_conductance: float
-    horizontal_conductivity_default: float
-    vertical_conductivity_default: float
-    simulation_days: float
-    stress_periods_days: tuple[float, ...]
+    workspace_root: Path
+    common: cfg3d.Model3DCommonConfig
+    geometry: GeometryConfig
 
-    @staticmethod
-    def from_yaml(
+    @classmethod
+    def from_source(
+        cls,
         config_source: Path | dict,
         workspace: Path | None = None,
     ) -> "BuildConfig":
-        if isinstance(config_source, dict):
-            raw = config_source
-            resolved_config_path = Path(str(raw["_config_path"]))
-        else:
-            assert config_source.exists(), f"Config file not found: {config_source}"
-            with config_source.open("r", encoding="utf-8") as handle:
-                raw = yaml.safe_load(handle)
-            resolved_config_path = config_source
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
-        model_raw = raw.get("model", {})
-        assert isinstance(model_raw, dict), "model config must be a mapping"
-        model_name = str(model_raw["model_name"])
-        base_workspace = Path(workspace) if workspace is not None else Path(
-            str(model_raw.get("workspace", "model"))
+        common, _, raw = cfg3d.Model3DCommonConfig.from_source(config_source)
+        common_raw = cfg3d.resolve_model_3d_common_raw(raw)
+        workspace_root = cfg3d.resolve_workspace_root(workspace, common_raw)
+        geometry = GeometryConfig.from_source(config_source)
+        return cls(
+            workspace_root=workspace_root,
+            common=common,
+            geometry=geometry,
         )
-        run_workspace = base_workspace / model_name
-        sim_name = str(model_raw.get("sim_name", "uhelna"))
-        exe_name = str(model_raw.get("exe_name", "mf6"))
 
-        recharge_rate = float(model_raw.get("recharge_rate", 1.0e-4))
-        drain_conductance = float(model_raw.get("drain_conductance", 1.0))
-        materials_raw = raw.get("materials", {})
-        if isinstance(materials_raw, dict) and "all" in materials_raw and isinstance(materials_raw["all"], dict):
-            all_conductivity = materials_raw["all"].get("horizontal_conductivity", 1.0e-6)
-            all_vertical = materials_raw["all"].get("vertical_conductivity", all_conductivity)
-            all_recharge = materials_raw["all"].get("recharge_rate", recharge_rate)
-        else:
-            all_conductivity = 1.0e-6
-            all_vertical = all_conductivity
-            all_recharge = recharge_rate
-        recharge_rate = float(model_raw.get("recharge_rate", all_recharge))
-        horizontal_conductivity_default = float(model_raw.get("conductivity_default", all_conductivity))
-        vertical_conductivity_default = float(model_raw.get("vertical_conductivity_default", all_vertical))
+    @property
+    def output_path(self) -> Path:
+        return self.geometry.resolve_grid_output_path(self.workspace)
 
-        simulation_days = model_raw.get("simulation_days")
-        if simulation_days is not None:
-            simulation_days = float(simulation_days)
-            assert simulation_days > 0.0, "model.simulation_days must be > 0"
+    @property
+    def resolved_material_parameters_path(self) -> Path:
+        return self.workspace / cfg3d.MATERIAL_PARAMETERS_FILENAME
 
-        stress_periods_raw = model_raw.get("stress_periods_days")
-        if stress_periods_raw is not None:
-            assert isinstance(stress_periods_raw, (list, tuple)), "model.stress_periods_days must be a list"
-            stress_periods_days = tuple(float(value) for value in stress_periods_raw)
-            assert all(value > 0.0 for value in stress_periods_days), (
-                "model.stress_periods_days values must be > 0"
-            )
-        else:
-            stress_periods_days = ()
+    @property
+    def workspace(self) -> Path:
+        return cfg3d.resolve_model_workspace(self.workspace_root, self.common)
 
-        if simulation_days is None and not stress_periods_days:
-            simulation_days = 1.0
-            stress_periods_days = (simulation_days,)
-        elif simulation_days is None:
-            simulation_days = float(sum(stress_periods_days))
-        elif not stress_periods_days:
-            stress_periods_days = (simulation_days,)
-        else:
-            assert np.isclose(float(sum(stress_periods_days)), simulation_days, rtol=1e-6, atol=1e-6), (
-                "Sum of model.stress_periods_days must equal model.simulation_days"
-            )
+    @property
+    def model_name(self) -> str:
+        return self.common.model_name
 
-        output_raw = raw.get("grid_output_path")
-        if output_raw:
-            output_path = Path(str(output_raw))
-            if not output_path.is_absolute():
-                output_path = run_workspace / output_path
-        else:
-            output_path = run_workspace / "grid_materials.npz"
-        return BuildConfig(
-            config_path=resolved_config_path,
-            output_path=output_path,
-            workspace=run_workspace,
-            model_name=model_name,
-            sim_name=sim_name,
-            exe_name=exe_name,
-            recharge_rate=recharge_rate,
-            drain_conductance=drain_conductance,
-            horizontal_conductivity_default=horizontal_conductivity_default,
-            vertical_conductivity_default=vertical_conductivity_default,
-            simulation_days=float(simulation_days),
-            stress_periods_days=stress_periods_days,
-        )
+    @property
+    def sim_name(self) -> str:
+        return self.common.sim_name
+
+    @property
+    def exe_name(self) -> str:
+        return self.common.exe_name
+
+    @property
+    def recharge_rate(self) -> float:
+        return self.common.recharge_rate
+
+    @property
+    def drain_conductance(self) -> float:
+        return self.common.drain_conductance
+
+    @property
+    def simulation_days(self) -> float:
+        return self.common.simulation_days
+
+    @property
+    def stress_periods_days(self) -> tuple[float, ...]:
+        return self.common.stress_periods_days
 
 
 def build_model(
     config_source: Path | dict,
     workspace: Path | None = None,
 ) -> BuildConfig:
-    build_config = BuildConfig.from_yaml(config_source, workspace=workspace)
+    build_config = BuildConfig.from_source(config_source, workspace=workspace)
     build_modflow_grid(config_source, build_config.output_path)
+    write_material_model_files(config_source, workspace=workspace)
     write_modflow_inputs(build_config)
     return build_config
 
@@ -407,7 +368,16 @@ def _append_grid_lonlat_to_nam(nam_path: Path, grid_corners_lonlat: np.ndarray, 
 
 
 def write_modflow_inputs(build_config: BuildConfig) -> None:
+    # grid_data is the direct geometry export from build_modflow_grid():
+    # grid extents, node coordinates, CRS metadata and the initial layer assignment.
     grid_data = _grid_arrays_from_npz(build_config.output_path)
+    # model_data is the post-processed material model written by
+    # write_material_model_files(). It keeps some geometry arrays duplicated on
+    # purpose, but adds the MODFLOW-ready fields derived from materials
+    # calibration/defaults such as idomain, hk and k33. When a field exists in
+    # both files, prefer model_data here because it is the final source used for
+    # the MODFLOW input packages.
+    model_data = _grid_arrays_from_npz(build_config.resolved_material_parameters_path)
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     assert el_dims.size == 3, "el_dims must contain 3 values"
     nx = int(el_dims[0])
@@ -416,18 +386,21 @@ def write_modflow_inputs(build_config: BuildConfig) -> None:
     step = np.asarray(grid_data["step"], dtype=float)
     assert step.size == 3, "step must contain 3 values"
 
-    active_mask = np.asarray(grid_data["active_mask"], dtype=bool)
+    active_mask = np.asarray(model_data["active_mask"], dtype=bool)
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
-    top = np.asarray(grid_data["top"], dtype=float)
-    botm = np.asarray(grid_data["botm"], dtype=float)
-    materials = np.asarray(grid_data["materials"], dtype=int)
+    top = np.asarray(model_data["top"], dtype=float)
+    botm = np.asarray(model_data["botm"], dtype=float)
+    materials = np.asarray(model_data["materials"], dtype=int)
     assert top.shape == (ny, nx), "top shape mismatch"
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
     assert materials.shape == (nz, ny, nx), "materials shape mismatch"
 
-    idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
-    hk = np.full((nz, ny, nx), build_config.horizontal_conductivity_default, dtype=float)
-    k33 = np.full((nz, ny, nx), build_config.vertical_conductivity_default, dtype=float)
+    idomain = np.asarray(model_data["idomain"], dtype=int)
+    hk = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
+    k33 = np.asarray(model_data["kv"] if "kv" in model_data else model_data["k33"], dtype=float)
+    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
+    assert hk.shape == (nz, ny, nx), "hk shape mismatch"
+    assert k33.shape == (nz, ny, nx), "k33 shape mismatch"
 
     workdir = build_config.workspace
     workdir.mkdir(parents=True, exist_ok=True)
@@ -469,7 +442,10 @@ def write_modflow_inputs(build_config: BuildConfig) -> None:
     icelltype[0] = 1
     flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=hk, k33=k33, save_specific_discharge=True)
 
-    recharge = np.where(active_mask, build_config.recharge_rate, 0.0)
+    recharge_rate = (
+        float(model_data["recharge_rate"]) if "recharge_rate" in model_data else build_config.recharge_rate
+    )
+    recharge = np.where(active_mask, recharge_rate, 0.0)
     flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge)
 
     top_active = active_mask & (idomain[0] > 0)

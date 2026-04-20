@@ -11,154 +11,46 @@ from pathlib import Path
 
 import attrs
 import numpy as np
-import yaml
+import flopy
 
+
+# Matplotlib needs a writable config/cache directory in the container runtime.
+# Without this override it may try to write under a non-writable HOME and fail
+# during plot export.
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
 
-import flopy
+from . import model_3d_cfg as cfg3d
+import hlavo.misc.config as cfg
 
 LOG = logging.getLogger(__name__)
 
 
 @attrs.define(frozen=True)
 class RunConfig:
-    config_path: Path
-    workspace: Path
-    model_name: str
-    sim_name: str
-    exe_name: str
-    recharge_rate: float
-    recharge_series_m_per_day: tuple[float, ...] | None
-    drain_conductance: float
-    simulation_days: float
-    stress_periods_days: tuple[float, ...]
-    grid_output_path: Path
-    material_parameters_path: Path
-    paraview_output_path: Path
-    paraview_materials_output_path: Path
+    config_path: Path | None
+    workspace_root: Path
+    common: cfg3d.Model3DCommonConfig
     paraview_quantities: tuple[str, ...]
     paraview_include_inactive: bool
     paraview_z_scale: float
     plot_enabled: bool
-    plot_output_dir: Path
     plot_dpi: int
-    plot_active_mask_name: str
-    plot_idomain_name: str
-    plot_head_name: str
-    plot_groundwater_surface_name: str
-    plot_groundwater_change_name: str
-    plot_hydrograph_name: str
-    plot_xsection_x_times_name: str
-    plot_xsection_y_times_name: str
-    plot_velocity_name: str
-    plot_xsection_x_name: str
-    plot_xsection_y_name: str
     plot_xsection_y_index: int | None
     plot_xsection_x_index: int | None
     plot_xsection_depth_window: float
 
-    @staticmethod
-    def from_yaml(config_path: Path, workspace: Path | None = None) -> "RunConfig":
-        assert config_path.exists(), f"Config file not found: {config_path}"
-        with config_path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
+    @classmethod
+    def from_yaml(cls, config_path: Path, workspace: Path | None = None) -> "RunConfig":
+        raw, resolved_config_path = cfg.load_config(config_path)
+        model_3d = cfg.load_config(config_path, ("model_3d",))[0]
+        common_raw = cfg3d.resolve_model_3d_common_raw(raw)
+        common = cfg3d.Model3DCommonConfig.from_mapping(common_raw)
+        workspace_root = cfg3d.resolve_workspace_root(workspace, common_raw)
 
-        model_raw = raw.get("model", {})
-        assert isinstance(model_raw, dict), "model config must be a mapping"
-
-        model_name = model_raw.get("model_name")
-        assert model_name, "model.model_name is required in the config"
-        model_name = str(model_name)
-
-        sim_name = str(model_raw.get("sim_name", "uhelna"))
-        exe_name = str(model_raw.get("exe_name", "mf6"))
-        recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
-        recharge_series_raw = model_raw.get("recharge_series_m_per_day")
-        if recharge_series_raw is not None:
-            assert isinstance(recharge_series_raw, (list, tuple)), (
-                "model.recharge_series_m_per_day must be a list"
-            )
-            recharge_series_m_per_day = tuple(float(value) for value in recharge_series_raw)
-            assert all(np.isfinite(value) for value in recharge_series_m_per_day), (
-                "model.recharge_series_m_per_day must contain finite values"
-            )
-        else:
-            recharge_series_m_per_day = None
-        drain_conductance = float(model_raw.get("drain_conductance", 1.0))
-        simulation_days = model_raw.get("simulation_days")
-        if simulation_days is not None:
-            simulation_days = float(simulation_days)
-            assert simulation_days > 0.0, "model.simulation_days must be > 0"
-
-        stress_periods_raw = model_raw.get("stress_periods_days")
-        if stress_periods_raw is not None:
-            assert isinstance(
-                stress_periods_raw, (list, tuple)
-            ), "model.stress_periods_days must be a list"
-            stress_periods_days = tuple(float(value) for value in stress_periods_raw)
-            assert all(value > 0.0 for value in stress_periods_days), (
-                "model.stress_periods_days values must be > 0"
-            )
-        else:
-            stress_periods_days = ()
-
-        if simulation_days is None and not stress_periods_days:
-            simulation_days = 1.0
-            stress_periods_days = (simulation_days,)
-        elif simulation_days is None:
-            simulation_days = float(sum(stress_periods_days))
-        elif not stress_periods_days:
-            stress_periods_days = (simulation_days,)
-        else:
-            total = float(sum(stress_periods_days))
-            assert np.isclose(total, simulation_days, rtol=1e-6, atol=1e-6), (
-                "Sum of model.stress_periods_days must equal model.simulation_days"
-            )
-        if recharge_series_m_per_day is not None:
-            assert len(recharge_series_m_per_day) == len(stress_periods_days), (
-                "model.recharge_series_m_per_day length must match stress periods"
-            )
-
-        base_workspace = Path(workspace) if workspace is not None else Path(
-            model_raw.get("workspace", "model")
-        )
-        run_workspace = base_workspace / model_name
-
-        output_grid_raw = raw.get("grid_output_path")
-        if output_grid_raw:
-            grid_output_path = Path(str(output_grid_raw))
-            if not grid_output_path.is_absolute():
-                grid_output_path = run_workspace / grid_output_path
-        else:
-            grid_output_path = run_workspace / "grid_materials.npz"
-
-        material_parameters_raw = raw.get("material_parameters_output_path")
-        if material_parameters_raw:
-            material_parameters_path = Path(str(material_parameters_raw))
-            if not material_parameters_path.is_absolute():
-                material_parameters_path = run_workspace / material_parameters_path
-        else:
-            material_parameters_path = run_workspace / "material_parameters.npz"
-
-        paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
-        if paraview_raw:
-            paraview_output_path = Path(str(paraview_raw))
-            if not paraview_output_path.is_absolute():
-                paraview_output_path = run_workspace / paraview_output_path
-        else:
-            paraview_output_path = run_workspace / f"{sim_name}_results.vtu"
-
-        materials_raw = model_raw.get("paraview_grid_output", raw.get("paraview_grid_output"))
-        if materials_raw:
-            paraview_materials_output_path = Path(str(materials_raw))
-            if not paraview_materials_output_path.is_absolute():
-                paraview_materials_output_path = run_workspace / paraview_materials_output_path
-        else:
-            paraview_materials_output_path = run_workspace / f"{sim_name}_materials.vtr"
-
-        paraview_raw = model_raw.get("paraview", raw.get("paraview", {}))
-        assert isinstance(paraview_raw, dict), "paraview config must be a mapping"
+        #AGENT: Move to new file together with all the plots stuff,
+        # create separate datacalss to config plots (both matplotliba na paraview)
+        # create dataclass to pass the model results
+        paraview_raw = cfg.optional_mapping(model_3d, "paraview")
         quantities_raw = paraview_raw.get("quantities")
         if quantities_raw is None:
             paraview_quantities = (
@@ -174,40 +66,10 @@ class RunConfig:
         else:
             assert isinstance(quantities_raw, (list, tuple)), "paraview.quantities must be a list"
             paraview_quantities = tuple(str(item) for item in quantities_raw)
-        paraview_include_inactive = bool(paraview_raw.get("include_inactive", False))
         paraview_z_scale = float(paraview_raw.get("z_scale", 1.0))
         assert paraview_z_scale > 0.0, "paraview.z_scale must be > 0"
 
-        plot_raw = raw.get("plots", {})
-        assert isinstance(plot_raw, dict), "plots config must be a mapping"
-        plot_enabled = bool(plot_raw.get("enabled", True))
-        plot_output_raw = plot_raw.get("output_dir")
-        if plot_output_raw:
-            plot_output_dir = Path(str(plot_output_raw))
-            if not plot_output_dir.is_absolute():
-                plot_output_dir = run_workspace / plot_output_dir
-        else:
-            plot_output_dir = run_workspace / "plots"
-        plot_dpi = int(plot_raw.get("dpi", 150))
-        plot_active_mask_name = str(plot_raw.get("active_mask_name", "grid_active_mask.png"))
-        plot_idomain_name = str(plot_raw.get("idomain_name", "idomain_top.png"))
-        plot_head_name = str(plot_raw.get("head_name", "head_groundplan.png"))
-        plot_groundwater_surface_name = str(
-            plot_raw.get("groundwater_surface_name", "groundwater_surface.png")
-        )
-        plot_groundwater_change_name = str(
-            plot_raw.get("groundwater_change_name", "groundwater_change.png")
-        )
-        plot_hydrograph_name = str(plot_raw.get("hydrograph_name", "groundwater_hydrograph.png"))
-        plot_xsection_x_times_name = str(
-            plot_raw.get("xsection_x_times_name", "groundwater_x_section_times.png")
-        )
-        plot_xsection_y_times_name = str(
-            plot_raw.get("xsection_y_times_name", "groundwater_y_section_times.png")
-        )
-        plot_velocity_name = str(plot_raw.get("velocity_name", "velocity_groundplan.png"))
-        plot_xsection_x_name = str(plot_raw.get("xsection_x_name", "materials_x_section.png"))
-        plot_xsection_y_name = str(plot_raw.get("xsection_y_name", "materials_y_section.png"))
+        plot_raw = cfg.optional_mapping(model_3d, "plots")
         plot_xsection_y_index = plot_raw.get("xsection_y_index")
         if plot_xsection_y_index is not None:
             plot_xsection_y_index = int(plot_xsection_y_index)
@@ -217,42 +79,75 @@ class RunConfig:
         plot_xsection_depth_window = float(plot_raw.get("xsection_depth_window", 40.0))
         assert plot_xsection_depth_window > 0.0, "plots.xsection_depth_window must be > 0"
 
-        return RunConfig(
-            config_path=config_path,
-            workspace=run_workspace,
-            model_name=model_name,
-            sim_name=sim_name,
-            exe_name=exe_name,
-            recharge_rate=recharge_rate,
-            recharge_series_m_per_day=recharge_series_m_per_day,
-            drain_conductance=drain_conductance,
-            simulation_days=simulation_days,
-            stress_periods_days=stress_periods_days,
-            grid_output_path=grid_output_path,
-            material_parameters_path=material_parameters_path,
-            paraview_output_path=paraview_output_path,
-            paraview_materials_output_path=paraview_materials_output_path,
+        return cls(
+            config_path=resolved_config_path,
+            workspace_root=workspace_root,
+            common=common,
             paraview_quantities=paraview_quantities,
-            paraview_include_inactive=paraview_include_inactive,
+            paraview_include_inactive=bool(paraview_raw.get("include_inactive", False)),
             paraview_z_scale=paraview_z_scale,
-            plot_enabled=plot_enabled,
-            plot_output_dir=plot_output_dir,
-            plot_dpi=plot_dpi,
-            plot_active_mask_name=plot_active_mask_name,
-            plot_idomain_name=plot_idomain_name,
-            plot_head_name=plot_head_name,
-            plot_groundwater_surface_name=plot_groundwater_surface_name,
-            plot_groundwater_change_name=plot_groundwater_change_name,
-            plot_hydrograph_name=plot_hydrograph_name,
-            plot_xsection_x_times_name=plot_xsection_x_times_name,
-            plot_xsection_y_times_name=plot_xsection_y_times_name,
-            plot_velocity_name=plot_velocity_name,
-            plot_xsection_x_name=plot_xsection_x_name,
-            plot_xsection_y_name=plot_xsection_y_name,
+            plot_enabled=bool(plot_raw.get("enabled", True)),
+            plot_dpi=int(plot_raw.get("dpi", 150)),
             plot_xsection_y_index=plot_xsection_y_index,
             plot_xsection_x_index=plot_xsection_x_index,
             plot_xsection_depth_window=plot_xsection_depth_window,
         )
+
+    @property
+    def workspace(self) -> Path:
+        return cfg3d.resolve_model_workspace(self.workspace_root, self.common)
+
+    @property
+    def model_name(self) -> str:
+        return self.common.model_name
+
+    @property
+    def sim_name(self) -> str:
+        return self.common.sim_name
+
+    @property
+    def exe_name(self) -> str:
+        return self.common.exe_name
+
+    @property
+    def recharge_rate(self) -> float:
+        return self.common.recharge_rate
+
+    @property
+    def recharge_series_m_per_day(self) -> tuple[float, ...] | None:
+        return self.common.recharge_series_m_per_day
+
+    @property
+    def drain_conductance(self) -> float:
+        return self.common.drain_conductance
+
+    @property
+    def simulation_days(self) -> float:
+        return self.common.simulation_days
+
+    @property
+    def stress_periods_days(self) -> tuple[float, ...]:
+        return self.common.stress_periods_days
+
+    @property
+    def grid_output_path(self) -> Path:
+        return self.workspace / cfg3d.GRID_MATERIALS_FILENAME
+
+    @property
+    def material_parameters_path(self) -> Path:
+        return self.workspace / cfg3d.MATERIAL_PARAMETERS_FILENAME
+
+    @property
+    def paraview_output_path(self) -> Path:
+        return self.workspace / cfg3d.PARAVIEW_RESULTS_FILENAME
+
+    @property
+    def paraview_materials_output_path(self) -> Path:
+        return self.workspace / cfg3d.PARAVIEW_MATERIALS_FILENAME
+
+    @property
+    def plot_output_dir(self) -> Path:
+        return self.workspace / cfg3d.PLOTS_DIRNAME
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
@@ -530,7 +425,7 @@ def _write_plan_view_plots(
     plt.xlabel("X (local)")
     plt.ylabel("Y (local)")
     plt.tight_layout()
-    active_path = plot_dir / run_config.plot_active_mask_name
+    active_path = plot_dir / "grid_active_mask.pdf"
     plt.savefig(active_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved active mask plot to %s", active_path)
@@ -542,7 +437,7 @@ def _write_plan_view_plots(
     plt.xlabel("X (local)")
     plt.ylabel("Y (local)")
     plt.tight_layout()
-    idomain_path = plot_dir / run_config.plot_idomain_name
+    idomain_path = plot_dir / "idomain_top.pdf"
     plt.savefig(idomain_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved idomain plot to %s", idomain_path)
@@ -555,7 +450,7 @@ def _write_plan_view_plots(
     plt.ylabel("Y (local)")
     plt.colorbar(img, label="Head")
     plt.tight_layout()
-    head_path = plot_dir / run_config.plot_head_name
+    head_path = plot_dir / "head_groundplan.pdf"
     plt.savefig(head_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved head plot to %s", head_path)
@@ -568,7 +463,7 @@ def _write_plan_view_plots(
     plt.ylabel("Y (local)")
     plt.colorbar(img, label="Groundwater surface Z")
     plt.tight_layout()
-    gw_surface_path = plot_dir / run_config.plot_groundwater_surface_name
+    gw_surface_path = plot_dir / "groundwater_surface.pdf"
     plt.savefig(gw_surface_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved groundwater surface plot to %s", gw_surface_path)
@@ -595,7 +490,7 @@ def _write_plan_view_plots(
     ax.set_ylim(y_nodes[-1], y_nodes[0])
     fig.colorbar(img, ax=ax, label="Velocity magnitude")
     fig.tight_layout()
-    velocity_path = plot_dir / run_config.plot_velocity_name
+    velocity_path = plot_dir / "velocity_groundplan.pdf"
     fig.savefig(velocity_path, dpi=run_config.plot_dpi)
     plt.close(fig)
     LOG.info("Saved velocity plot to %s", velocity_path)
@@ -682,7 +577,7 @@ def _write_cross_section_plots(
     plt.ylabel("Z")
     plt.legend(loc="best")
     plt.tight_layout()
-    xsec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
+    xsec_path = Path(run_config.plot_output_dir) / "materials_x_section.pdf"
     plt.savefig(xsec_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved X-section plot to %s", xsec_path)
@@ -711,7 +606,7 @@ def _write_cross_section_plots(
     plt.ylabel("Z")
     plt.legend(loc="best")
     plt.tight_layout()
-    ysec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
+    ysec_path = Path(run_config.plot_output_dir) / "materials_y_section.pdf"
     plt.savefig(ysec_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved Y-section plot to %s", ysec_path)

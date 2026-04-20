@@ -2,30 +2,29 @@ seed: 123456
 start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
-  class_name: "Model3D"
-  name: "uhelna"
-  model_name: "model_with_mine"
+  common:
+    class_name: "Model3D"
+    name: "uhelna"
+    total_time_days: 15.0
+    # Total simulated time in days. If omitted, a single step is run.
+    executable: "mf6"
+    # executable to run for the 3d model - some version of modflow
 
-  time_step_days: 5.0
-  # Duration of a single 3D MODFLOW step in days.
+  geometry:
+    qgis_project_path: ../../hlavo/deep_model/GIS/uhelna_all.qgs
+    boundary_layer_name: domain_around_mine
+    raster_group_name: HG model layers
+    meshsteps:
+      x: 40.0
+      y: 40.0
+      z: 4.0
 
-  total_time_days: 15.0
-  # Total simulated time in days. If omitted, a single step is run.
-
-  executable: "mf6"
-  # executable to run for the 3d model - some version of modflow
-
-  qgis_project_path: /home/hlavo/workspace/hlavo/deep_model/GIS/uhelna_all.qgs
-  boundary_layer_name: domain_around_mine
-  raster_group_name: HG model layers
-  grid_output_path: grid_materials.npz
-  material_parameters_output_path: material_parameters.npz
-  meshsteps:
-    x: 40.0
-    y: 40.0
-    z: 4.0
   materials:
     all:
+      # AGENT: document each parameter here (a demo file)
+      # Comment quantity name and unit according to modflow6 documentation.
+      # Put parameters that does not apply to volumetric materials out of the all section
+      # logic should be that what is in all is applied to all materials as common/default value
       horizontal_conductivity: 1.0e-06
       vertical_conductivity: 1.0e-06
       porosity: 0.3
@@ -63,20 +62,10 @@ model_3d:
     clay:
       horizontal_conductivity: 1.0e-07
       vertical_conductivity: 1.0e-07
+
   plots:
     enabled: true
-    output_dir: plots
     dpi: 150
-    active_mask_name: grid_active_mask.png
-    idomain_name: idomain_top.png
-    head_name: head_groundplan.png
-    groundwater_surface_name: groundwater_surface.png
-    groundwater_change_name: groundwater_change.png
-    hydrograph_name: groundwater_hydrograph.png
-    xsection_x_name: materials_x_section.png
-    xsection_y_name: materials_y_section.png
-    xsection_x_times_name: groundwater_x_section_times.png
-    xsection_y_times_name: groundwater_y_section_times.png
     xsection_depth_window: 40.0
 
 model_1d:

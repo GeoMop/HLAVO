@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import yaml
 
 from hlavo.composed.composed_model_mock import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
@@ -55,8 +54,7 @@ def _configure_logging() -> None:
 
 
 def _run_build_model(*, config_path: Path, workdir: Path) -> int:
-    config_source = _translate_build_model_config(config_path, workdir)
-    build_config = build_model(config_source=config_source, workspace=workdir)
+    build_config = build_model(config_source=config_path, workspace=workdir)
     LOG.info("3D model built in %s", build_config.workspace)
     return 0
 
@@ -64,49 +62,6 @@ def _run_build_model(*, config_path: Path, workdir: Path) -> int:
 def _run_simulate(*, config_path: Path, workdir: Path) -> int:
     run_simulation(work_dir=workdir, config_path=config_path)
     return 0
-
-
-def _load_yaml_mapping(config_path: Path) -> dict:
-    with config_path.open("r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
-
-    assert isinstance(raw, dict), "Config YAML must be a mapping"
-    return raw
-
-
-def _translate_build_model_config(config_path: Path, workdir: Path) -> Path | dict:
-    raw = _load_yaml_mapping(config_path)
-    if "model" in raw:
-        return config_path
-
-    model_3d = raw["model_3d"]
-    assert isinstance(model_3d, dict), "model_3d config must be a mapping"
-
-    translated = {
-        "_config_path": str(config_path),
-    }
-    for key in (
-        "qgis_project_path",
-        "boundary_layer_name",
-        "raster_group_name",
-        "grid_output_path",
-        "material_parameters_output_path",
-        "meshsteps",
-        "materials",
-        "plots",
-    ):
-        if key in model_3d:
-            translated[key] = model_3d[key]
-
-    translated["model"] = {
-        "model_name": str(model_3d.get("model_name", "model_with_mine")),
-        "workspace": str(workdir),
-        "sim_name": str(model_3d.get("name", "uhelna")),
-        "exe_name": str(model_3d.get("executable", "mf6")),
-        "simulation_days": float(model_3d.get("total_time_days", 1.0)),
-        "drain_conductance": float(model_3d.get("drain_conductance", 1.0)),
-    }
-    return translated
 
 
 def main(argv: list[str] | None = None) -> int:

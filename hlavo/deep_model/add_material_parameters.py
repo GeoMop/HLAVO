@@ -6,7 +6,10 @@ from pathlib import Path
 
 import attrs
 import numpy as np
-import yaml
+
+import hlavo.deep_model.model_3d_cfg as cfg3d
+import hlavo.misc.config as cfg
+from hlavo.deep_model.qgis_reader import GeometryConfig
 
 LOG = logging.getLogger(__name__)
 
@@ -60,42 +63,31 @@ class LayerMaterialSpec:
 
 @attrs.define(frozen=True)
 class MaterialConfig:
-    config_path: Path
-    grid_path: Path
+    config_path: Path | None
+    workspace_root: Path
+    common: cfg3d.Model3DCommonConfig
+    geometry: GeometryConfig
     output_path: Path
     defaults: MaterialAllSpec
-    sand: LayerMaterialSpec
-    clay: LayerMaterialSpec
+    layers: tuple[LayerMaterialSpec, ...]
 
-    @staticmethod
-    def from_yaml(config_path: Path) -> "MaterialConfig":
-        assert config_path.exists(), f"Config file not found: {config_path}"
-        with config_path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
-
-        model_raw = raw.get("model", {})
-        assert isinstance(model_raw, dict), "model config must be a mapping"
-        model_name = str(model_raw["model_name"])
-        workspace = Path(str(model_raw.get("workspace", "model")))
-        run_workspace = workspace / model_name
-
-        grid_raw = raw.get("grid_output_path", "grid_materials.npz")
-        grid_path = Path(str(grid_raw))
-        if not grid_path.is_absolute():
-            grid_path = run_workspace / grid_path
-
-        output_raw = raw.get("material_parameters_output_path", "material_parameters.npz")
-        output_path = Path(str(output_raw))
-        if not output_path.is_absolute():
-            output_path = run_workspace / output_path
-
-        materials_raw = raw.get("materials", {})
-        assert isinstance(materials_raw, dict), "materials must be a mapping"
-        assert "all" in materials_raw, "materials must include 'all' defaults"
+    @classmethod
+    def from_source(
+        cls,
+        config_source: Path | dict,
+        workspace: Path | None = None,
+    ) -> "MaterialConfig":
+        raw, config_path = cfg.load_config(config_source)
+        common_raw = cfg3d.resolve_model_3d_common_raw(raw)
+        common = cfg3d.Model3DCommonConfig.from_mapping(common_raw)
+        geometry = GeometryConfig.from_source(config_source)
+        materials_raw, _ = cfg.load_config(config_source, ("model_3d", "materials"))
+        workspace_root = cfg3d.resolve_workspace_root(workspace, common_raw)
+        output_path = Path(cfg3d.MATERIAL_PARAMETERS_FILENAME)
         all_raw = materials_raw["all"]
         assert isinstance(all_raw, dict), "materials.all must be a mapping"
 
+        # TODO: simplify, distinct material vars and BC or other vars.
         unsat: dict[str, float | bool | int] = {}
         for key in UNSAT_KEYS:
             assert key in all_raw, f"materials.all.{key} is required"
@@ -107,50 +99,65 @@ class MaterialConfig:
             else:
                 unsat[key] = float(value)
 
-        defaults = MaterialAllSpec(
-            horizontal_conductivity=float(all_raw["horizontal_conductivity"]),
-            vertical_conductivity=float(all_raw["vertical_conductivity"]),
-            porosity=float(all_raw["porosity"]),
-            vG_n=float(all_raw["vG_n"]),
-            vG_alpha=float(all_raw["vG_alpha"]),
-            unsat=unsat,
-        )
+        layers: list[LayerMaterialSpec] = []
+        for name, spec_raw in materials_raw.items():
+            # TODO: these should not be under materials mapping
+            if name in ("_config_path", "all", "material_parameters_output_path"):
+                continue
+            assert isinstance(spec_raw, dict), f"materials.{name} must be a mapping"
+            layers.append(
+                LayerMaterialSpec(
+                    name=str(name),
+                    horizontal_conductivity=float(spec_raw["horizontal_conductivity"]),
+                    vertical_conductivity=float(spec_raw["vertical_conductivity"]),
+                )
+            )
 
-        assert "sand" in materials_raw, "materials.sand is required"
-        assert "clay" in materials_raw, "materials.clay is required"
-        sand_raw = materials_raw["sand"]
-        clay_raw = materials_raw["clay"]
-        assert isinstance(sand_raw, dict), "materials.sand must be a mapping"
-        assert isinstance(clay_raw, dict), "materials.clay must be a mapping"
-        sand = LayerMaterialSpec(
-            name="sand",
-            horizontal_conductivity=float(sand_raw["horizontal_conductivity"]),
-            vertical_conductivity=float(sand_raw["vertical_conductivity"]),
-        )
-        clay = LayerMaterialSpec(
-            name="clay",
-            horizontal_conductivity=float(clay_raw["horizontal_conductivity"]),
-            vertical_conductivity=float(clay_raw["vertical_conductivity"]),
-        )
-
-        return MaterialConfig(
+        return cls(
             config_path=config_path,
-            grid_path=grid_path,
+            workspace_root=workspace_root,
+            common=common,
+            geometry=geometry,
             output_path=output_path,
-            defaults=defaults,
-            sand=sand,
-            clay=clay,
+            defaults=MaterialAllSpec(
+                horizontal_conductivity=float(all_raw["horizontal_conductivity"]),
+                vertical_conductivity=float(all_raw["vertical_conductivity"]),
+                porosity=float(all_raw["porosity"]),
+                vG_n=float(all_raw["vG_n"]),
+                vG_alpha=float(all_raw["vG_alpha"]),
+                unsat=unsat,
+            ),
+            layers=tuple(layers),
         )
+
+    @property
+    def workspace(self) -> Path:
+        return cfg3d.resolve_model_workspace(self.workspace_root, self.common)
+
+    @property
+    def grid_path(self) -> Path:
+        return self.geometry.resolve_grid_output_path(self.workspace)
+
+    @property
+    def material_parameters_path(self) -> Path:
+        return cfg3d.resolve_model_relative_path(self.workspace, self.output_path)
+
+    @property
+    def layer_specs_by_name(self) -> dict[str, LayerMaterialSpec]:
+        return {layer.name: layer for layer in self.layers}
 
 
 def _layer_conductivities(
     layer_names: list[str],
     defaults: MaterialAllSpec,
-    sand: LayerMaterialSpec,
-    clay: LayerMaterialSpec,
+    layer_specs: dict[str, LayerMaterialSpec],
 ) -> tuple[np.ndarray, np.ndarray]:
     kh = np.full(len(layer_names), defaults.horizontal_conductivity, dtype=float)
     kv = np.full(len(layer_names), defaults.vertical_conductivity, dtype=float)
+    sand = layer_specs.get("sand")
+    clay = layer_specs.get("clay")
+    assert sand is not None, "materials.sand is required"
+    assert clay is not None, "materials.clay is required"
 
     for idx, layer_name in enumerate(layer_names):
         if not layer_name.startswith("Q"):
@@ -165,10 +172,13 @@ def _layer_conductivities(
     return kh, kv
 
 
-def add_material_parameters(config_path: Path) -> Path:
-    cfg = MaterialConfig.from_yaml(config_path)
-    assert cfg.grid_path.exists(), f"Grid NPZ not found: {cfg.grid_path}"
-    with np.load(cfg.grid_path, allow_pickle=True) as data:
+def write_material_model_files(
+    config_source: Path | dict,
+    workspace: Path | None = None,
+) -> Path:
+    mat_cfg = MaterialConfig.from_source(config_source, workspace=workspace)
+    assert mat_cfg.grid_path.exists(), f"Grid NPZ not found: {mat_cfg.grid_path}"
+    with np.load(mat_cfg.grid_path, allow_pickle=True) as data:
         grid_data = {key: data[key] for key in data.files}
 
     materials = np.asarray(grid_data["materials"], dtype=int)
@@ -186,19 +196,23 @@ def add_material_parameters(config_path: Path) -> Path:
     idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
     materials_mf = materials[::-1, :, :]
 
-    kh_values, kv_values = _layer_conductivities(layer_names, cfg.defaults, cfg.sand, cfg.clay)
+    kh_values, kv_values = _layer_conductivities(
+        layer_names,
+        mat_cfg.defaults,
+        mat_cfg.layer_specs_by_name,
+    )
 
     valid = materials_mf >= 0
-    kh = np.full((nz, ny, nx), cfg.defaults.horizontal_conductivity, dtype=float)
-    kv = np.full((nz, ny, nx), cfg.defaults.vertical_conductivity, dtype=float)
-    porosity = np.full((nz, ny, nx), cfg.defaults.porosity, dtype=float)
-    vg_alpha = np.full((nz, ny, nx), cfg.defaults.vG_alpha, dtype=float)
-    vg_n = np.full((nz, ny, nx), cfg.defaults.vG_n, dtype=float)
+    kh = np.full((nz, ny, nx), mat_cfg.defaults.horizontal_conductivity, dtype=float)
+    kv = np.full((nz, ny, nx), mat_cfg.defaults.vertical_conductivity, dtype=float)
+    porosity = np.full((nz, ny, nx), mat_cfg.defaults.porosity, dtype=float)
+    vg_alpha = np.full((nz, ny, nx), mat_cfg.defaults.vG_alpha, dtype=float)
+    vg_n = np.full((nz, ny, nx), mat_cfg.defaults.vG_n, dtype=float)
 
     kh[valid] = kh_values[materials_mf[valid]]
     kv[valid] = kv_values[materials_mf[valid]]
 
-    cfg.output_path.parent.mkdir(parents=True, exist_ok=True)
+    mat_cfg.material_parameters_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, np.ndarray] = {
         "top": top,
         "botm": botm,
@@ -215,30 +229,32 @@ def add_material_parameters(config_path: Path) -> Path:
         "van_genuchten_n": vg_n,
         "layer_names": np.asarray(layer_names, dtype=object),
     }
-    for key, value in cfg.defaults.unsat.items():
+    for key, value in mat_cfg.defaults.unsat.items():
         payload[key] = np.asarray(value)
 
-    np.savez_compressed(cfg.output_path, **payload)
-    assert cfg.output_path.exists(), f"Failed to write material parameter file: {cfg.output_path}"
-    LOG.info("Saved material parameters to %s", cfg.output_path)
-    return cfg.output_path
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Add per-material arrays from config materials definitions."
+    np.savez_compressed(mat_cfg.material_parameters_path, **payload)
+    assert mat_cfg.material_parameters_path.exists(), (
+        f"Failed to write material parameter file: {mat_cfg.material_parameters_path}"
     )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path("model_config.yaml"),
-        help="Path to model_config.yaml",
-    )
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-    add_material_parameters(args.config)
+    LOG.info("Saved material parameters to %s", mat_cfg.material_parameters_path)
+    return mat_cfg.material_parameters_path
 
 
-if __name__ == "__main__":
-    main()
+# def main() -> None:
+#     parser = argparse.ArgumentParser(
+#         description="Add per-material arrays from config materials definitions."
+#     )
+#     parser.add_argument(
+#         "--config",
+#         type=Path,
+#         default=Path("model_config.yaml"),
+#         help="Path to model_config.yaml",
+#     )
+#     args = parser.parse_args()
+#
+#     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+#     write_material_model_files(args.config)
+#
+#
+# if __name__ == "__main__":
+#     main()

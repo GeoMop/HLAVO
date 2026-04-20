@@ -23,6 +23,7 @@ dependencies = [
     "filterpy",
     "pftools[all]",
     "matplotlib",
+    "pyvista",
     "xarray",
     "dask",
     "distributed",
