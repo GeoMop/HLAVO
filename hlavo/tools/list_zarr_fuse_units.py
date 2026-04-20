@@ -22,6 +22,17 @@ def collect_units(obj, *, path=""):
 
 
 def main(argv: list[str]) -> int:
+    """
+    Takes schema path as argument and
+    - finds units in schema and tries to parse them with the lib
+    - explicitly checks unit "C" which is Coulomb, not Celsius, possibly warns
+    - prints the unit and its found name
+    - raises error if unit is unknown
+
+    If no argument given, it prints out all available units from the lib.
+    :param argv:
+    :return: 0 if passes ok, 1 otherwise
+    """
     if not argv:
         print(f"Available zarr_fuse units: {len(ureg._units)}")
         for unit_name in sorted(ureg._units):

@@ -1,19 +1,25 @@
 from pathlib import Path
-
 import dotenv
-import pandas as pd
-import polars as pl
 import zarr_fuse
 
 root_path = Path(__file__).parents[2]
 SCHEMAS_PATH = root_path/ "hlavo/schemas"
 
+"""
+Auxiliary functions that help opening/reading/writing zarr_fuse storages.
+"""
 
 def load_dotenv():
     dotenv.load_dotenv(root_path / ".env")
 
 
 def override_local_storage(schema, storage_path: str | Path | None):
+    """
+    Once zarr_fuse issue about kwargs priority is solved, this function might be unnecessary.
+    :param schema:
+    :param storage_path:
+    :return:
+    """
     if storage_path is not None:
         schema.ds.ATTRS['STORE_URL'] = str(storage_path)
 
@@ -27,6 +33,7 @@ def load_schema(schema_path: str | Path):
 
 
 def get_nested(node, path):
+    """Easily accessible nested node in the storage."""
     for key in path:
         node = node[key]
     return node
@@ -61,29 +68,3 @@ def remove_storage(schema_path: str | Path, storage_path: str | Path = None):
     print(f"Removing storage at {schema.ds.ATTRS['STORE_URL']} ...")
     zarr_fuse.remove_store(schema, STORE_URL=storage_path)
 
-
-def main():
-    # read_storage(schema_path=SCHEMAS_PATH / "hlavo_surface_schema.yaml",
-    #              node_path=['chmi_aladin_10m'],
-    #              var_names=["air_pressure_at_sea_level"],
-    #              storage_path=root_path / "tests/ingress/scrapper/test_meteo_storage")
-    # read_storage(schema_path=SCHEMAS_PATH / "profile_schema.yaml",
-    #              node_path=['Uhelna', 'profiles'],
-    #              var_names=["moisture", "probe_id", "sensor_depth"],
-    #              storage_path=root_path / "tests/ingress/moist_profile/test_storage/")
-    # read_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml",
-    #              node_path=['chmi_stations'],
-    #              var_names=[],
-    #              storage_path=root_path / "hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_storage")
-    # read_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml",
-    #              node_path=['Uhelna', 'parflow', 'version_01'],
-    #              var_names=[],
-    #              storage_path=root_path / "hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_storage")
-    read_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml",
-                 node_path=['Uhelna', 'parflow', 'version_01'],
-                 var_names=[])
-
-    # remove_storage(schema_path=SCHEMAS_PATH / "chmi_stations_schema.yaml")
-
-if __name__ == "__main__":
-    main()

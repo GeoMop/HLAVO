@@ -9,7 +9,7 @@ import traceback
 import selenium.webdriver.remote.webelement
 from urllib.parse import urlparse
 
-from hlavo.common.zarr_fuse_reader import load_dotenv
+from hlavo.misc.aux_zarr_fuse import load_dotenv
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service

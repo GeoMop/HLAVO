@@ -3,7 +3,7 @@ from pathlib import Path
 import polars as pl
 import zarr_fuse
 
-from hlavo.common.zarr_fuse_reader import load_schema, remove_storage
+from hlavo.misc.aux_zarr_fuse import load_schema, remove_storage
 from hlavo.ingress.moist_profile.extract.profile_extract import extract_df
 
 SCRIPT_DIR = Path(__file__).resolve().parent

@@ -1,5 +1,13 @@
 from pathlib import Path
 
+"""
+Helper file contains constants including:
+- directory path for downloaded and processed data
+- schema node paths
+- web sources links
+- CHMI and Open Meteo helper constants (QoI names)
+- physics constants
+"""
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
