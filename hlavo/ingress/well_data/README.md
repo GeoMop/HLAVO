@@ -1,14 +1,19 @@
-## Water table and water draw measurements
+# Water table and water draw measurements
 
-## How to extract well data?
-Script well_data.py poskytuje 3 základní funkce pro zpracování dat:
-- read_sections: Funkce načte a zpracuje základní data vrtů a jejich sections. Data jsou načítána z jednoho souboru a jednoho sheetname. Výstupem je pandas.DataFrame. Funkce nezpracovává data měření.
-- read_sections_water_levels: Funkce načte a zpracuje data měření hladin vrtů. Funkce umožňuje zpracovat data z jednoho nebo více vstupních souborů, data každého vrtu jsou obsažena na samostatném sheetname. Zpracování jednotlivých sheetname je prováděno automaticky. Ke každému vrtu je automaticky doplněno označení vrtu v souboru sections (viz. předchozí funkce). Zpracovaná data jsou uložena do zar_fuse úložiště, pomocným výstupem, který funkce vrací, je pandas.DataFrame. 
-- read_draw: Funkce načte a zpracuje data čerpání z vodního zdroje pro jeden vrt. Data jsou načítána z jednoho souboru a jednoho sheetname. Výstup je ukládán do zar_fuse úložiště, pomocným výstupem, který funkce vrací, je pandas.DataFrame.
-Formát tabulek a jejich sloupců je popsán níže.
-For correct access to zarr_fuse storage we need to have .secrets_env file defined in root directory of project. This file defines access keys to zarr_fuse storage.
+## How to run well data procesing?
 
-Příklad použití všech výše popsaných funkcí je v testu /tests/ingress/well_data/test_borehole_water_level.py.
+```commandline
+../../../dev/hlavo run python well_data_process.py
+```
+
+It extracts data rom the Excel files and store them according to the `wells_schema.yaml` into zarr_fuse storage. 
+You have to update the Excel files using `dvc pull` before running the script. 
+`dev/hlavo run ...` run the cript in the docker container.
+As the default S3 zarr-fuse store specified in the schema requires credentials, 
+you have to set up the `.secrets_env` (see the main README.md) with the credentials for the S3 storage.
+
+## Tests
+`tests/ingress/well_data/test_well_data.py.
 
 ## File overview
 - `1.CS_Zpráva o vlivu na životní prostředí.pdf` - polská zpráva EIA o rozšíření těžby v dole Turow, obsahuje i predikce jejich HG modelu

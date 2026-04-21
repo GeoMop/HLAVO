@@ -97,8 +97,3 @@ def pdf_plot_multi(out_file, df, well_ids):
     pdf.close()
 
 
-def main():
-    print("Not implemented yet!")
-
-if __name__ == "__main__":
-   main()

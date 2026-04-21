@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 # author:   David Flanderka
 
-
-
-import sys
 from pathlib import Path
 import pandas as pd
 import logging
@@ -168,21 +165,6 @@ def _jtsk_to_wgs84(x_values: pd.Series, y_values: pd.Series) -> pd.DataFrame:
     return pd.DataFrame({"longitude": longitude, "latitude": latitude})
 
 
-def _well_spatial_metadata(section_file: Path, sheetname: str, well_id: str) -> pd.DataFrame:
-    """
-    Return a single-row dataframe with spatial metadata for one well.
-    """
-    df_sections = read_sections(section_file, sheetname)
-    df_well = (
-        df_sections.loc[df_sections["well_id"] == well_id, ["well_id", "longitude", "latitude"]]
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
-    if df_well.empty:
-        raise ValueError(f"Well '{well_id}' not found in section file '{section_file}'.")
-    return df_well
-
-
 def read_water_level(file_paths=None):
     """
     Process water level data of set of wells and store them into DataFrame.
@@ -244,7 +226,7 @@ def read_water_level(file_paths=None):
     return final_df
 
 
-def read_draw(xls_file, sheetname):
+def read_draw(xls_file, sheetname, df_sections):
     """
     Process water draw data of one well and store them to DataFrame
     Data is stored in excel file.
@@ -256,6 +238,7 @@ def read_draw(xls_file, sheetname):
 
     logging.basicConfig(level=logging.INFO)
     logger.info("Processing draw data from file %s", xls_file)
+
     #read data from excel, set required column names
     column_map = {
         "MVM1" : "M1",
@@ -274,6 +257,7 @@ def read_draw(xls_file, sheetname):
     }
     df_long_cols = pd.read_excel(io=xls_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df_long_cols = df_long_cols.rename(columns=column_map)
+
 
     # transform data, create separate row for each month
     df_months = df_long_cols.melt(
@@ -294,12 +278,14 @@ def read_draw(xls_file, sheetname):
 
     # convert to base unit (m^3)
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
-    df_result["well_id"] = "1420_1"
+    df_result["well_id"] = "Uh-draw"
+    df_result = df_result.join(df_sections.set_index("well_id"), on="well_id")
 
-    section_file = Path(__file__).parent / "Vrty_souradnice_perforace.xlsx"
-    df_well_meta = _well_spatial_metadata(section_file, "List1", df_result["well_id"].iat[0])
-    df_result["longitude"] = df_well_meta["longitude"].iat[0]
-    df_result["latitude"] = df_well_meta["latitude"].iat[0]
+    if not (df_sections["well_id"] == "Uh-draw").any():
+        raise ValueError("Well 'Uh-draw' not found in df_sections.")
+
+    if df_result["longitude"].isna().any() or df_result["latitude"].isna().any():
+        raise ValueError("Well 'Uh-draw' in df_sections is missing coordinates.")
 
     root_node = _open_zarr_schema()
     water_draw_node = root_node['Uhelna']['water_draw']
@@ -422,35 +408,20 @@ def read_sections(section_file, sheetname):
 
     return df
 
-def read_sections_water_levels(section_file_path, section_sheetname, water_level_file_paths):
+def read_sections_water_levels(df_sections, water_level_file_paths):
     """
     Prepare full data.DataFrame containing combination of water levels data and well sections data.
 
-    Param   section_file_path        Path to Excel input file
-    Param   section_sheetname        Name of sheet in xls_file
+    Param   df_sections              Well section data prepared by read_sections
     Param   water_level_file_paths   Set of paths to Excel input files
     Returns pandas:DataFrame
     """
-    df_sections = read_sections(section_file_path, section_sheetname)
     df_water_levels = read_water_level(water_level_file_paths)
 
     df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
 
     root_node = _open_zarr_schema()
     water_levels_node = root_node['Uhelna']['water_levels']
-    print(f"Columns in DataFrame: {df_full.columns.tolist()}")
-    print("Looking for:", water_levels_node.dataset)
     water_levels_node.update(df_full)
 
     return df_full
-
-
-def main():
-    well_data_path = Path(__file__).parent
-    xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
-    sheetname = "List1"
-    excel_df = read_sections(xls_file, sheetname)
-    print(excel_df)
-
-if __name__ == "__main__":
-   main()
