@@ -39,6 +39,7 @@ class RunConfig:
     initial_head_offset_override: float | None
     simulation_days: float
     stress_periods_days: tuple[float, ...]
+    max_timestep_days: float | None
     grid_output_path: Path
     material_parameters_path: Path
     paraview_output_dir: Path
@@ -148,6 +149,12 @@ class RunConfig:
             assert len(recharge_series_m_per_day) == len(stress_periods_days), (
                 "model.recharge_series_m_per_day length must match stress periods"
             )
+        max_timestep_days_raw = model_raw.get("max_timestep_days")
+        if max_timestep_days_raw is None:
+            max_timestep_days = None
+        else:
+            max_timestep_days = float(max_timestep_days_raw)
+            assert max_timestep_days > 0.0, "model.max_timestep_days must be > 0"
 
         base_workspace = Path(workspace) if workspace is not None else Path(
             model_raw.get("workspace", "model")
@@ -279,6 +286,7 @@ class RunConfig:
             initial_head_offset_override=initial_head_offset_override,
             simulation_days=simulation_days,
             stress_periods_days=stress_periods_days,
+            max_timestep_days=max_timestep_days,
             grid_output_path=grid_output_path,
             material_parameters_path=material_parameters_path,
             paraview_output_dir=paraview_output_dir,
@@ -316,6 +324,8 @@ class WellInterval:
     top_depth: float
     bottom_depth: float
     rate_m3_per_day: float
+    rate_scaling_length_m: float
+    well_radius_m: float
 
 
 @attrs.define(frozen=True)
@@ -387,11 +397,34 @@ def _parse_wells(raw: dict) -> tuple[WellSpec, ...]:
             assert np.isfinite(rate), (
                 f"wells[{idx}].intervals[{jdx}].rate_m3_per_day must be finite"
             )
+            rate_scaling_length_m = float(
+                interval_raw.get(
+                    "rate_scaling_length_m",
+                    interval_raw.get("rate_scaling_length", 1.0),
+                )
+            )
+            assert np.isfinite(rate_scaling_length_m) and rate_scaling_length_m > 0.0, (
+                f"wells[{idx}].intervals[{jdx}].rate_scaling_length_m must be > 0"
+            )
+            well_radius_m = float(
+                interval_raw.get(
+                    "well_radius_m",
+                    interval_raw.get(
+                        "radius_m",
+                        interval_raw.get("radius", 0.1),
+                    ),
+                )
+            )
+            assert np.isfinite(well_radius_m) and well_radius_m > 0.0, (
+                f"wells[{idx}].intervals[{jdx}].well_radius_m must be > 0"
+            )
             intervals.append(
                 WellInterval(
                     top_depth=top_depth,
                     bottom_depth=bottom_depth,
                     rate_m3_per_day=rate,
+                    rate_scaling_length_m=rate_scaling_length_m,
+                    well_radius_m=well_radius_m,
                 )
             )
         assert intervals, f"wells[{idx}] must contain at least one interval"
@@ -499,7 +532,7 @@ def _row_col_from_xy(
     return row, col
 
 
-def _well_cell_rates(
+def _well_interval_connections(
     *,
     row: int,
     col: int,
@@ -508,43 +541,42 @@ def _well_cell_rates(
     botm: np.ndarray,
     layer_tops: np.ndarray,
     idomain: np.ndarray,
-) -> list[tuple[int, int, int, float]]:
+) -> list[tuple[int, float, float]]:
     nz = botm.shape[0]
     surface = float(top[row, col])
     z_top = surface - interval.top_depth
     z_bottom = surface - interval.bottom_depth
-    overlaps: list[tuple[int, float]] = []
+    overlaps: list[tuple[int, float, float]] = []
     for lay in range(nz):
         if idomain[lay, row, col] <= 0:
             continue
         cell_top = float(layer_tops[lay, row, col])
         cell_bot = float(botm[lay, row, col])
-        overlap = min(cell_top, z_top) - max(cell_bot, z_bottom)
-        if overlap > 0.0:
-            overlaps.append((lay, overlap))
+        screen_top = min(cell_top, z_top)
+        screen_bot = max(cell_bot, z_bottom)
+        if screen_top > screen_bot:
+            overlaps.append((lay, screen_top, screen_bot))
     assert overlaps, (
         f"Well interval does not intersect active cells at row={row}, col={col}"
     )
-    total = float(sum(thick for _, thick in overlaps))
-    assert total > 0.0, "Well interval overlap thickness must be > 0"
-
-    cells: list[tuple[int, int, int, float]] = []
-    for lay, overlap in overlaps:
-        rate = interval.rate_m3_per_day * (overlap / total)
-        cells.append((int(lay), int(row), int(col), float(rate)))
-    return cells
+    return overlaps
 
 
-def _build_well_spd(
+def _build_maw_package_data(
     wells: tuple[WellSpec, ...],
     grid_data: dict[str, np.ndarray],
     top: np.ndarray,
     botm: np.ndarray,
     idomain: np.ndarray,
+    kh: np.ndarray,
     nper: int,
-) -> dict[int, list[tuple[int, int, int, float]]]:
+) -> tuple[
+    list[tuple[int, float, float, float, str, int, str]],
+    list[tuple[int, int, tuple[int, int, int], float, float, float, float]],
+    dict[int, list[tuple]],
+]:
     if not wells:
-        return {}
+        return [], [], {}
 
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     nx = int(el_dims[0])
@@ -557,7 +589,10 @@ def _build_well_spd(
     active_mask = np.asarray(grid_data["active_mask"], dtype=bool)
 
     layer_tops = _layer_tops_from_top_botm(top, botm)
-    aggregated: dict[tuple[int, int, int], float] = {}
+    packagedata: list[tuple[int, float, float, float, str, int, str]] = []
+    connectiondata: list[tuple[int, int, tuple[int, int, int], float, float, float, float]] = []
+    period_rows: list[tuple] = []
+    ifno = 0
 
     for well in wells:
         x_local, y_local = _lonlat_to_local_xy(well.lon, well.lat, boundary_origin)
@@ -569,8 +604,9 @@ def _build_well_spd(
             raise AssertionError(
                 f"Well {well.name} is in an inactive column at row={row}, col={col}"
             )
-        for interval in well.intervals:
-            cells = _well_cell_rates(
+        surface = float(top[row, col])
+        for interval_idx, interval in enumerate(well.intervals):
+            connections = _well_interval_connections(
                 row=row,
                 col=col,
                 interval=interval,
@@ -579,22 +615,93 @@ def _build_well_spd(
                 layer_tops=layer_tops,
                 idomain=idomain,
             )
-            for lay, r, c, rate in cells:
-                key = (lay, r, c)
-                aggregated[key] = aggregated.get(key, 0.0) + float(rate)
+            overlaps = [float(screen_top - screen_bot) for _, screen_top, screen_bot in connections]
+            transmissive_weights = [
+                float(screen_top - screen_bot) * max(float(kh[int(lay), int(row), int(col)]), 0.0)
+                for lay, screen_top, screen_bot in connections
+            ]
+            # Concentrate pumping into the most transmissive parts of the screen to
+            # avoid pushing rate into nearly disconnected cells, which can stall MAW.
+            selected_idx = list(range(len(connections)))
+            if interval.rate_m3_per_day < 0.0 and len(connections) > 1:
+                max_weight = float(max(transmissive_weights))
+                if max_weight > 0.0:
+                    cutoff = 0.2 * max_weight
+                    selected_idx = [
+                        idx for idx, weight in enumerate(transmissive_weights) if float(weight) >= cutoff
+                    ]
+                    if not selected_idx:
+                        selected_idx = [int(np.argmax(np.asarray(transmissive_weights, dtype=float)))]
+            connections = [connections[idx] for idx in selected_idx]
+            overlaps = [overlaps[idx] for idx in selected_idx]
+            transmissive_weights = [transmissive_weights[idx] for idx in selected_idx]
+            total_weight = float(sum(transmissive_weights))
+            if total_weight <= 0.0:
+                # Fallback if local conductivity is zero/undefined across connections.
+                transmissive_weights = overlaps
+                total_weight = float(sum(transmissive_weights))
+            assert total_weight > 0.0, "Total MAW connection weight must be > 0"
+            pump_elevation = surface - interval.bottom_depth
+            start_head_target = surface - interval.top_depth
+            for icon, (lay, screen_top, screen_bot) in enumerate(connections):
+                weight = float(transmissive_weights[icon] / total_weight)
+                cell_rate = float(interval.rate_m3_per_day * weight)
+                cell_bottom = float(botm[int(lay), int(row), int(col)])
+                # Keep MAW bottom at or below connected cell bottom so MF6 does not reset it.
+                bottom_elev = min(float(pump_elevation), cell_bottom)
+                start_head = max(min(surface, start_head_target), bottom_elev + 1e-6)
+                well_name = (
+                    f"{well.name}_l{int(lay) + 1}"
+                    if len(well.intervals) == 1
+                    else f"{well.name}_interval_{interval_idx + 1}_l{int(lay) + 1}"
+                )
+                packagedata.append(
+                    (
+                        int(ifno),
+                        float(interval.well_radius_m),
+                        float(bottom_elev),
+                        float(start_head),
+                        "THIEM",
+                        1,
+                        str(well_name),
+                    )
+                )
+                connectiondata.append(
+                    (
+                        int(ifno),
+                        0,
+                        (int(lay), int(row), int(col)),
+                        float(screen_top),
+                        float(screen_bot),
+                        0.0,
+                        0.0,
+                    )
+                )
+                if cell_rate < 0.0:
+                    period_rows.append(
+                        (
+                            int(ifno),
+                            "rate",
+                            float(cell_rate),
+                            "rate_scaling",
+                            float(pump_elevation),
+                            float(interval.rate_scaling_length_m),
+                        )
+                    )
+                else:
+                    period_rows.append((int(ifno), "rate", float(cell_rate)))
+                ifno += 1
         LOG.info(
-            "Well %s mapped to row=%s col=%s with %s interval(s)",
+            "Well %s mapped to row=%s col=%s with %s interval(s) for MAW",
             well.name,
             row,
             col,
             len(well.intervals),
         )
 
-    stress_period_data = [
-        (lay, row, col, rate) for (lay, row, col), rate in aggregated.items()
-    ]
-    assert stress_period_data, "No well cells mapped to the grid"
-    return {iper: stress_period_data for iper in range(nper)}
+    assert packagedata, "No well intervals mapped to MAW package"
+    perioddata = {iper: list(period_rows) for iper in range(nper)}
+    return packagedata, connectiondata, perioddata
 
 
 def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
@@ -1266,16 +1373,49 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         sim_ws=str(workdir),
     )
 
-    perioddata = [(float(days), 1, 1.0) for days in run_config.stress_periods_days]
+    if run_config.max_timestep_days is not None:
+        max_timestep_days = float(run_config.max_timestep_days)
+    elif run_config.wells:
+        # Large transient steps with nonlinear MAW controls are prone to
+        # convergence issues; cap default step size when wells are active.
+        max_timestep_days = 30.0
+    else:
+        max_timestep_days = None
+    perioddata = []
+    for days in run_config.stress_periods_days:
+        if max_timestep_days is None:
+            nstp = 1
+        else:
+            nstp = max(1, int(np.ceil(float(days) / max_timestep_days)))
+        perioddata.append((float(days), int(nstp), 1.0))
     flopy.mf6.ModflowTdis(
         sim,
         time_units="DAYS",
         nper=len(perioddata),
         perioddata=perioddata,
     )
-    flopy.mf6.ModflowIms(sim, complexity="SIMPLE")
+    ims_kwargs: dict[str, object] = {"complexity": "COMPLEX"}
+    if run_config.wells:
+        ims_kwargs.update(
+            {
+                "print_option": "SUMMARY",
+                "outer_maximum": 500,
+                "outer_dvclose": 1.0,
+                "inner_maximum": 800,
+                "inner_dvclose": 1.0,
+                "rcloserecord": 20.0,
+                "under_relaxation": "DBD",
+                "linear_acceleration": "BICGSTAB",
+            }
+        )
+    flopy.mf6.ModflowIms(sim, **ims_kwargs)
 
-    gwf = flopy.mf6.ModflowGwf(sim, modelname=run_config.sim_name, save_flows=True)
+    gwf = flopy.mf6.ModflowGwf(
+        sim,
+        modelname=run_config.sim_name,
+        save_flows=True,
+        newtonoptions="NEWTON UNDER_RELAXATION",
+    )
 
     flopy.mf6.ModflowGwfdis(
         gwf,
@@ -1416,16 +1556,26 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
             raise AssertionError(f"Unsupported drain mode: {run_config.drain_mode}")
         flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
 
-    well_spd = _build_well_spd(
+    maw_packagedata, maw_connectiondata, maw_perioddata = _build_maw_package_data(
         run_config.wells,
         grid_data,
         top,
         botm,
         idomain,
+        kh,
         len(run_config.stress_periods_days),
     )
-    if well_spd:
-        flopy.mf6.ModflowGwfwel(gwf, stress_period_data=well_spd)
+    if maw_packagedata:
+        flopy.mf6.ModflowGwfmaw(
+            gwf,
+            boundnames=True,
+            save_flows=True,
+            no_well_storage=True,
+            nmawwells=len(maw_packagedata),
+            packagedata=maw_packagedata,
+            connectiondata=maw_connectiondata,
+            perioddata=maw_perioddata,
+        )
 
     flopy.mf6.ModflowGwfoc(
         gwf,

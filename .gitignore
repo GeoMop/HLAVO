@@ -1,4 +1,5 @@
 .secrets_env
+dvc_secret.sh
 tests/ingress/aladin_data
 dev/.codex_docker
 hlavo/deep_model/model
@@ -211,3 +212,6 @@ microchip_SW/.vscode
 data_processing/.env
 /data_processing/.python-version
 /hlavo/kalman/pristupy.txt
+/hlavo/ingress/meteo_playground/chmi_stations/meta1.json
+/hlavo/ingress/meteo_playground/chmi_stations/meta2.json
+/hlavo/ingress/meteo_playground/chmi_stations/meta3.json

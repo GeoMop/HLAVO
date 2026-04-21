@@ -175,4 +175,4 @@ wells:
     intervals:
       - top_depth: 10.0
         bottom_depth: 30.0
-        rate_m3_per_day: -0.1
+        rate_m3_per_day: -0.005
