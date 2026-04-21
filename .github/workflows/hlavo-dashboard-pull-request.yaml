@@ -157,13 +157,36 @@ jobs:
       - name: Set context
         run: kubectl config set-context --current --namespace=hlavo-dashboard-ui
 
+      - name: Prepare HLAVO config files
+        run: |
+          mkdir -p deploy-config/config deploy-config/schemas
+          cp dashboard/config/endpoints.yaml deploy-config/config/endpoints.yaml
+          cp dashboard/schemas/profile_schema.yaml deploy-config/schemas/profile_schema.yaml
+          cp dashboard/schemas/wells_schema.yaml deploy-config/schemas/wells_schema.yaml
+
+      - name: Create HLAVO config ConfigMap
+        run: |
+          kubectl create configmap hlavo-dashboard-config \
+            --namespace hlavo-dashboard-ui \
+            --from-file=deploy-config/config/endpoints.yaml \
+            --from-file=deploy-config/schemas/profile_schema.yaml \
+            --from-file=deploy-config/schemas/wells_schema.yaml \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy app
         run: |
           helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
-          --install --atomic --timeout 10m --namespace hlavo-dashboard-ui \
-          --set backend.image.name="jbrezmorf/hlavo-dashboard-ui-backend" \
-          --set frontend.image.name="jbrezmorf/hlavo-dashboard-ui-frontend" \
-          --set backend.image.tag="${{ needs.get-version-tag.outputs.version-tag }}" \
-          --set frontend.image.tag="${{ needs.get-version-tag.outputs.version-tag }}" \
-          --set backend.s3.secrets.accessKey="${{ secrets.S3_ACCESS_KEY }}" \
-          --set backend.s3.secrets.secretKey="${{ secrets.S3_SECRET_KEY }}"
+            --install --atomic --timeout 10m --namespace hlavo-dashboard-ui \
+            --set backend.image.name="jbrezmorf/hlavo-dashboard-ui-backend" \
+            --set frontend.image.name="jbrezmorf/hlavo-dashboard-ui-frontend" \
+            --set backend.image.tag="${{ needs.get-version-tag.outputs.version-tag }}" \
+            --set frontend.image.tag="${{ needs.get-version-tag.outputs.version-tag }}" \
+            --set backend.s3.secrets.accessKey="${{ secrets.S3_ACCESS_KEY }}" \
+            --set backend.s3.secrets.secretKey="${{ secrets.S3_SECRET_KEY }}" \
+            --set backend.extraEnv[0].name="ENDPOINTS_PATH" \
+            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set backend.extraVolumes[0].name="hlavo-config" \
+            --set backend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
+            --set backend.extraVolumeMounts[0].name="hlavo-config" \
+            --set backend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard" \
+            --set backend.extraVolumeMounts[0].readOnly=true
