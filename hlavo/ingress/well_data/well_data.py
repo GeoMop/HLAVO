@@ -10,8 +10,11 @@ import pandas as pd
 import logging
 import zarr_fuse as zf
 from dotenv import load_dotenv
+from pyproj import Transformer
 
 logger = logging.getLogger(__name__)
+
+_S_JTSK_TO_WGS84 = Transformer.from_crs("EPSG:5514", "EPSG:4326", always_xy=True)
 
 
 def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
@@ -94,7 +97,10 @@ def _sheet_names_dictionary():
     return dict
 
 
-def _open_zarr_schema(remove_store=False):
+def _create_schema_path():
+    """
+    Helper function called from remove_zarr_store and open_zarr_schema
+    """
     script_dir = Path(__file__).parent
     root_path = script_dir / "../../.."
     file_path = root_path / ".secrets_env"
@@ -103,11 +109,78 @@ def _open_zarr_schema(remove_store=False):
         raise FileNotFoundError(f"{file_path} doesn't exist")
 
     load_dotenv(dotenv_path=file_path)
+    return script_dir / "wells_schema.yaml"
 
-    schema_path = script_dir / "wells_schema.yaml"
-    if remove_store:
-        zf.remove_store(schema_path)
+
+def _remove_zarr_store():
+    """
+    Remove zarr fuse storage of well data
+    """
+    schema_path = _create_schema_path()
+    zf.remove_store(schema_path)
+
+
+def _open_zarr_schema():
+    """
+    Open zarr fuse storage of well data
+    """
+    schema_path = _create_schema_path()
     return zf.open_store(schema_path)
+
+
+def _jtsk_to_wgs84(x_values: pd.Series, y_values: pd.Series) -> pd.DataFrame:
+    """
+    Convert SJTSK / Krovak East North coordinates to WGS84 longitude/latitude.
+
+    Input files can mix the common negative "south-west" convention with
+    accidentally sign-flipped values. We normalize both axes to the south-west
+    convention before conversion.
+    """
+    x_numeric = pd.to_numeric(x_values, errors="coerce")
+    y_numeric = pd.to_numeric(y_values, errors="coerce")
+    valid_mask = x_numeric.notna() & y_numeric.notna()
+
+    longitude = pd.Series(index=x_values.index, dtype=float)
+    latitude = pd.Series(index=y_values.index, dtype=float)
+
+    if not valid_mask.any():
+        return pd.DataFrame({"longitude": longitude, "latitude": latitude})
+
+    x_normalized = -x_numeric.loc[valid_mask].abs()
+    y_normalized = -y_numeric.loc[valid_mask].abs()
+    lon_values, lat_values = _S_JTSK_TO_WGS84.transform(
+        x_normalized.to_numpy(),
+        y_normalized.to_numpy(),
+    )
+    longitude.loc[valid_mask] = lon_values
+    latitude.loc[valid_mask] = lat_values
+
+    changed_sign_mask = valid_mask & (
+        (x_numeric != x_normalized.reindex(x_numeric.index))
+        | (y_numeric != y_normalized.reindex(y_numeric.index))
+    )
+    if changed_sign_mask.any():
+        logger.info(
+            "Normalized SJTSK sign convention for %s rows before WGS84 conversion.",
+            int(changed_sign_mask.sum()),
+        )
+
+    return pd.DataFrame({"longitude": longitude, "latitude": latitude})
+
+
+def _well_spatial_metadata(section_file: Path, sheetname: str, well_id: str) -> pd.DataFrame:
+    """
+    Return a single-row dataframe with spatial metadata for one well.
+    """
+    df_sections = read_sections(section_file, sheetname)
+    df_well = (
+        df_sections.loc[df_sections["well_id"] == well_id, ["well_id", "longitude", "latitude"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    if df_well.empty:
+        raise ValueError(f"Well '{well_id}' not found in section file '{section_file}'.")
+    return df_well
 
 
 def read_water_level(file_paths=None):
@@ -142,6 +215,10 @@ def read_water_level(file_paths=None):
 
             try:
                 df_sheet = _process_water_level_sheet(df, sheetname=sheet, well_in_section_file=full_name_map.get(sheet))
+            except pd._libs.tslibs.parsing.DateParseError as e:
+                logger.info("  ... table contains notes, summary result etc., sheet will be skipped")
+            except KeyError as e:
+                logger.info("  ... invalid format of table, sheet will be skipped")
             except Exception as e:
                 logger.exception("message")
             else:
@@ -219,8 +296,12 @@ def read_draw(xls_file, sheetname):
     df_result["cum_draw"] = df_result["cum_draw"] * 1000
     df_result["well_id"] = "1420_1"
 
-    # remove store
-    root_node = _open_zarr_schema(True)
+    section_file = Path(__file__).parent / "Vrty_souradnice_perforace.xlsx"
+    df_well_meta = _well_spatial_metadata(section_file, "List1", df_result["well_id"].iat[0])
+    df_result["longitude"] = df_well_meta["longitude"].iat[0]
+    df_result["latitude"] = df_well_meta["latitude"].iat[0]
+
+    root_node = _open_zarr_schema()
     water_draw_node = root_node['Uhelna']['water_draw']
     water_draw_node.update(df_result)
 
@@ -259,6 +340,14 @@ def read_sections(section_file, sheetname):
     }
     df = pd.read_excel(io=section_file, sheet_name=sheetname, header=0, usecols=column_map.keys())
     df = df.rename(columns=column_map)
+    df[["longitude", "latitude"]] = _jtsk_to_wgs84(df["X"], df["Y"])
+
+    # convert columns to correct type
+    df["Z"] = df["Z"].astype(float)
+    df["Z_OD"] = df["Z_OD"].astype(float)
+    df["Z_DO"] = df["Z_DO"].astype(float)
+    df["OD"] = df["OD"].astype(float)
+    df["DO"] = df["DO"].astype(float)
 
     # add sheetname_in_water_file - according name of sheet in excel file if exists
     full_name_map = _sheet_names_dictionary();
@@ -267,7 +356,7 @@ def read_sections(section_file, sheetname):
     df["confirmed"] = df["sheetname_in_water_file"].notna().astype(int)
 
     expected = ( df["well_id"].str.strip() + " (" + df["collector"].str.strip() + ")" )
-    invalid_mask = df["borehole_full_name"].str.strip() != expected
+    invalid_mask = (df["borehole_full_name"].str.strip() != expected) & (pd.isna(df["collector"]))
     for idx, row in df.loc[invalid_mask].iterrows():
         logger.warning(
             "Invalid value of 'borehole_full_name' in row %s: 'well_id''='%s', 'collector'='%s', 'borehole_full_name'='%s', expected='%s'",
@@ -289,10 +378,10 @@ def read_sections(section_file, sheetname):
     df = df.explode("interval", ignore_index=True)
 
     tmp = df["interval"].str.extract(
-        r"(?P<interval_min>\d+(?:\.\d+)?)\s*-\s*(?P<interval_max>\d+(?:\.\d+)?)"
+        r"(?P<interval_min>\d+(?:[.,]\d+)?)\s*-\s*(?P<interval_max>\d+(?:[.,]\d+)?)"
     )
-    df["interval_max"] = tmp["interval_max"].astype(float)
-    df["interval_min"] = tmp["interval_min"].astype(float)
+    df["interval_min"] = tmp["interval_min"].str.replace(",", ".").astype(float)
+    df["interval_max"] = tmp["interval_max"].str.replace(",", ".").astype(float)
 
     # add column interval_num_from_top (numbering of rows with same well_id)
     df["interval_num_from_top"] = df.groupby(["well_id", "collector"]).cumcount()
@@ -303,29 +392,33 @@ def read_sections(section_file, sheetname):
     for idx in invalid_rows_interval.index:
         logger.warning("Invalid interval at row %s: min=%s, max=%s", idx, df.at[idx, 'interval_min'], df.at[idx, 'interval_max'])
 
-    invalid_mask_from = df["Z_OD"] == df["Z"] - df["DO"]
+    expected_from = df["Z"] - df["DO"]
+    invalid_mask_from = (df["Z_OD"] - expected_from).abs() < 0.001
     invalid_rows_from = df[invalid_mask_from]
     for idx in invalid_rows_from.index:
         logger.warning("Invalid \'Z_OD\' value at row %s: Z_OD=%s, Z=%s, DO=%s. It should be \'Z_OD = Z - DO\'",
                        idx, df.at[idx, 'Z_OD'], df.at[idx, 'Z'], df.at[idx, 'DO'])
 
-    invalid_mask_to = df["Z_DO"] == df["Z"] - df["OD"]
+    expected_to = df["Z"] - df["OD"]
+    invalid_mask_to = (df["Z_DO"] - expected_to).abs() < 0.001
     invalid_rows_to = df[invalid_mask_to]
     for idx in invalid_rows_to.index:
         logger.warning("Invalid \'Z_DO\' value at row %s: Z_DO=%s, Z=%s, OD=%s. It should be \'Z_DO = Z - OD\'",
                        idx, df.at[idx, 'Z_DO'], df.at[idx, 'Z'], df.at[idx, 'OD'])
 
-    expected_from = df.groupby(["well_id", "collector"])["interval_min"].transform("min")
-    expected_to = df.groupby(["well_id", "collector"])["interval_max"].transform("max")
-    invalid_mask_interval = (df["OD"] != expected_from) | (df["DO"] != expected_to)
-    for idx, row in df.loc[invalid_mask_interval].iterrows():
-        logger.warning("Invalid \'OD - DO\' interval at row %s: OD=%s, expected=%s; DO=%s, expected=%s",
-                       idx, row['OD'], expected_from.loc[idx], row['DO'], expected_to.loc[idx])
-
     # remove unnecessary columns
     df = df.drop(columns=["Z_OD", "Z_DO", "OD", "DO", "interval"])
 
-    df.attrs["units"] = { "X": "m", "Y": "m", "Z": "m", "depth": "m", "interval_max": "m", "interval_min": "m"}
+    df.attrs["units"] = {
+        "X": "m",
+        "Y": "m",
+        "Z": "m",
+        "depth": "m",
+        "interval_max": "m",
+        "interval_min": "m",
+        "longitude": "deg",
+        "latitude": "deg",
+    }
 
     return df
 
@@ -343,7 +436,7 @@ def read_sections_water_levels(section_file_path, section_sheetname, water_level
 
     df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
 
-    root_node = _open_zarr_schema(True)
+    root_node = _open_zarr_schema()
     water_levels_node = root_node['Uhelna']['water_levels']
     print(f"Columns in DataFrame: {df_full.columns.tolist()}")
     print("Looking for:", water_levels_node.dataset)

@@ -74,3 +74,9 @@ TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
   - cum_draw                množství odčerpané vody za kalendářní měsích [m^3]
   - well_id                 id vrtu
   
+## Přehled možných errors a warnings
+
+- ERROR: Chybové hlášky 'AssertionError: Session was never entered', 'HTTPClientError' apod. vznikají při ukončení spojení se zarr repository
+- WARNING: 'Could not infer format ...' vygeneruje pandas při detekci neplatného formátu dat v sheetname ve vstupním souboru (zpravidla se jedná o vysvětlivky apod.). Následně je vypsána hláška o přeskočení dané tabulky.
+- WARNING: 'Invalid value ...' zobrazují drobné nekonzistence v souboru s přehledem vrtů. Jedná se o sloupce, které přímo nesouvisí se zpracováním dat a tudíž nemají vliv na výpočet.
+- WARNING: "ZarrUserWarning" apod. generuje package Zarr.
