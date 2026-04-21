@@ -97,7 +97,10 @@ def _sheet_names_dictionary():
     return dict
 
 
-def _open_zarr_schema(remove_store=False):
+def _create_schema_path():
+    """
+    Helper function called from remove_zarr_store and open_zarr_schema
+    """
     script_dir = Path(__file__).parent
     root_path = script_dir / "../../.."
     file_path = root_path / ".secrets_env"
@@ -106,10 +109,22 @@ def _open_zarr_schema(remove_store=False):
         raise FileNotFoundError(f"{file_path} doesn't exist")
 
     load_dotenv(dotenv_path=file_path)
+    return script_dir / "wells_schema.yaml"
 
-    schema_path = script_dir / "wells_schema.yaml"
-    if remove_store:
-        zf.remove_store(schema_path)
+
+def _remove_zarr_store():
+    """
+    Remove zarr fuse storage of well data
+    """
+    schema_path = _create_schema_path()
+    zf.remove_store(schema_path)
+
+
+def _open_zarr_schema():
+    """
+    Open zarr fuse storage of well data
+    """
+    schema_path = _create_schema_path()
     return zf.open_store(schema_path)
 
 
@@ -286,7 +301,7 @@ def read_draw(xls_file, sheetname):
     df_result["longitude"] = df_well_meta["longitude"].iat[0]
     df_result["latitude"] = df_well_meta["latitude"].iat[0]
 
-    root_node = _open_zarr_schema(True)
+    root_node = _open_zarr_schema()
     water_draw_node = root_node['Uhelna']['water_draw']
     water_draw_node.update(df_result)
 
@@ -421,7 +436,7 @@ def read_sections_water_levels(section_file_path, section_sheetname, water_level
 
     df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
 
-    root_node = _open_zarr_schema(True)
+    root_node = _open_zarr_schema()
     water_levels_node = root_node['Uhelna']['water_levels']
     print(f"Columns in DataFrame: {df_full.columns.tolist()}")
     print("Looking for:", water_levels_node.dataset)

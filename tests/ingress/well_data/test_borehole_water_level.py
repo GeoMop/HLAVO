@@ -41,6 +41,7 @@ def test_borehole_draw():
     sheetname = "List1"
     csv_path = "./borehole_water_draw_out.csv"
 
+    well_data._remove_zarr_store()
     excel_df = well_data.read_draw(xls_file, sheetname)
     print(excel_df)
     csv_output(csv_file=csv_path, df=excel_df)
@@ -62,6 +63,7 @@ def test_borehole_water_level():
                          well_data_path / "25_09_27_vrty_nové_vše.xlsx",
                          well_data_path / "25_09_27_vrty_staré_vše.xlsx"]
 
+    well_data._remove_zarr_store()
     final_df = well_data.read_sections_water_levels(section_file, sheetname, water_level_files)
     print(final_df)
 
