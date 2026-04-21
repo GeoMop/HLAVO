@@ -6,6 +6,13 @@
 ../../../dev/hlavo run python well_data_process.py
 ```
 
+To also generate a single multi-page PDF with water draw first and then water
+levels after writing to zarr, run:
+
+```commandline
+../../../dev/hlavo run python well_data_process.py plot
+```
+
 It extracts data rom the Excel files and store them according to the `wells_schema.yaml` into zarr_fuse storage. 
 You have to update the Excel files using `dvc pull` before running the script. 
 `dev/hlavo run ...` run the cript in the docker container.

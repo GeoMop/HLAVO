@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # author:   David Flanderka
 
-import pandas as pd
 from pathlib import Path
 from hlavo.ingress import well_data
 from hlavo.ingress.well_data import well_data_plot
@@ -57,14 +56,16 @@ def test_borehole_draw():
         well_data.read_sections(section_file, section_sheetname)
     )
     excel_df = well_data.read_draw(xls_file, sheetname, df_sections)
+    assert not excel_df.empty
+    assert (excel_df["well_id"] == "Uh-draw").all()
+    assert excel_df["cum_draw"].notna().any()
+    assert excel_df["longitude"].notna().all()
+    assert excel_df["latitude"].notna().all()
     print(excel_df)
     csv_output(csv_file=csv_path, df=excel_df)
     
     
 def test_borehole_water_level():
-    # allow to perform plot of set of wells or single well
-    plot_set = True
-
     # tests of existing files
     assert (well_data_path / "25_09_27_vrty_III.etapa_vše.xlsx").exists()
     assert (well_data_path / "25_09_27_vrty_nové_vše.xlsx").exists()
@@ -73,12 +74,15 @@ def test_borehole_water_level():
     section_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     sheetname = "List1"
     section_csv = "borehole_water_level_out.csv"
+    draw_file = well_data_path / "25_09_27_Odbery_Uhelna.xlsx"
+    draw_sheetname = "List1"
     water_level_files = [well_data_path / "25_09_27_vrty_III.etapa_vše.xlsx",
                          well_data_path / "25_09_27_vrty_nové_vše.xlsx",
                          well_data_path / "25_09_27_vrty_staré_vše.xlsx"]
 
     well_data._remove_zarr_store()
-    df_sections = well_data.read_sections(section_file, sheetname)
+    df_sections = _sections_with_draw_well(well_data.read_sections(section_file, sheetname))
+    well_data.read_draw(draw_file, draw_sheetname, df_sections)
     final_df = well_data.read_sections_water_levels(df_sections, water_level_files)
     print(final_df)
 
@@ -94,12 +98,28 @@ def test_borehole_water_level():
     print("--------------------")
     df = water_level_node.read_df( var_names=["well_id", "well_in_section_file", "date_time", "water_depth", "water_level"] )
     print(df)
+    assert not df.empty
+    assert df["water_level"].notna().any()
+
+    for well_id in ["19", "21", "22"]:
+        df_well = df.loc[df["well_id"] == well_id]
+        assert not df_well.empty
+        assert df_well["water_level"].notna().any()
 
     csv_output(section_csv, ds.to_dataframe())
-    if plot_set:
-        well_data_plot.pdf_plot_multi("water_level", df, {"21", "22", "19"})
-    else:
-        well_data_plot.pdf_plot_simple("borehole_water_level_out.pdf", df, "21")
+    water_draw_node = root_node["Uhelna"]["water_draw"]
+    df_draw = water_draw_node.read_df(
+        var_names=["date", "cum_draw", "well_id", "longitude", "latitude"]
+    )
+    assert not df_draw.empty
+    assert (df_draw["well_id"] == "Uh-draw").all()
+    assert df_draw["cum_draw"].notna().any()
+    well_data_plot.pdf_plot_all(
+        "well_data_test.pdf",
+        df_draw=df_draw,
+        df_water_levels=df,
+        water_level_well_ids=["19", "21", "22"],
+    )
 
 
 

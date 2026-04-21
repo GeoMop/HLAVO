@@ -2,30 +2,34 @@
 # -*- coding: utf-8 -*-
 # author:   David Flanderka
 
-
-
-import sys
 from pathlib import Path
-import pandas as pd
-import polars as pl
+
 import matplotlib
 matplotlib.use('Agg')  # for interactive graphs
-
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
 from matplotlib.backends.backend_pdf import PdfPages
+import yaml
 
 matplotlib.rcParams['hatch.linewidth'] = 6
 
 
-#import logging
-
-#logger = logging.getLogger(__name__)
+_PLOT_CONFIG = {
+    "cum_draw": {
+        "dataset_name": "water_draw",
+        "x_column": "date",
+        "title": "Water draw well: '{well_id}'",
+    },
+    "water_level": {
+        "dataset_name": "water_levels",
+        "x_column": "date_time",
+        "title": "Water levels well: '{well_id}'",
+    },
+}
 
 
 def _create_work_dir():
     """
-    Create workdir if doesn't exist, return path
+    Create workdir if doesn't exist, return path.
     """
     script_dir = Path(__file__).parent
     workdir = script_dir / "workdir"
@@ -33,67 +37,71 @@ def _create_work_dir():
     return workdir
 
 
-def _plot_by_well_id(df, well_id):
+def _schema_units():
     """
-    Helper function. Prepares plot of water level data of one wel.
-
-    Param   df         DataFrame containing data from all wells
-    Param   well_id    Index of well which data will be performed to graph
+    Read plotting units from wells_schema.yaml.
     """
-    df_filtered = df.filter(pl.col("well_id") == well_id)
-    df_filtered = df_filtered.to_pandas()
-    ax = df_filtered.plot(
-        x="date_time",
-        y=["water_level"],
-        figsize=(10, 5)
-    )
+    schema_path = Path(__file__).parent / "wells_schema.yaml"
+    with schema_path.open("r", encoding="utf-8") as file_in:
+        schema = yaml.safe_load(file_in)
 
-    ax.set_title("Water levels well: '" + well_id + "'")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("water level [m]")
-    ax.grid(True)
-    return ax.get_figure()
+    uhelna_schema = schema["Uhelna"]
+    return {
+        "cum_draw": uhelna_schema["water_draw"]["VARS"]["cum_draw"]["unit"],
+        "water_level": uhelna_schema["water_levels"]["VARS"]["water_level"]["unit"],
+    }
 
 
-def pdf_plot_simple(pdf_file, df, well_id):
+def _to_pandas(df):
     """
-    Plots water level data of one well to graph and performs it to PDF file.
+    Convert a dataframe-like object returned by zarr-fuse to pandas.
+    """
+    if hasattr(df, "to_pandas"):
+        return df.to_pandas()
+    return df
 
-    Param   pdf_file   Path to output pdf file
-    Param   df         DataFrame containing data from all wells
-    Param   well_id    Index of well which data will be performed to graph
+
+def _plot_ax_variable(df, well_id, variable_name):
+    """
+    Plot one zarr-fuse variable for one well into a single matplotlib figure.
+    """
+    assert variable_name in _PLOT_CONFIG
+
+    df_pandas = _to_pandas(df)
+    df_filtered = df_pandas.loc[df_pandas["well_id"] == well_id]
+
+    plot_config = _PLOT_CONFIG[variable_name]
+    units = _schema_units()
+
+    figure, axis = plt.subplots(figsize=(10, 5))
+    if not df_filtered.empty:
+        df_filtered.plot(
+            x=plot_config["x_column"],
+            y=variable_name,
+            ax=axis,
+        )
+
+    axis.set_title(plot_config["title"].format(well_id=well_id))
+    axis.set_xlabel("Date")
+    axis.set_ylabel(f"{variable_name} [{units[variable_name]}]")
+    axis.grid(True)
+    figure.tight_layout()
+    return figure
+
+
+def pdf_plot_all(pdf_file, df_draw, df_water_levels, water_level_well_ids):
+    """
+    Write a single PDF containing draw plot followed by water level plots.
     """
     workdir = _create_work_dir()
     full_path = workdir / pdf_file
 
-    _plot_by_well_id(df, well_id)
-    plt.tight_layout()
-    plt.savefig(full_path)
-    plt.close()
+    with PdfPages(full_path) as pdf:
+        figure = _plot_ax_variable(df_draw, "Uh-draw", "cum_draw")
+        pdf.savefig(figure, bbox_inches="tight")
+        plt.close(figure)
 
-
-def pdf_plot_multi(out_file, df, well_ids):
-    """
-    Plots water level data of one well to graph and performs it to PDF file.
-
-    Param   pdf_file   Path to output pdf file
-    Param   df         DataFrame containing data from all wells
-    Param   well_ids   List of indexes of well which data will be performed to graphs
-    """
-    workdir = _create_work_dir()
-    pdf_file = out_file + ".pdf"
-    full_pdf_path = workdir / pdf_file
-
-    pdf = PdfPages(full_pdf_path)
-
-    for well_id in well_ids:
-        fig = _plot_by_well_id(df, well_id)
-        fname = out_file + "_" + well_id + ".png"
-        f_full_path =  workdir / fname
-        fig.savefig(fname=f_full_path, bbox_inches="tight")
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-
-    pdf.close()
-
-
+        for well_id in water_level_well_ids:
+            figure = _plot_ax_variable(df_water_levels, well_id, "water_level")
+            pdf.savefig(figure, bbox_inches="tight")
+            plt.close(figure)
