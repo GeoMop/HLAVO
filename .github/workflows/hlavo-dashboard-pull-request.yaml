@@ -173,6 +173,13 @@ jobs:
             --from-file=deploy-config/schemas/wells_schema.yaml \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Remove stuck release if pending-install
+        run: |
+          STATUS=$(helm status hlavo-dashboard-ui -n hlavo-dashboard-ui -o json 2>/dev/null | sed -n 's/.*"status":"\([^"]*\)".*/\1/p' || true)
+          if [ "$STATUS" = "pending-install" ] || [ "$STATUS" = "pending-upgrade" ] || [ "$STATUS" = "pending-rollback" ]; then
+            helm uninstall hlavo-dashboard-ui -n hlavo-dashboard-ui || true
+          fi
+
       - name: Deploy app
         run: |
           helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
@@ -184,9 +191,16 @@ jobs:
             --set backend.s3.secrets.accessKey="${{ secrets.S3_ACCESS_KEY }}" \
             --set backend.s3.secrets.secretKey="${{ secrets.S3_SECRET_KEY }}" \
             --set backend.extraEnv[0].name="ENDPOINTS_PATH" \
-            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/deploy-config/config/endpoints.yaml" \
             --set backend.extraVolumes[0].name="hlavo-config" \
             --set backend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
             --set backend.extraVolumeMounts[0].name="hlavo-config" \
             --set backend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard" \
-            --set backend.extraVolumeMounts[0].readOnly=true
+            --set backend.extraVolumeMounts[0].readOnly=true \
+            --set frontend.extraEnv[0].name="ENDPOINTS_PATH" \
+            --set frontend.extraEnv[0].value="/opt/hlavo/dashboard/deploy-config/config/endpoints.yaml" \
+            --set frontend.extraVolumes[0].name="hlavo-config" \
+            --set frontend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
+            --set frontend.extraVolumeMounts[0].name="hlavo-config" \
+            --set frontend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard" \
+            --set frontend.extraVolumeMounts[0].readOnly=true
