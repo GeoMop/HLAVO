@@ -59,7 +59,7 @@ jobs:
         with:
           repository: jbrezmorf/hlavo-dashboard-ui-backend
           tag: ${{ needs.get-version-tag.outputs.version-tag }}
-          containerfile-path: main-repo/dashboard/oci/backend.Containerfile
+          containerfile-path: dashboard/oci/backend.Containerfile
           push: true
           registry-username: ${{ vars.DOCKER_USERNAME }}
           registry-password: ${{ secrets.DOCKER_PASSWORD }}
@@ -92,7 +92,7 @@ jobs:
         with:
           repository: jbrezmorf/hlavo-dashboard-ui-frontend
           tag: ${{ needs.get-version-tag.outputs.version-tag }}
-          containerfile-path: main-repo/dashboard/oci/frontend.Containerfile
+          containerfile-path: dashboard/oci/frontend.Containerfile
           push: true
           registry-username: ${{ vars.DOCKER_USERNAME }}
           registry-password: ${{ secrets.DOCKER_PASSWORD }}
