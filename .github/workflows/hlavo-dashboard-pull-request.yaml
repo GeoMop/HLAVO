@@ -157,20 +157,13 @@ jobs:
       - name: Set context
         run: kubectl config set-context --current --namespace=hlavo-dashboard-ui
 
-      - name: Prepare HLAVO config files
-        run: |
-          mkdir -p deploy-config/config deploy-config/schemas
-          cp dashboard/config/endpoints.yaml deploy-config/config/endpoints.yaml
-          cp dashboard/schemas/profile_schema.yaml deploy-config/schemas/profile_schema.yaml
-          cp dashboard/schemas/wells_schema.yaml deploy-config/schemas/wells_schema.yaml
-
       - name: Create HLAVO config ConfigMap
         run: |
           kubectl create configmap hlavo-dashboard-config \
             --namespace hlavo-dashboard-ui \
-            --from-file=deploy-config/config/endpoints.yaml \
-            --from-file=deploy-config/schemas/profile_schema.yaml \
-            --from-file=deploy-config/schemas/wells_schema.yaml \
+            --from-file=endpoints.yaml=dashboard/config/endpoints.yaml \
+            --from-file=profile_schema.yaml=dashboard/schemas/profile_schema.yaml \
+            --from-file=wells_schema.yaml=dashboard/schemas/wells_schema.yaml \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Remove stuck release if pending-install
@@ -191,16 +184,28 @@ jobs:
             --set backend.s3.secrets.accessKey="${{ secrets.S3_ACCESS_KEY }}" \
             --set backend.s3.secrets.secretKey="${{ secrets.S3_SECRET_KEY }}" \
             --set backend.extraEnv[0].name="ENDPOINTS_PATH" \
-            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/deploy-config/config/endpoints.yaml" \
+            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
             --set backend.extraVolumes[0].name="hlavo-config" \
             --set backend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
             --set backend.extraVolumeMounts[0].name="hlavo-config" \
-            --set backend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard" \
-            --set backend.extraVolumeMounts[0].readOnly=true \
+            --set backend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set backend.extraVolumeMounts[0].subPath="endpoints.yaml" \
+            --set backend.extraVolumeMounts[1].name="hlavo-config" \
+            --set backend.extraVolumeMounts[1].mountPath="/opt/hlavo/dashboard/schemas/profile_schema.yaml" \
+            --set backend.extraVolumeMounts[1].subPath="profile_schema.yaml" \
+            --set backend.extraVolumeMounts[2].name="hlavo-config" \
+            --set backend.extraVolumeMounts[2].mountPath="/opt/hlavo/dashboard/schemas/wells_schema.yaml" \
+            --set backend.extraVolumeMounts[2].subPath="wells_schema.yaml" \
             --set frontend.extraEnv[0].name="ENDPOINTS_PATH" \
-            --set frontend.extraEnv[0].value="/opt/hlavo/dashboard/deploy-config/config/endpoints.yaml" \
+            --set frontend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
             --set frontend.extraVolumes[0].name="hlavo-config" \
             --set frontend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
             --set frontend.extraVolumeMounts[0].name="hlavo-config" \
-            --set frontend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard" \
-            --set frontend.extraVolumeMounts[0].readOnly=true
+            --set frontend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set frontend.extraVolumeMounts[0].subPath="endpoints.yaml" \
+            --set frontend.extraVolumeMounts[1].name="hlavo-config" \
+            --set frontend.extraVolumeMounts[1].mountPath="/opt/hlavo/dashboard/schemas/profile_schema.yaml" \
+            --set frontend.extraVolumeMounts[1].subPath="profile_schema.yaml" \
+            --set frontend.extraVolumeMounts[2].name="hlavo-config" \
+            --set frontend.extraVolumeMounts[2].mountPath="/opt/hlavo/dashboard/schemas/wells_schema.yaml" \
+            --set frontend.extraVolumeMounts[2].subPath="wells_schema.yaml"
