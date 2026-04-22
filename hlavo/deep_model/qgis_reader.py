@@ -8,7 +8,9 @@ from functools import cached_property
 
 import attrs
 import numpy as np
-import yaml
+
+import hlavo.deep_model.model_3d_cfg as cfg3d
+import hlavo.misc.config as cfg
 
 LOG = logging.getLogger(__name__)
 
@@ -151,7 +153,6 @@ class Grid:
         return float(start), count
 
 
-
 @attrs.define(frozen=True)
 class ModelInputs:
     """In-memory representation of boundary and raster inputs."""
@@ -164,18 +165,18 @@ class ModelInputs:
     # Rectangular grid covering the domain.
 
     @staticmethod
-    def from_yaml(config_path: Path) -> "ModelInputs":
-        config = ModelConfig.from_yaml(config_path)
+    def from_source(config_source: Path | dict) -> "ModelInputs":
+        geometry = GeometryConfig.from_source(config_source)
+        project_path = geometry.resolve_project_path()
         reader = QgisProjectReader(
-            project_path=config.qgis_project_path,
-            boundary_layer_name=config.boundary_layer_name,
-            raster_group_name=config.raster_group_name,
+            project_path=project_path,
+            boundary_layer_name=geometry.boundary_layer_name,
+            raster_group_name=geometry.raster_group_name,
         )
-        boundary, rasters, grid_xy = reader.read(config.meshsteps)
+        boundary, rasters, grid_xy = reader.read(geometry.meshsteps)
         z_min, z_max = _combined_z_extent(rasters)
         grid = Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
         return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
-
 
 def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
     """Write each raster layer as a deformed surface into a VTK multiblock file."""
@@ -217,44 +218,45 @@ def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
 
 
 @attrs.define(frozen=True)
-class ModelConfig:
-    """Configuration loaded from the model YAML file."""
-
+class GeometryConfig:
+    config_path: Path | None
     qgis_project_path: Path
-    # Path to the QGIS project (.qgs/.qgz).
     boundary_layer_name: str
-    # Layer name of the boundary polygon.
     raster_group_name: str
-    # Layer tree group containing model rasters.
     meshsteps: tuple[float, float, float]
-    # Mesh steps (x, y, z) in model units.
 
-    @staticmethod
-    def from_yaml(path: Path) -> "ModelConfig":
-        assert path.exists(), f"Config file not found: {path}"
-        with path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
-        assert "qgis_project_path" in raw, "Missing required config key: qgis_project_path"
-        qgis_project_path = Path(raw["qgis_project_path"])
-        boundary_layer_name = str(raw.get("boundary_layer_name", "JB_extended_domain"))
-        raster_group_name = str(raw.get("raster_group_name", "HG model layers"))
-        assert "meshsteps" in raw, "Missing required config key: meshsteps"
-        meshsteps_raw = raw["meshsteps"]
+    @classmethod
+    def from_source(cls, config_source: Path | dict) -> "GeometryConfig":
+        geometry_raw, config_path = cfg.load_config(config_source, ("model_3d", "geometry"))
+        meshsteps_raw = geometry_raw["meshsteps"]
         assert isinstance(meshsteps_raw, dict), "meshsteps must be a mapping with x, y, z"
-        meshsteps = (
-            float(meshsteps_raw["x"]),
-            float(meshsteps_raw["y"]),
-            float(meshsteps_raw["z"]),
+        return cls(
+            config_path=config_path,
+            qgis_project_path=cfg.get_path(geometry_raw, "qgis_project_path"),
+            boundary_layer_name=str(geometry_raw.get("boundary_layer_name", "JB_extended_domain")),
+            raster_group_name=str(geometry_raw.get("raster_group_name", "HG model layers")),
+            meshsteps=(
+                float(meshsteps_raw["x"]),
+                float(meshsteps_raw["y"]),
+                float(meshsteps_raw["z"]),
+            ),
         )
 
-        return ModelConfig(
-            qgis_project_path=qgis_project_path,
-            boundary_layer_name=boundary_layer_name,
-            raster_group_name=raster_group_name,
-            meshsteps=meshsteps,
-        )
+    @classmethod
+    def from_yaml(cls, config_path: Path) -> "GeometryConfig":
+        return cls.from_source(config_path)
+
+    def resolve_project_path(self) -> Path:
+        if self.qgis_project_path.is_absolute():
+            return self.qgis_project_path
+        assert self.config_path is not None, "Relative qgis_project_path requires a config_path anchor"
+        direct = (self.config_path.parent / self.qgis_project_path).resolve()
+        if direct.exists():
+            return direct
+        raise FileNotFoundError(f"Can not resolve a path relative to the main config: {self.qgis_project_path}")
+
+    def resolve_grid_output_path(self, workspace: Path) -> Path:
+        return workspace / cfg3d.GRID_MATERIALS_FILENAME
 
 
 @attrs.define(frozen=True)
@@ -389,7 +391,16 @@ class QgisProjectReader:
                     origin=boundary.origin,
                     resampling=Resampling.bilinear,
                 )
-                masked_full = _mask_raster_full(data, resampled_transform, boundary)
+
+                # Otto TODO: use the following polygon clipping? It should be done somewhere, but currently
+                # it's not applied; clipping was removed in ee635416
+                data = _mask_raster_full(
+                    data=data,
+                    transform=resampled_transform,
+                    boundary=boundary,
+                )
+
+                masked_full = np.ma.array(data, mask=(data == -1000.0))
                 if relief_field is None:
                     relief_field = masked_full
                 else:
@@ -631,11 +642,11 @@ def _mask_raster_full(
 def _raster_extent_from_transform(
     transform: "object", width: int, height: int
 ) -> "np.ndarray":
-    from rasterio.transform import xy
+    from rasterio.transform import array_bounds
 
-    x_min, y_max = xy(transform, 0, 0, offset="ul")
-    x_max, y_min = xy(transform, height - 1, width - 1, offset="lr")
-    return np.asarray([[x_min, y_min], [x_max, y_max]], dtype=float)
+    x_min, y_min, x_max, y_max = array_bounds(height, width, transform)
+    extent = np.asarray([[x_min, y_min], [x_max, y_max]], dtype=float)
+    return _normalize_extent(extent)
 
 
 def _crop_masked_raster(
@@ -643,11 +654,12 @@ def _crop_masked_raster(
 ) -> tuple["np.ma.MaskedArray", "np.ndarray"]:
     from rasterio.transform import xy
 
-    valid_rows = np.any(~masked.mask, axis=1)
-    valid_cols = np.any(~masked.mask, axis=0)
+    mask_arr = np.ma.getmaskarray(masked)
+    valid_rows = np.any(~mask_arr, axis=1)
+    valid_cols = np.any(~mask_arr, axis=0)
     if not np.any(valid_rows) or not np.any(valid_cols):
-        total = masked.mask.size
-        masked_count = int(np.sum(masked.mask))
+        total = mask_arr.size
+        masked_count = int(np.sum(mask_arr))
         LOG.debug(
             "Masked raster has no valid data for layer %s (masked %s of %s cells)",
             layer_name,
@@ -664,6 +676,8 @@ def _crop_masked_raster(
     x_max, y_min = xy(transform, row_max, col_max, offset="lr")
     extent = np.array([[x_min, y_min], [x_max, y_max]], dtype=float)
     return cropped, extent
+
+
 
 
 def _assert_krovak_crs(crs: "object") -> None:

@@ -1,7 +1,15 @@
+
+
+dev/.codex_docker
+hlavo/deep_model/model
+runs/composed_mock/3d_models
 .secrets_env
 tests/ingress/aladin_data
 ZF
+hlavo/deep_model/GIS
+**/.gpkg
 _*/*
+.DS_Store
 
 dev/.codex_docker
 dev/parflow_install
@@ -24,7 +32,7 @@ DeepSensor/EM_models/**/*.pdf
 DeepSensor/EM_models/**/*.vti
 DeepSensor/EM_models/**/*.png
 DeepSensor/EM_models/**/*.zip
-
+DeepSensor/EM_results*
 
 # secret files
 dvc_secret_config.sh
@@ -205,3 +213,4 @@ microchip_SW/.vscode
 
 data_processing/.env
 /data_processing/.python-version
+/hlavo/kalman/pristupy.txt

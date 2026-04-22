@@ -23,6 +23,7 @@ dependencies = [
     "filterpy",
     "pftools[all]",
     "matplotlib",
+    "pyvista",
     "xarray",
     "dask",
     "distributed",
@@ -34,6 +35,9 @@ dependencies = [
     # Deep model
     "modflow_devtools",
     "flopy",
+    "geopandas",
+    "shapely",
+    "rasterio",
 
     # Ingress
     "requests",
@@ -54,7 +58,12 @@ dependencies = [
     #weasyprint
     "openpyxl",     # for reading original input datasets
 
+    # deep_model parallel calibration; combine with dask.distributed map  
+    "deap"
 ]
+
+[project.scripts]
+hlavo = "hlavo.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
