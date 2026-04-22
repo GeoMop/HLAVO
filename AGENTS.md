@@ -94,6 +94,8 @@ GIS sources.
 - Do just basic asserts for consistency for function inputs.
 - Can add more asserts if needed during debugging.
 - NEVER resolve test errors by try blocks
+- NEVER add runtime fallbacks or import shims to compensate for a broken or incomplete environment.
+  If a declared dependency or tool is missing, report the environment problem plainly and fix the environment or tests around it, but do not implement code workarounds.
 - NEVER write "self explanatory" into comments
 - in comments indicate by ?? if you are not certain about intent of particular variable, function, parameter ...
 - HLAVO is computational SW, basically input -> output function, input and output names are part of the function definition == code

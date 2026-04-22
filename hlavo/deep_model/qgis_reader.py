@@ -178,7 +178,6 @@ class ModelInputs:
         grid = Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
         return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
-
 def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
     """Write each raster layer as a deformed surface into a VTK multiblock file."""
     import pyvista as pv
@@ -392,6 +391,15 @@ class QgisProjectReader:
                     origin=boundary.origin,
                     resampling=Resampling.bilinear,
                 )
+
+                # Otto TODO: use the following polygon clipping? It should be done somewhere, but currently
+                # it's not applied; clipping was removed in ee635416
+                data = _mask_raster_full(
+                    data=data,
+                    transform=resampled_transform,
+                    boundary=boundary,
+                )
+
                 masked_full = np.ma.array(data, mask=(data == -1000.0))
                 if relief_field is None:
                     relief_field = masked_full
@@ -668,6 +676,8 @@ def _crop_masked_raster(
     x_max, y_min = xy(transform, row_max, col_max, offset="lr")
     extent = np.array([[x_min, y_min], [x_max, y_max]], dtype=float)
     return cropped, extent
+
+
 
 
 def _assert_krovak_crs(crs: "object") -> None:

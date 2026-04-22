@@ -6,11 +6,11 @@ import sys
 import pytest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT = SCRIPT_DIR.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TESTS_ROOT = SCRIPT_DIR.parent
+if str(TESTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TESTS_ROOT))
 
-GIS_DIR = ROOT.parent / "hlavo" / "deep_model" / "GIS"
+GIS_DIR = TESTS_ROOT.parent / "hlavo" / "deep_model" / "GIS"
 QGIS_PROJECT_PATH = GIS_DIR / "uhelna_all.qgs"
 
 pytestmark = pytest.mark.skipif(
@@ -22,12 +22,12 @@ import numpy as np
 from hlavo.deep_model.qgis_reader import ModelInputs, write_vtk_surfaces
 
 def _config_path() -> Path:
-    config = ROOT.parent / "hlavo" / "deep_model" / "config" / "model_config.yaml"
+    config = TESTS_ROOT.parent / "hlavo" / "deep_model" / "config" / "model_config.yaml"
     assert config.exists(), f"Config file not found: {config}"
     return config
 
 def test_qgis_project_reader():
-    data = ModelInputs.from_yaml(_config_path())
+    data = ModelInputs.from_source(_config_path())
 
     assert data.boundary.raw_ring.size > 0
     assert isinstance(data.boundary.raw_ring, np.ndarray)
@@ -90,8 +90,8 @@ def test_qgis_project_reader():
 
 
 def test_vtk_surface_export() -> None:
-    data = ModelInputs.from_yaml(_config_path())
-    model_dir = ROOT.parent / "model"
+    data = ModelInputs.from_source(_config_path())
+    model_dir = SCRIPT_DIR / "pv_output"
     model_dir.mkdir(parents=True, exist_ok=True)
     for child in model_dir.iterdir():
         if child.is_file():

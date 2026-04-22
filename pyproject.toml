@@ -35,6 +35,9 @@ dependencies = [
     # Deep model
     "modflow_devtools",
     "flopy",
+    "geopandas",
+    "shapely",
+    "rasterio",
 
     # Ingress
     "requests",
