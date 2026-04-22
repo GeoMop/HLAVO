@@ -1,30 +1,104 @@
-bukov_endpoint:
-  description: "Bukov production endpoint"
+_dashboard:
+  default_endpoint: "wells"
+
+profiles:
+  description: "HLAVO - moisture profiles"
   version: "1.0.0"
   reload_interval: 300
 
   source:
     type: "s3"
     store_type: "zarr"
-    uri: "s3://bukov/store_latlon_2024.zarr"
-    schema_path: "schemas/bukov_schema.yaml"
+    uri: "s3://hlavo-release/profiles.zarr"
+    schema_path: "config/profile_schema.yaml"
 
   variable_map:
-    fields:
-      lat: "latitude"
-      lon: "longitude"
-      time: "date_time"
-      vertical: "depth"
-      entity: "borehole"
+    Uhelna:
+      profiles:
+        lat: "latitude"
+        lon: "longitude"
+        time: "date_time"
+        vertical: "depth_level"
+        entity: "site_id"
 
   defaults:
-    display_variable: "rock_temp"
-    group_path: "bukov"
+    display_variable: "moisture"
+    group_path: "/"
 
   visualization:
     map:
-      center_lat: 49.459
-      center_lon: 16.225
+      center_lat: 50.8645
+      center_lon: 14.892
+      zoom: 14
+      title: "Uhelná site overview."
+      point_size: 6
+      alpha: 0.8
+    timeseries:
+      middle_window_days: 30
+      right_window_hours: 24
+    overlay:
+      enabled: false
+      tile_url: ""
+      cache_dir: ""
+
+  tile_build:
+    enabled: false
+    source_image: ""
+    georef_file: ""
+    vrt_file: ""
+    warped_tif: ""
+    rgba_vrt: ""
+    tiles_dir: ""
+    tile_scheme: "xyz"
+    min_zoom: 0
+    max_zoom: 20
+    target_srs: "EPSG:3857"
+    gcp_srs: "EPSG:4326"
+    resampling: "near"
+    add_alpha: true
+
+wells:
+  description: "HLAVO - measured and predicted water levels in wells"
+  version: "1.0.0"
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: "s3://hlavo-release/wells.zarr"
+    schema_path: "config/wells_schema.yaml"
+
+  variable_map:
+    Uhelna:
+      water_levels:
+        lat: "latitude"
+        lon: "longitude"
+        time: "date_time"
+        vertical: null
+        entity: "well_id"
+
+      water_draw:
+        lat: "latitude"
+        lon: "longitude"
+        time: "date_time"
+        vertical: null
+        entity: "well_id"
+
+      water_level_predicted:
+        lat: "latitude"
+        lon: "longitude"
+        time: "date_time"
+        vertical: "version"
+        entity: "well_id"
+
+  defaults:
+    display_variable: "water_depth"
+    group_path: "/"
+
+  visualization:
+    map:
+      center_lat: 50.869878
+      center_lon: 14.866236
       zoom: 14
       title: "Geographic Data View"
       point_size: 10
@@ -33,19 +107,18 @@ bukov_endpoint:
       middle_window_days: 30
       right_window_hours: 24
     overlay:
-      enabled: true
-      tile_url: "/tiles/{Z}/{X}/{Y}.png"
-      cache_dir: "."
+      enabled: false
+      tile_url: ""
+      cache_dir: ""
 
-# Should be tested and fully integrated to the dashboard, but this is the general structure for the tile building configuration. The actual implementation of tile building and serving would require additional code to generate tiles from the source image and serve them via a web server or similar mechanism.
   tile_build:
-    enabled: true
-    source_image: "config/bukov_endpoint/overlay.png"
-    georef_file: "config/bukov_endpoint/bukov_georef.json"
-    vrt_file: "config/bukov_endpoint/overlay_gcps.vrt"
-    warped_tif: "config/bukov_endpoint/overlay_3857.tif"
-    rgba_vrt: "config/bukov_endpoint/overlay_3857_rgba.vrt"
-    tiles_dir: "config/bukov_endpoint/tiles"
+    enabled: false
+    source_image: ""
+    georef_file: ""
+    vrt_file: ""
+    warped_tif: ""
+    rgba_vrt: ""
+    tiles_dir: ""
     tile_scheme: "xyz"
     min_zoom: 0
     max_zoom: 20
