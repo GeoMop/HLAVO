@@ -99,13 +99,13 @@ def _create_schema_path():
     Helper function called from remove_zarr_store and open_zarr_schema
     """
     script_dir = Path(__file__).parent
-    root_path = script_dir / "../../.."
-    file_path = root_path / ".secrets_env"
+    #root_path = script_dir / "../../.."
+    #file_path = root_path / ".secrets_env"
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"{file_path} doesn't exist")
+    #if not file_path.exists():
+    #    raise FileNotFoundError(f"{file_path} doesn't exist")
 
-    load_dotenv(dotenv_path=file_path)
+    #load_dotenv(dotenv_path=file_path)
     return script_dir / "wells_schema.yaml"
 
 
