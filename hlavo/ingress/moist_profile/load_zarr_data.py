@@ -24,5 +24,7 @@ def load_meteo_data(scheme_file):
     scheme_file_path = Path(scheme_file)
     root = zf.open_store(scheme_file_path)
 
-    meteo_data = root["chmi_aladin_10m"]
+
+    meteo_data = root["Uhelna"]["parflow"]["version_01"] #root["chmi_aladin_10m"]
+    #meteo_data = root["parflow_input"]
     return meteo_data.dataset

@@ -20,7 +20,8 @@ model_config:
 measurements_config:
   #zarr_dir: /home/martin/Documents/HLAVO/tests/ingress/moist_profile/storage_2025
   measurements_scheme_file: ../../hlavo/ingress/moist_profile/profile_schema.yaml
-  meteo_scheme_file: ../../hlavo/ingress/scrapper/schemas/hlavo_surface_schema.yaml
+  #meteo_scheme_file: ../../hlavo/ingress/scrapper/schemas/hlavo_surface_schema.yaml
+  meteo_scheme_file: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
 kalman_config:
   model_time_step: 2.5e-2 # in hours
   state_params:

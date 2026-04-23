@@ -386,8 +386,8 @@ class ToyProblem(AbstractModel):
     def prepare_clm(self, working_dir, input_dir, ds):
         # We assume these files exist in current dir.
         # They should be either generated runtime or stored somewhere globally.
-        shutil.copy(input_dir / "drv_vegm.dat", working_dir / "drv_vegm.dat")
-        shutil.copy(input_dir / "drv_vegp.dat", working_dir / "drv_vegp.dat")
+        shutil.copy(self._clm_files["drv_vegm_file"], working_dir / pathlib.Path("drv_vegm.dat"))
+        shutil.copy(self._clm_files["drv_vegp_file"], working_dir / pathlib.Path("drv_vegp.dat"))
 
         # Create subdirectories necessary for Parflow/CLM coupling.
         for dir in [
@@ -496,26 +496,6 @@ class ToyProblem(AbstractModel):
             # relative_humidity_2m
             "SPFH": ds.SPFH, #ds.relative_humidity_2m,
         }
-
-        with open(working_dir / pathlib.Path(self._run.Solver.CLM.MetFileName), "w") as f:
-            for i,time in enumerate(ds.date_time.values):
-                f.write( " ".join(str(v[0,i].item()) for v in clm_met_data.values()) + "\n")
-
-        # with open(working_dir / "lai.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 2.00 6.00 6.00 5.00 6.00 0.00 6.00 0.00 0.00\n" )
-        #
-        # with open(working_dir / "sai.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 4.00 2.00 0.50 2.00 2.00 2.00 2.00 2.00 0.00\n" )
-        #
-        # with open(working_dir / "z0m.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "1.00 2.20  1.00 0.80 0.80 0.10 0.10 0.70 0.10 0.03 0.03 0.06 0.50 0.06 0.01 0.05 0.002 0.01\n" )
-        #
-        # with open(working_dir / "displa.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "11.0 23.00 11.0 13.0 13.0 0.30 0.30 6.50 0.70 0.30 0.30 0.30 3.00 0.30 0.00 0.10 0.00  0.00\n" )
 
         ds_loaded = ds.compute()
 

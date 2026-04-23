@@ -82,7 +82,7 @@ def test_measurement_for_time(model):
     start_datetime = np.datetime64("2025-03-18T01:00:00")
     end_datetime = np.datetime64("2025-04-16T03:00:00")
 
-    meas = model.get_measurement_for_time(start_datetime, end_datetime)
+    meas = model.get_dataset_values_for_time(model.measurements_dataset, start_datetime, end_datetime)
     times = meas["date_time"].values
 
     assert times.min() >= start_datetime
