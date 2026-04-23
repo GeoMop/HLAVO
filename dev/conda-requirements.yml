@@ -42,6 +42,3 @@ dependencies:
   - pip:
       # ParFlow Python tooling (does NOT install ParFlow solver binary)
       - "pftools[all]"
-
-      # Your git dependency
-      - "zarr_fuse @ git+https://github.com/GeoMop/zarr_fuse.git@main"

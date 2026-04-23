@@ -12,8 +12,14 @@ soil mosture profile data.
 ---
 # Developers corner
 
-## Kalman
-# Local run
+## project HLVO secrets
+Create the file `.secrets_env` in the repository root with content according to:
+[HLAVO secretes document](https://docs.google.com/document/d/1uNnEJvaM2AmjSlnt9kfAbJh9ZcPZBLFXIjh6WPCNdOg/edit?tab=t.0)
+
+
+# Kalman
+
+## Local run
 Use docker image: `martinspetlik/kalman_parflow:v1.0.0`
 
 ```bash

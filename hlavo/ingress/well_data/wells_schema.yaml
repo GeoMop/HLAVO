@@ -1,0 +1,276 @@
+ATTRS:
+    description: "Longterm waterlevel measurements and water draw around water source Uhelná."
+    # for the bucket name see the store_create.sh script.
+    STORE_URL: "s3://hlavo-release/wells.zarr"
+#    STORE_URL: "s3://<bucket>>/<zarr_storage>"
+#    STORE_URL: "s3://hlavo-release/wellss.zarr"
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+#    STORE_URL: "./boreholes_uhelna"
+
+
+Uhelna:
+    water_levels:
+        ATTRS:
+            description: "Water table levels."
+
+        COORDS:
+            date_time:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Time coordinate"
+#                df_col: "timestamp"
+                source_unit: { tick: "m", tz: "CET" }
+                sorted: true
+                chunk_size: 1024
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 1, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+
+            well_id:
+                description: "Full borehole id."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: [] # Unsorted
+                chunk_size: 1
+
+            interval_num_from_top:
+                description: "Index of boreholoe open interval. Indexed from top to bottom."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: true # Unsorted
+                chunk_size: 16
+
+
+        VARS:
+            # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+            water_level:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water table level, meters above see"
+                coords: ["date_time", "well_id"]
+
+            water_depth:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water level depth relative to the borehole head."
+                coords: ["date_time", "well_id"]
+
+            well_in_section_file:
+                type: str[32]
+                description: "Well full name (including collector)."
+                coords: ["well_id"]
+
+            confirmed:
+                type: int32
+                na_value: 0
+                description: "Sign of existing sheetname in file of measured data"
+                coords: ["well_id"]
+
+            X:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "X-coord of well in JTSK"
+                coords: ["well_id"]
+            Y:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Y-coord of well in JTSK"
+                coords: ["well_id"]
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+            Z:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Altitude of the borehole head (above see level)."
+                coords: ["well_id"]
+
+            collector:
+                type: str[32]
+                description: "Name of collector."
+                coords: ["well_id"]
+
+            interval_min:
+                unit: "m"
+                type: float
+                description: "Depth of interval start measured from the borehole head."
+                coords: ["well_id", "interval_num_from_top"]
+
+            interval_max:
+                unit: "m"
+                type: float
+                description: "Depth of interval stop measured from the borehole head."
+                coords: ["well_id", "interval_num_from_top"]
+
+
+    water_draw:
+        ATTRS:
+            description: "Water draws on Uhelná locality"
+            VERSION: 0.3.0
+
+        VARS:
+            cum_draw:
+                unit: "m ** 3"
+                description: "Total water draw per month."
+                coords: ["date", "well_id"]
+
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+
+
+        COORDS:
+            date:
+                unit: { tick: "h", tz: "UTC" }
+                description: "Time coordinate"
+#                df_col: "timestamp"
+                source_unit: { tick: "h", tz: "CET" }
+                sorted: true
+                chunk_size: 1024
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 1, "M"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+
+            well_id:
+                description: "Draw well id. (just single well for Uhelná locality)"
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: [] # Unsorted
+                chunk_size: 1
+
+    water_level_predicted:
+        ATTRS:
+            description: "Water table levels prediction."
+
+        COORDS:
+            date_time:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Time coordinate"
+#                df_col: "timestamp"
+                source_unit: { tick: "m", tz: "CET" }
+                sorted: true
+                chunk_size: 1024
+                # single chunk size about 1MB
+
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 1, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+
+            well_id:
+                description: "Full borehole id."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: [] # Unsorted
+                chunk_size: 64
+
+            version:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Date of simulation providing the results."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: true # Unsorted
+                chunk_size: 1
+
+
+        VARS:
+            # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+            water_level:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water table level, meters above see"
+                coords: ["date_time", "well_id", "version"]
+
+            water_depth:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water level depth relative to the borehole head."
+                coords: ["date_time", "well_id", "version"]
+
+            borehole_full_name:
+                type: str[32]
+                description: "Well full name (including collector)."
+                coords: ["well_id"]
+            borehole_id:
+                type: str[16]
+                description: "Sheetname in file of measure data"
+                coords: ["well_id"]
+            X:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "X-coord of well."
+                coords: ["well_id"]
+            Y:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Y-coord of well."
+                coords: ["well_id"]
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+            Z:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Z-coord of well."
+                coords: ["well_id"]

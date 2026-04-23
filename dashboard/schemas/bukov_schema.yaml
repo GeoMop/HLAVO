@@ -1,0 +1,68 @@
+# Configuration of the ZARR-FUSE storage
+ATTRS:
+    STORE_URL: ""
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+
+    location_file: &loc_file bukov_locations.csv
+    grid_min: [50.840000, 14.850000]
+    grid_max: [50.8400000, 14.8500000]
+    grid_step: [1e-2, 1e-2]
+
+
+bukov:
+    VARS:
+        rock_temp:
+            unit: "degC"
+            description: "Temperature in degC"
+            df_col: "rock_temp"
+            coords: ["date_time", "borehole", "depth"]
+
+        air_humidity:
+            unit: "%"
+            description: "Air humidity (in percents)."
+            df_col: "air_humidity"
+            coords: ["date_time", "borehole", "depth"]
+
+        air_temp:
+            unit: "degC"
+            description: "Temperature in Kelvin"
+            df_col: "air_temp"
+            coords: ["date_time", "borehole", "depth"]
+
+        longitude:
+            unit: "deg"
+            description: "Signed Earth longitude."
+            coords: "borehole"
+
+        latitude:
+            unit: "deg"
+            description: "Signed Earth longitude."
+            coords: "borehole"
+
+    COORDS:
+        date_time:
+            unit: { tick: "s", tz: "UTC" }
+            description: "Time coordinate, UTC time zone, 15 min resolution"
+            source_unit: { tick: "s", tz: "UTC" }
+            df_col: "date_time"
+            chunk_size: 1024
+            merge:
+                step_limits: [15, 61, "m"]
+
+        borehole:
+            type: "str[128]"
+            unit: ""
+            description: "Site/borehole name."
+            df_col: "borehole"
+            sorted: false
+            chunk_size: 64
+
+        depth:
+            type: "float"
+            unit: "meter"
+            description: "Relative position of the sensor in the borehole."
+            df_col: "depth"
+            chunk_size: 64
+
+    ATTRS:
+        description: "bukov / temperature data series."
