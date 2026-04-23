@@ -33,8 +33,8 @@ def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
     df_read["well_id"] = df_read["well_id_orig"].values.astype("str")
     df_read["water_depth"] = pd.to_numeric(df_read["water_depth"], errors="coerce").astype(float)
     df_read["water_level"] = pd.to_numeric(df_read["water_level"], errors="coerce").astype(float)
-    df_read = df_read.dropna(subset=["water_depth"])
-    df_read = df_read.dropna(subset=["water_level"])
+    #df_read = df_read.dropna(subset=["water_depth"])
+    #df_read = df_read.dropna(subset=["water_level"])
     df_read["well_in_section_file"] = well_in_section_file
     df = df_read[["well_id", "well_in_section_file", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
 
@@ -103,13 +103,14 @@ def _create_schema_path():
     Helper function called from remove_zarr_store and open_zarr_schema
     """
     script_dir = Path(__file__).parent
-    #root_path = script_dir / "../../.."
-    #file_path = root_path / ".secrets_env"
+    root_path = script_dir / "../../.."
+    file_path = root_path / ".secrets_env"
 
-    #if not file_path.exists():
-    #    raise FileNotFoundError(f"{file_path} doesn't exist")
+    if not file_path.exists():
+        logger.info("Can not open {file_path}, remote stores will not be accessible.")
+    else:
+        load_dotenv(dotenv_path=file_path)
 
-    #load_dotenv(dotenv_path=file_path)
     return script_dir / "wells_schema.yaml"
 
 

@@ -1,12 +1,11 @@
 ATTRS:
     description: "Longterm waterlevel measurements and water draw around water source Uhelná."
     # for the bucket name see the store_create.sh script.
-#    STORE_URL: "s3://hlavo-release/wells.zarr"
+    STORE_URL: "s3://hlavo-release/wells.zarr"
 #    STORE_URL: "s3://<bucket>>/<zarr_storage>"
-#    STORE_URL: "s3://hlavo-release/wellss.zarr"
-#    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
-    STORE_URL: "./boreholes_uhelna"
-
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+#    STORE_URL: "./boreholes_uhelna"
+    LOGGER: "local"
 
 Uhelna:
     water_levels:
