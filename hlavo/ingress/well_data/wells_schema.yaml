@@ -152,18 +152,18 @@ Uhelna:
                 na_value: 'nan' # default
                 coords: ["well_id"]
 
-            height:
-                unit: "m"
-                type: float
-                na_value: 'nan' # default
-                description: "Height of water level."
-                coords: ["date", "well_id"]
+            #height:
+            #    unit: "m"
+            #    type: float
+            #    na_value: 'nan' # default
+            #    description: "Height of water level."
+            #    coords: ["date", "well_id"]
 
-            interval:
-                type: int32
-                na_value: 0
-                description: "Index of measured intervaů."
-                coords: ["well_id"]
+            #interval:
+            #    type: int32
+            #    na_value: 0
+            #    description: "Index of measured intervaů."
+            #    coords: ["well_id"]
 
 
         COORDS:
