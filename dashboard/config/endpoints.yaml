@@ -1,0 +1,114 @@
+profiles:
+  description: "HLAVO - moisture profiles"
+  version: "1.0.0"
+  # What is meaning of version ?
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: s3://hlavo-release/profiles.zarr 
+    #"s3://hlavo_release/store_latlon_2024.zarr"    
+    schema_path: "schemas/profile_schema.yaml" #"../../hlavo/ingress/.." ??
+    # TODO: use only schema from the store
+    
+  variable_map: # follow structure of the schema, but we can omit some nodes
+    Uhelna:
+      profiles:         
+        lat: "latitude"   # variable dependent on "entity"
+        lon: "longitude"  # variable dependent on "entity"
+        
+        time: "date_time"   
+        # Coord with time meaning, continuos, long series, multiscale character.
+        #vertical: "sensor_depth"       # variable, but true depth
+        vertical: "depth_level"         # coordinate, depth index
+        # Coord with depth meaning. 
+        entity: "site_id" 
+        # Co"borehole" is coord; should be coordinate ; for labels use discrete variant or string type
+        
+  defaults:
+    display_variable: "moisture"
+    group_path: "Uhelna/profiles" # initial Node path within the zarr-fuse store
+
+  visualization:
+    map:
+      # TODO: set interactively; coordinates are mean of the wells positions
+      center_lat: 50.869878       # initial coords
+      center_lon: 14.866236
+      zoom: 14                 # 0 (macro) - 20 (detail);  
+      title: "Uhelná site overview."
+      point_size: 6
+      alpha: 0.8               # transparency of dots 
+    timeseries:
+      middle_window_days: 30   # length of T axis in days
+      right_window_hours: 24   # length of T axis in hours
+    overlay:
+      enabled: false
+      #tile_url: "/tiles/{Z}/{X}/{Y}.png"
+      #cache_dir: "."
+
+wells:
+  description: "HLAVO - measured and predicted water levels in wells"
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: "s3://hlavo-release/wells.zarr"    
+    schema_path: "schemas/wells_schema.yaml"
+
+  variable_map: # follow structure of the schema, but we can omit some nodes
+    Uhelna:
+      water_levels:         
+        #lat: "Y"   # variable dependent on "entity"
+        #lon: "X"  # variable dependent on "entity"
+        lat: "latitude"   # variable dependent on "entity"
+        lon: "longitude"  # variable dependent on "entity"
+        # TODO: longituede and latitude must yet be converted from X,Y coordinates
+        
+        time: "date_time" # coord definitely requested
+        vertical: None    #?"depth" # coord probaly requested
+        entity: "well_id" # "borehole" is coord; should be coordinate ; for labels use discrete variant or string type
+      water_draw:
+        lat: "latitude"   # variable dependent on "entity"
+        lon: "longitude"  # variable dependent on "entity"
+        
+        time: "date_time" # coord definitely requested
+        vertical: None    #?"depth" # coord probaly requested
+        entity: "well_id" # "borehole" is coord; should be coordinate ; for labels use discrete variant or string type
+      water_level_predicted:
+        lat: "latitude"   # variable dependent on "entity"
+        lon: "longitude"  # variable dependent on "entity"
+        
+        time: "date_time" # coord definitely requested
+        vertical: "version"    #?"depth" # coord probaly requested
+        entity: "well_id" # "borehole" is coord; should be coordinate ; for labels use discrete variant or string type
+        # ... variable mapping for the lab node
+        
+  defaults:
+    display_variable: "water_depth"
+    # Initialy selected variable, should be set per node.
+    group_path: "Uhelna/water_levels" # initial Node path within the zarr-fuse store
+
+  visualization:
+    map:
+      center_lat: 50.869878       # initial coords
+      center_lon: 14.866236
+      zoom: 14                 # 0 (macro) - 20 (detail);  
+      title: "Geographic Data View"
+      point_size: 10        
+      alpha: 0.8               # transparency of dots 
+    timeseries:
+      middle_window_days: 30   # length of T axis in days
+      right_window_hours: 24   # length of T axis in hours
+    overlay:
+      enabled: false
+      #tile_url: "/tiles/{Z}/{X}/{Y}.png"
+      #cache_dir: "."
+   
+
+
+#meteo:
+#surface_model:
+
+

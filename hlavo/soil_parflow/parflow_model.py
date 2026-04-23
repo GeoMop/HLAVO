@@ -383,12 +383,11 @@ class ToyProblem(AbstractModel):
         self._run.Geom.domain.Porosity.Type = "PFBFile"
         self._run.Geom.domain.Porosity.FileName = filename
 
-    def prepare_clm(self, working_dir, ds):
+    def prepare_clm(self, working_dir, input_dir, ds):
         # We assume these files exist in current dir.
         # They should be either generated runtime or stored somewhere globally.
-        # shutil.copy("drv_clmin.dat", working_dir / "drv_clmin.dat")
-        shutil.copy(self._clm_files["drv_vegm_file"], working_dir / pathlib.Path("drv_vegm.dat"))
-        shutil.copy(self._clm_files["drv_vegp_file"], working_dir / pathlib.Path("drv_vegp.dat"))
+        shutil.copy(input_dir / "drv_vegm.dat", working_dir / "drv_vegm.dat")
+        shutil.copy(input_dir / "drv_vegp.dat", working_dir / "drv_vegp.dat")
 
         # Create subdirectories necessary for Parflow/CLM coupling.
         for dir in [
@@ -502,7 +501,23 @@ class ToyProblem(AbstractModel):
         }
         with open(working_dir / pathlib.Path(self._run.Solver.CLM.MetFileName), "w") as f:
             for i,time in enumerate(ds.date_time.values):
-                f.write( " ".join(str(v[0,i].item()) for v in ds.data_vars.values()) + "\n")
+                f.write( " ".join(str(v[0,i].item()) for v in clm_met_data.values()) + "\n")
+
+        # with open(working_dir / "lai.dat", "w") as f:
+        #     for time in ds.time.values:
+        #         f.write( "6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 2.00 6.00 6.00 5.00 6.00 0.00 6.00 0.00 0.00\n" )
+        #
+        # with open(working_dir / "sai.dat", "w") as f:
+        #     for time in ds.time.values:
+        #         f.write( "2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 4.00 2.00 0.50 2.00 2.00 2.00 2.00 2.00 0.00\n" )
+        #
+        # with open(working_dir / "z0m.dat", "w") as f:
+        #     for time in ds.time.values:
+        #         f.write( "1.00 2.20  1.00 0.80 0.80 0.10 0.10 0.70 0.10 0.03 0.03 0.06 0.50 0.06 0.01 0.05 0.002 0.01\n" )
+        #
+        # with open(working_dir / "displa.dat", "w") as f:
+        #     for time in ds.time.values:
+        #         f.write( "11.0 23.00 11.0 13.0 13.0 0.30 0.30 6.50 0.70 0.30 0.30 0.30 3.00 0.30 0.00 0.10 0.00  0.00\n" )
 
 
 
@@ -512,8 +527,8 @@ class ToyProblem(AbstractModel):
             state_params=None,
             start_time=0, stop_time=20, time_step=0.025,
             met_data:xr.Dataset=None,
-            working_dir=None):
-
+            working_dir=None,
+            input_dir=None):
         if working_dir is None:
             working_dir = self._workdir
         shutil.rmtree(working_dir)
@@ -525,7 +540,7 @@ class ToyProblem(AbstractModel):
             stop_time = met_data.time_interval / np.timedelta64(1, 'h')
             time_step = met_data.time_step / np.timedelta64(1, 'h')
             precipitation_value = 0 # precipitation is computed by CLM
-            self.prepare_clm(working_dir, met_data)
+            self.prepare_clm(working_dir, input_dir, met_data)
 
         if state_params is not None:
             self.set_dynamic_params(state_params)
