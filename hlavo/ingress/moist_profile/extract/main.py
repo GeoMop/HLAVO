@@ -1,10 +1,15 @@
-# from __future__ import annotations
 from pathlib import Path
-from dotenv import load_dotenv
+
 import polars as pl
-from profile_extract import extract_df
 import zarr_fuse
 
+from hlavo.misc.aux_zarr_fuse import load_schema, remove_storage
+from hlavo.ingress.moist_profile.extract.profile_extract import extract_df
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROFILE_SCHEMA_PATH = SCRIPT_DIR.parent / "profile_schema.yaml"
+SITE_COORDS_PATH = SCRIPT_DIR / "site_coords.csv"
+SITE_STATUS_PATH = SCRIPT_DIR / "site_status.csv"
 
 def list_csv_filepaths(dir_path: str | Path) -> list[Path]:
     """
@@ -50,6 +55,7 @@ def load_site_coords_csv(
     uid_col: str = "site_id",
     lat_col: str = "latitude",
     lon_col: str = "longitude",
+    elevation_col: str = "elevation",
     dt_col_out: str = "site_datetime",
 ) -> pl.DataFrame:
     """
@@ -58,7 +64,7 @@ def load_site_coords_csv(
       2025-04-29,11:32:16,1,50.863565,14.889853
 
     Returns a DataFrame with columns:
-      site_id, site_datetime, latitude, longitude
+      site_id, site_datetime, latitude, longitude, elevation
     """
     df = pl.read_csv(path)
 
@@ -68,9 +74,11 @@ def load_site_coords_csv(
           .str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S", strict=True)
           .alias(dt_col_out),
 
+        pl.col(uid_col).cast(pl.Int32),
         pl.col(lat_col).cast(pl.Float64),
         pl.col(lon_col).cast(pl.Float64),
-    ).select([uid_col, dt_col_out, lat_col, lon_col])
+        pl.col(elevation_col).cast(pl.Float64),
+    ).select([uid_col, dt_col_out, lat_col, lon_col, elevation_col])
 
     # join_asof requires sorting
     return df.sort([uid_col, dt_col_out])
@@ -152,7 +160,7 @@ def status_to_site_frames(
             value_name="raw",
         )
         .with_columns(
-            pl.col(site_id_col).cast(pl.Int64),
+            pl.col(site_id_col).cast(pl.Int32),
             pl.col("raw").cast(pl.Utf8),
         )
         .rename({status_dt_col: "datetime"})
@@ -162,7 +170,7 @@ def status_to_site_frames(
     raw = pl.col("raw")
     # Only X breaks the carry-forward
     is_x = raw.eq("X").fill_null(False)  # bool, never null
-    segment = is_x.cast(pl.Int64).cum_sum().over("site_id")  # int, never null
+    segment = is_x.cast(pl.Int32).cum_sum().over("site_id")  # int, never null
 
     probe_marker = pl.when(raw.str.starts_with("U").fill_null(False)).then(raw).otherwise(None)
 
@@ -182,7 +190,7 @@ def status_to_site_frames(
     # 3) site_status
     # -----------------------------
     # parse signed integers from raw; non-integers become null
-    raw_int = raw.cast(pl.Int64, strict=False)
+    raw_int = raw.cast(pl.Int32, strict=False)
 
     is_probe = raw.str.starts_with("U").fill_null(False)
     is_int = raw_int.is_not_null()
@@ -198,7 +206,7 @@ def status_to_site_frames(
     # any explicit value/probe/X breaks previous persistent carry
     status_boundary = (is_probe | is_x | is_int)
 
-    status_segment = status_boundary.cast(pl.Int64).cum_sum().over(site_id_col)
+    status_segment = status_boundary.cast(pl.Int32).cum_sum().over(site_id_col)
 
     persistent_status = (
         pl.when(is_persistent_status)
@@ -285,24 +293,29 @@ def split_lab(dfs: list[pl.DataFrame]) -> tuple[pl.DataFrame, list[pl.DataFrame]
     return df_lab, rest_dfs
 
 
-def override_local_storage(schema, storage_path: str | Path | None):
-    if storage_path is not None:
-        schema.ds.ATTRS['STORE_URL'] = str(storage_path)
-
-
 def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
     """
     :param source_dir: source directory with CSV files from xpert.nz datareports
     :return:
     """
-    load_dotenv("../.env")
-    schema_path = Path("../profile_schema.yaml")
+    run_extract(source_dir=source_dir, storage_path=storage_path)
 
-    df_coords = load_site_coords_csv("site_coords.csv")
-    print(df_coords)
-    df_status = load_site_status_csv("site_status.csv")
-    print(df_status)
 
+def run_extract(
+    *,
+    source_dir: str | Path,
+    storage_path: str | Path = None,
+    schema_path: str | Path = PROFILE_SCHEMA_PATH,
+    site_coords_path: str | Path = SITE_COORDS_PATH,
+    site_status_path: str | Path = SITE_STATUS_PATH,
+) -> None:
+    """
+    Extract CSV measurements, enrich them with site assignments, and store them.
+    """
+    schema = load_schema(Path(schema_path))
+
+    df_coords = load_site_coords_csv(str(site_coords_path))
+    df_status = load_site_status_csv(str(site_status_path))
     df_sites = status_to_site_frames(df_coords, df_status)
     print(df_sites)
 
@@ -315,10 +328,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
     df_lab, dfs_network = split_lab(dfs)
 
-    schema = zarr_fuse.schema.deserialize(schema_path)
-    override_local_storage(schema, storage_path)
-
-    root_node = zarr_fuse.open_store(schema)
+    root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
     print('Store open')
     for i, df in enumerate(dfs_network):
         print(f'Storing df[{i}/{len(dfs_network)}]: {df.shape[0]} rows.')
@@ -330,7 +340,7 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
         root_node['Uhelna']['lab'].update(df_lab)
 
     # close/open again
-    # root_node = zarr_fuse.open_store(schema)
+    # root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
     # rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
     # print(rdf)
 
@@ -341,12 +351,9 @@ def main(source_dir: str | Path, storage_path: str | Path = None) -> None:
 
 
 def read_storage(storage_path: str | Path = None):
-    schema_path = Path("../profile_schema.yaml")
-    schema = zarr_fuse.schema.deserialize(schema_path)
-    override_local_storage(schema, storage_path)
-
-    root_node = zarr_fuse.open_store(schema)
-    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id"])
+    schema = load_schema(PROFILE_SCHEMA_PATH)
+    root_node = zarr_fuse.open_store(schema, STORE_URL=storage_path)
+    rdf = root_node['Uhelna']['profiles'].read_df(var_names=["moisture", "probe_id", "sensor_depth"])
     print(rdf)
 
     # place debug pause here and view pandas dataframe
@@ -367,9 +374,19 @@ if __name__ == '__main__':
     #      storage_path=Path("storage_2025"))
     # main(source_dir="../test_empty",
     #      storage_path=Path("storage_empty"))
+
+
     # TO S3
-    main(source_dir="../20260301T224908_dataflow_grab")
-    main(source_dir="../20260301T225923_dataflow_grab")
+    storage_url = "s3://hlavo-testing/profiles.zarr"
+    # storage_url = "s3://hlavo-release/profiles.zarr"
+    # remove_storage(schema_path=Path("../profile_schema.yaml"), storage_path=storage_url)
+    # data from 2025 01-06
+    # main(source_dir="../20260301T224908_dataflow_grab",
+    #      storage_path=storage_url)
+    # data from 2025 07-12
+    # main(source_dir="../20260301T225923_dataflow_grab",
+    #      storage_path=storage_url)
+    read_storage(storage_url)
 
     # read to check zarr storage
     # read_storage(storage_path=Path("test_storage"))
