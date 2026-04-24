@@ -20,6 +20,15 @@ import flopy
 LOG = logging.getLogger(__name__)
 
 
+def _normalize_plot_output_name(raw_name: object | None, default_name: str) -> str:
+    """Return plot filename with a forced PDF suffix."""
+    name = default_name if raw_name is None else str(raw_name)
+    path = Path(name)
+    if path.suffix.lower() != ".pdf":
+        path = path.with_suffix(".pdf")
+    return str(path)
+
+
 
 
 @attrs.define(frozen=True)
@@ -238,25 +247,50 @@ class RunConfig:
         else:
             plot_output_dir = run_workspace / "plots"
         plot_dpi = int(plot_raw.get("dpi", 150))
-        plot_active_mask_name = str(plot_raw.get("active_mask_name", "grid_active_mask.png"))
-        plot_idomain_name = str(plot_raw.get("idomain_name", "idomain_top.png"))
-        plot_head_name = str(plot_raw.get("head_name", "head_groundplan.png"))
-        plot_groundwater_surface_name = str(
-            plot_raw.get("groundwater_surface_name", "groundwater_surface.png")
+        plot_active_mask_name = _normalize_plot_output_name(
+            plot_raw.get("active_mask_name"),
+            "grid_active_mask.pdf",
         )
-        plot_groundwater_change_name = str(
-            plot_raw.get("groundwater_change_name", "groundwater_change.png")
+        plot_idomain_name = _normalize_plot_output_name(
+            plot_raw.get("idomain_name"),
+            "idomain_top.pdf",
         )
-        plot_hydrograph_name = str(plot_raw.get("hydrograph_name", "groundwater_hydrograph.png"))
-        plot_xsection_x_times_name = str(
-            plot_raw.get("xsection_x_times_name", "groundwater_x_section_times.png")
+        plot_head_name = _normalize_plot_output_name(
+            plot_raw.get("head_name"),
+            "head_groundplan.pdf",
         )
-        plot_xsection_y_times_name = str(
-            plot_raw.get("xsection_y_times_name", "groundwater_y_section_times.png")
+        plot_groundwater_surface_name = _normalize_plot_output_name(
+            plot_raw.get("groundwater_surface_name"),
+            "groundwater_surface.pdf",
         )
-        plot_velocity_name = str(plot_raw.get("velocity_name", "velocity_groundplan.png"))
-        plot_xsection_x_name = str(plot_raw.get("xsection_x_name", "materials_x_section.png"))
-        plot_xsection_y_name = str(plot_raw.get("xsection_y_name", "materials_y_section.png"))
+        plot_groundwater_change_name = _normalize_plot_output_name(
+            plot_raw.get("groundwater_change_name"),
+            "groundwater_change.pdf",
+        )
+        plot_hydrograph_name = _normalize_plot_output_name(
+            plot_raw.get("hydrograph_name"),
+            "groundwater_hydrograph.pdf",
+        )
+        plot_xsection_x_times_name = _normalize_plot_output_name(
+            plot_raw.get("xsection_x_times_name"),
+            "groundwater_x_section_times.pdf",
+        )
+        plot_xsection_y_times_name = _normalize_plot_output_name(
+            plot_raw.get("xsection_y_times_name"),
+            "groundwater_y_section_times.pdf",
+        )
+        plot_velocity_name = _normalize_plot_output_name(
+            plot_raw.get("velocity_name"),
+            "velocity_groundplan.pdf",
+        )
+        plot_xsection_x_name = _normalize_plot_output_name(
+            plot_raw.get("xsection_x_name"),
+            "materials_x_section.pdf",
+        )
+        plot_xsection_y_name = _normalize_plot_output_name(
+            plot_raw.get("xsection_y_name"),
+            "materials_y_section.pdf",
+        )
         plot_xsection_y_index = plot_raw.get("xsection_y_index")
         if plot_xsection_y_index is not None:
             plot_xsection_y_index = int(plot_xsection_y_index)
@@ -400,7 +434,7 @@ def _parse_wells(raw: dict) -> tuple[WellSpec, ...]:
             rate_scaling_length_m = float(
                 interval_raw.get(
                     "rate_scaling_length_m",
-                    interval_raw.get("rate_scaling_length", 1.0),
+                    interval_raw.get("rate_scaling_length", 10.0),
                 )
             )
             assert np.isfinite(rate_scaling_length_m) and rate_scaling_length_m > 0.0, (
@@ -562,7 +596,7 @@ def _well_interval_connections(
     return overlaps
 
 
-def _build_maw_package_data(
+def _build_wel_stress_period_data(
     wells: tuple[WellSpec, ...],
     grid_data: dict[str, np.ndarray],
     top: np.ndarray,
@@ -570,13 +604,9 @@ def _build_maw_package_data(
     idomain: np.ndarray,
     kh: np.ndarray,
     nper: int,
-) -> tuple[
-    list[tuple[int, float, float, float, str, int, str]],
-    list[tuple[int, int, tuple[int, int, int], float, float, float, float]],
-    dict[int, list[tuple]],
-]:
+) -> dict[int, list[tuple[tuple[int, int, int], float]]]:
     if not wells:
-        return [], [], {}
+        return {}
 
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     nx = int(el_dims[0])
@@ -589,10 +619,7 @@ def _build_maw_package_data(
     active_mask = np.asarray(grid_data["active_mask"], dtype=bool)
 
     layer_tops = _layer_tops_from_top_botm(top, botm)
-    packagedata: list[tuple[int, float, float, float, str, int, str]] = []
-    connectiondata: list[tuple[int, int, tuple[int, int, int], float, float, float, float]] = []
-    period_rows: list[tuple] = []
-    ifno = 0
+    base_cell_rates: dict[tuple[int, int, int], float] = {}
 
     for well in wells:
         x_local, y_local = _lonlat_to_local_xy(well.lon, well.lat, boundary_origin)
@@ -605,7 +632,7 @@ def _build_maw_package_data(
                 f"Well {well.name} is in an inactive column at row={row}, col={col}"
             )
         surface = float(top[row, col])
-        for interval_idx, interval in enumerate(well.intervals):
+        for interval in well.intervals:
             connections = _well_interval_connections(
                 row=row,
                 col=col,
@@ -620,88 +647,27 @@ def _build_maw_package_data(
                 float(screen_top - screen_bot) * max(float(kh[int(lay), int(row), int(col)]), 0.0)
                 for lay, screen_top, screen_bot in connections
             ]
-            # Concentrate pumping into the most transmissive parts of the screen to
-            # avoid pushing rate into nearly disconnected cells, which can stall MAW.
-            selected_idx = list(range(len(connections)))
-            if interval.rate_m3_per_day < 0.0 and len(connections) > 1:
-                max_weight = float(max(transmissive_weights))
-                if max_weight > 0.0:
-                    cutoff = 0.2 * max_weight
-                    selected_idx = [
-                        idx for idx, weight in enumerate(transmissive_weights) if float(weight) >= cutoff
-                    ]
-                    if not selected_idx:
-                        selected_idx = [int(np.argmax(np.asarray(transmissive_weights, dtype=float)))]
-            connections = [connections[idx] for idx in selected_idx]
-            overlaps = [overlaps[idx] for idx in selected_idx]
-            transmissive_weights = [transmissive_weights[idx] for idx in selected_idx]
             total_weight = float(sum(transmissive_weights))
             if total_weight <= 0.0:
-                # Fallback if local conductivity is zero/undefined across connections.
                 transmissive_weights = overlaps
                 total_weight = float(sum(transmissive_weights))
-            assert total_weight > 0.0, "Total MAW connection weight must be > 0"
-            pump_elevation = surface - interval.bottom_depth
-            start_head_target = surface - interval.top_depth
-            for icon, (lay, screen_top, screen_bot) in enumerate(connections):
+            assert total_weight > 0.0, "Total well connection weight must be > 0"
+            for icon, (lay, _screen_top, _screen_bot) in enumerate(connections):
                 weight = float(transmissive_weights[icon] / total_weight)
                 cell_rate = float(interval.rate_m3_per_day * weight)
-                cell_bottom = float(botm[int(lay), int(row), int(col)])
-                # Keep MAW bottom at or below connected cell bottom so MF6 does not reset it.
-                bottom_elev = min(float(pump_elevation), cell_bottom)
-                start_head = max(min(surface, start_head_target), bottom_elev + 1e-6)
-                well_name = (
-                    f"{well.name}_l{int(lay) + 1}"
-                    if len(well.intervals) == 1
-                    else f"{well.name}_interval_{interval_idx + 1}_l{int(lay) + 1}"
-                )
-                packagedata.append(
-                    (
-                        int(ifno),
-                        float(interval.well_radius_m),
-                        float(bottom_elev),
-                        float(start_head),
-                        "THIEM",
-                        1,
-                        str(well_name),
-                    )
-                )
-                connectiondata.append(
-                    (
-                        int(ifno),
-                        0,
-                        (int(lay), int(row), int(col)),
-                        float(screen_top),
-                        float(screen_bot),
-                        0.0,
-                        0.0,
-                    )
-                )
-                if cell_rate < 0.0:
-                    period_rows.append(
-                        (
-                            int(ifno),
-                            "rate",
-                            float(cell_rate),
-                            "rate_scaling",
-                            float(pump_elevation),
-                            float(interval.rate_scaling_length_m),
-                        )
-                    )
-                else:
-                    period_rows.append((int(ifno), "rate", float(cell_rate)))
-                ifno += 1
+                cell_id = (int(lay), int(row), int(col))
+                base_cell_rates[cell_id] = float(base_cell_rates.get(cell_id, 0.0) + cell_rate)
         LOG.info(
-            "Well %s mapped to row=%s col=%s with %s interval(s) for MAW",
+            "Well %s mapped to row=%s col=%s with %s interval(s) for WEL",
             well.name,
             row,
             col,
             len(well.intervals),
         )
 
-    assert packagedata, "No well intervals mapped to MAW package"
-    perioddata = {iper: list(period_rows) for iper in range(nper)}
-    return packagedata, connectiondata, perioddata
+    assert base_cell_rates, "No well intervals mapped to active WEL cells"
+    base_rows = [(cellid, float(rate)) for cellid, rate in base_cell_rates.items()]
+    return {iper: list(base_rows) for iper in range(nper)}
 
 
 def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
@@ -1160,101 +1126,115 @@ def _write_cross_section_plots(
     cmap = plt.get_cmap("tab20", len(layer_names))
     norm = colors.BoundaryNorm(np.arange(-0.5, len(layer_names) + 0.5, 1.0), cmap.N)
 
-    y_index = run_config.plot_xsection_y_index
-    if y_index is None:
-        y_index = ny // 2
-    assert 0 <= y_index < ny, "xsection_y_index out of range"
+    if run_config.plot_xsection_points:
+        points = list(run_config.plot_xsection_points)
+    else:
+        y_index = run_config.plot_xsection_y_index
+        if y_index is None:
+            y_index = ny // 2
+        x_index = run_config.plot_xsection_x_index
+        if x_index is None:
+            x_index = nx // 2
+        points = [(x_index, y_index)]
 
-    x_index = run_config.plot_xsection_x_index
-    if x_index is None:
-        x_index = nx // 2
-    assert 0 <= x_index < nx, "xsection_x_index out of range"
+    xsec_base = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
+    ysec_base = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
 
-    # X-direction cross-section at fixed Y index.
-    materials_x = materials[:, y_index, :]
-    top_line_x = top[y_index, :]
-    botm_x = botm[:, y_index, :]
-    gw_line_x = groundwater_surface[y_index, :]
-    z_edges_center = np.empty((nz + 1, nx), dtype=float)
-    z_edges_center[0] = top_line_x
-    z_edges_center[1:] = botm_x
-    z_edges = np.empty((nz + 1, nx + 1), dtype=float)
-    z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
-    z_edges[:, 0] = z_edges_center[:, 0]
-    z_edges[:, -1] = z_edges_center[:, -1]
-    x_edges = np.tile(x_nodes[None, :], (nz + 1, 1))
+    for point_idx, (x_index, y_index) in enumerate(points):
+        assert 0 <= y_index < ny, "xsection y_index out of range"
+        assert 0 <= x_index < nx, "xsection x_index out of range"
 
-    fig, ax = plt.subplots(figsize=(11, 4))
-    mesh = ax.pcolormesh(
-        x_edges,
-        z_edges,
-        np.ma.masked_less(materials_x, 0),
-        shading="auto",
-        cmap=cmap,
-        norm=norm,
-    )
-    x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
-    ax.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
-    z_top_x = float(np.nanmax(top_line_x))
-    z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
-    z_pad_x = 0.05 * run_config.plot_xsection_depth_window
-    ax.set_ylim(z_bottom_x, z_top_x + z_pad_x)
-    ax.set_title(f"Materials X-Section (y index {y_index})")
-    ax.set_xlabel("X (local)")
-    ax.set_ylabel("Z")
-    ax.legend(loc="best")
-    ticks = np.arange(len(layer_names), dtype=float)
-    cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
-    cbar.ax.set_yticklabels(layer_names)
-    cbar.set_label("Geological layer")
-    fig.tight_layout()
-    xsec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
-    fig.savefig(xsec_path, dpi=run_config.plot_dpi)
-    plt.close(fig)
-    LOG.info("Saved X-section plot to %s", xsec_path)
+        if point_idx == 0:
+            xsec_path = xsec_base
+            ysec_path = ysec_base
+        else:
+            x_suffix = f"_pt{point_idx + 1}_x{x_index}_y{y_index}"
+            xsec_path = xsec_base.with_name(f"{xsec_base.stem}{x_suffix}{xsec_base.suffix}")
+            ysec_path = ysec_base.with_name(f"{ysec_base.stem}{x_suffix}{ysec_base.suffix}")
 
-    # Y-direction cross-section at fixed X index.
-    materials_y = materials[:, :, x_index]
-    top_line_y = top[:, x_index]
-    botm_y = botm[:, :, x_index]
-    gw_line_y = groundwater_surface[:, x_index]
-    z_edges_center = np.empty((nz + 1, ny), dtype=float)
-    z_edges_center[0] = top_line_y
-    z_edges_center[1:] = botm_y
-    z_edges = np.empty((nz + 1, ny + 1), dtype=float)
-    z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
-    z_edges[:, 0] = z_edges_center[:, 0]
-    z_edges[:, -1] = z_edges_center[:, -1]
-    y_edges = np.tile(y_nodes[None, :], (nz + 1, 1))
+        # X-direction cross-section at fixed Y index.
+        materials_x = materials[:, y_index, :]
+        top_line_x = top[y_index, :]
+        botm_x = botm[:, y_index, :]
+        gw_line_x = groundwater_surface[y_index, :]
+        z_edges_center = np.empty((nz + 1, nx), dtype=float)
+        z_edges_center[0] = top_line_x
+        z_edges_center[1:] = botm_x
+        z_edges = np.empty((nz + 1, nx + 1), dtype=float)
+        z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
+        z_edges[:, 0] = z_edges_center[:, 0]
+        z_edges[:, -1] = z_edges_center[:, -1]
+        x_edges = np.tile(x_nodes[None, :], (nz + 1, 1))
 
-    fig, ax = plt.subplots(figsize=(11, 4))
-    mesh = ax.pcolormesh(
-        y_edges,
-        z_edges,
-        np.ma.masked_less(materials_y, 0),
-        shading="auto",
-        cmap=cmap,
-        norm=norm,
-    )
-    y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
-    ax.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
-    z_top_y = float(np.nanmax(top_line_y))
-    z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
-    z_pad_y = 0.05 * run_config.plot_xsection_depth_window
-    ax.set_ylim(z_bottom_y, z_top_y + z_pad_y)
-    ax.set_title(f"Materials Y-Section (x index {x_index})")
-    ax.set_xlabel("Y (local)")
-    ax.set_ylabel("Z")
-    ax.legend(loc="best")
-    ticks = np.arange(len(layer_names), dtype=float)
-    cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
-    cbar.ax.set_yticklabels(layer_names)
-    cbar.set_label("Geological layer")
-    fig.tight_layout()
-    ysec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
-    fig.savefig(ysec_path, dpi=run_config.plot_dpi)
-    plt.close(fig)
-    LOG.info("Saved Y-section plot to %s", ysec_path)
+        fig, ax = plt.subplots(figsize=(11, 4))
+        mesh = ax.pcolormesh(
+            x_edges,
+            z_edges,
+            np.ma.masked_less(materials_x, 0),
+            shading="auto",
+            cmap=cmap,
+            norm=norm,
+        )
+        x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
+        ax.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
+        z_top_x = float(np.nanmax(top_line_x))
+        z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
+        z_pad_x = 0.05 * run_config.plot_xsection_depth_window
+        ax.set_ylim(z_bottom_x, z_top_x + z_pad_x)
+        ax.set_title(f"Materials X-Section (y index {y_index}, point x={x_index})")
+        ax.set_xlabel("X (local)")
+        ax.set_ylabel("Z")
+        ax.legend(loc="best")
+        ticks = np.arange(len(layer_names), dtype=float)
+        cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
+        cbar.ax.set_yticklabels(layer_names)
+        cbar.set_label("Geological layer")
+        fig.tight_layout()
+        fig.savefig(xsec_path, dpi=run_config.plot_dpi)
+        plt.close(fig)
+        LOG.info("Saved X-section plot to %s", xsec_path)
+
+        # Y-direction cross-section at fixed X index.
+        materials_y = materials[:, :, x_index]
+        top_line_y = top[:, x_index]
+        botm_y = botm[:, :, x_index]
+        gw_line_y = groundwater_surface[:, x_index]
+        z_edges_center = np.empty((nz + 1, ny), dtype=float)
+        z_edges_center[0] = top_line_y
+        z_edges_center[1:] = botm_y
+        z_edges = np.empty((nz + 1, ny + 1), dtype=float)
+        z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
+        z_edges[:, 0] = z_edges_center[:, 0]
+        z_edges[:, -1] = z_edges_center[:, -1]
+        y_edges = np.tile(y_nodes[None, :], (nz + 1, 1))
+
+        fig, ax = plt.subplots(figsize=(11, 4))
+        mesh = ax.pcolormesh(
+            y_edges,
+            z_edges,
+            np.ma.masked_less(materials_y, 0),
+            shading="auto",
+            cmap=cmap,
+            norm=norm,
+        )
+        y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
+        ax.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
+        z_top_y = float(np.nanmax(top_line_y))
+        z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
+        z_pad_y = 0.05 * run_config.plot_xsection_depth_window
+        ax.set_ylim(z_bottom_y, z_top_y + z_pad_y)
+        ax.set_title(f"Materials Y-Section (x index {x_index}, point y={y_index})")
+        ax.set_xlabel("Y (local)")
+        ax.set_ylabel("Z")
+        ax.legend(loc="best")
+        ticks = np.arange(len(layer_names), dtype=float)
+        cbar = fig.colorbar(mesh, ax=ax, ticks=ticks, pad=0.02)
+        cbar.ax.set_yticklabels(layer_names)
+        cbar.set_label("Geological layer")
+        fig.tight_layout()
+        fig.savefig(ysec_path, dpi=run_config.plot_dpi)
+        plt.close(fig)
+        LOG.info("Saved Y-section plot to %s", ysec_path)
 
 
 def _resolve_executable(exe_name: str) -> Path | None:
@@ -1375,10 +1355,6 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
     if run_config.max_timestep_days is not None:
         max_timestep_days = float(run_config.max_timestep_days)
-    elif run_config.wells:
-        # Large transient steps with nonlinear MAW controls are prone to
-        # convergence issues; cap default step size when wells are active.
-        max_timestep_days = 30.0
     else:
         max_timestep_days = None
     perioddata = []
@@ -1394,21 +1370,7 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         nper=len(perioddata),
         perioddata=perioddata,
     )
-    ims_kwargs: dict[str, object] = {"complexity": "COMPLEX"}
-    if run_config.wells:
-        ims_kwargs.update(
-            {
-                "print_option": "SUMMARY",
-                "outer_maximum": 500,
-                "outer_dvclose": 1.0,
-                "inner_maximum": 800,
-                "inner_dvclose": 1.0,
-                "rcloserecord": 20.0,
-                "under_relaxation": "DBD",
-                "linear_acceleration": "BICGSTAB",
-            }
-        )
-    flopy.mf6.ModflowIms(sim, **ims_kwargs)
+    flopy.mf6.ModflowIms(sim, complexity="COMPLEX")
 
     gwf = flopy.mf6.ModflowGwf(
         sim,
@@ -1556,7 +1518,7 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
             raise AssertionError(f"Unsupported drain mode: {run_config.drain_mode}")
         flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
 
-    maw_packagedata, maw_connectiondata, maw_perioddata = _build_maw_package_data(
+    wel_perioddata = _build_wel_stress_period_data(
         run_config.wells,
         grid_data,
         top,
@@ -1565,16 +1527,11 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         kh,
         len(run_config.stress_periods_days),
     )
-    if maw_packagedata:
-        flopy.mf6.ModflowGwfmaw(
+    if wel_perioddata:
+        flopy.mf6.ModflowGwfwel(
             gwf,
-            boundnames=True,
+            stress_period_data=wel_perioddata,
             save_flows=True,
-            no_well_storage=True,
-            nmawwells=len(maw_packagedata),
-            packagedata=maw_packagedata,
-            connectiondata=maw_connectiondata,
-            perioddata=maw_perioddata,
         )
 
     flopy.mf6.ModflowGwfoc(

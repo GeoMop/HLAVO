@@ -30,14 +30,10 @@ UNSAT_KEYS = (
     "unsat_etwc",
     "unsat_etae",
     "simulate_gwseep",
-    "hydraulic_conductivity",
     "vertical_conductivity",
     "specific_yield",
     "specific_storage",
     "initial_head_offset",
-    "perlen",
-    "nstp",
-    "tsmult",
 )
 
 

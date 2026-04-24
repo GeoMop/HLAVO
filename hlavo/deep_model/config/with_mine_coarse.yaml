@@ -1,5 +1,6 @@
 qgis_project_path: /home/jb/GIS/uhelna_all.qgs
 boundary_layer_name: domain_with_mine
+# Domain XY clip polygon
 raster_group_name: HG model layers
 grid_output_path: grid_materials.npz
 material_parameters_output_path: material_parameters.npz
@@ -9,50 +10,78 @@ meshsteps:
   z:
     start: 0.3
     factor: 2.0
+    # multiply mesh step between layers
     max: 4.8
 model:
   model_name: with_mine_coarse
   workspace: model
+  # Output subdirectory for model input/output files.
   sim_name: uhelna
+  # Base name used for MODFLOW package/listing files.
   exe_name: mf6
   drain_conductance: 1.0
+  # Drain conductance [m2/day].
   simulation_days: 1.0
   stress_periods_days:
   - 1.0
 materials:
   strict_layer_mapping: false
+  # Enforce strict matching between raster interfaces and declared material layers.
   all:
     horizontal_conductivity: 1.0e-06
+    # Horizontal saturated hydraulic conductivity kh [m/day].
     vertical_conductivity: 1.0e-06
+    # Vertical saturated hydraulic conductivity kv [m/day].
     porosity: 0.3
+    # Effective porosity [-].
     vG_n: 2.0
+    # van Genuchten n shape parameter [-].
     vG_alpha: 1.0
+    # van Genuchten alpha parameter [1/m].
     recharge_rate: 0.0001
+    # Areal recharge rate at top boundary [m/day].
     vks: 1.0e-06
+    # Vertical saturated hydraulic conductivity for UZF [m/day].
     thtr: 0.05
+    # Residual volumetric water content theta_r [-].
     thts: 0.3
+    # Saturated volumetric water content theta_s [-]; usually close to porosity but may be lower due to entrapped air.
     thti: 0.2
+    # Initial volumetric water content theta_i [-]; must lie between thtr and thts.
     eps: 3.5
+    # UZF/Brooks-Corey exponent epsilon [-].
     surfdep: 0.0
+    # UZF surface depression depth [m].
     pet: 0.0
+    # Potential evapotranspiration rate [m/day].
     extdp: 1.0
+    # ET extinction depth [m].
     extwc: 0.1
+    # ET extinction water content [-].
     ha: 0.0
+    # ET air-entry pressure head parameter [m].
     hroot: 0.0
+    # ET root-pressure head parameter [m].
     rootact: 0.0
+    # ET root activity coefficient [-].
     ntrailwaves: 7
+    # Number of trailing waves in UZF solution (integer).
     nwavesets: 40
+    # Number of wave sets in UZF solution (integer).
     simulate_et: false
+    # Enable evapotranspiration simulation in UZF.
     unsat_etwc: false
+    # Use water-content based ET function (UNSAT_ETWC option).
     unsat_etae: false
+    # Use capillary-pressure based ET function (UNSAT_ETAE option).
     simulate_gwseep: true
-    hydraulic_conductivity: 1.0e-06
+    # Enable groundwater seepage to land surface in UZF.
     specific_yield: 0.1
+    # Specific yield Sy [-].
     specific_storage: 1.0e-05
+    # Specific storage Ss [1/m].
     initial_head_offset: -1.0
-    perlen: 1.0
-    nstp: 1
-    tsmult: 1.0
+    # Initial head offset added to layer tops [m].
   sets:
     sands:
       horizontal_conductivity: 1.0e-05
@@ -93,14 +122,6 @@ materials:
     set: clays
   - name: sand_4
     top_interface: Q3_base
-    bottom_interface: Q4_top
-    set: sands
-  - name: clay_4
-    top_interface: Q4_top
-    bottom_interface: Q4_base
-    set: clays
-  - name: sand_5
-    top_interface: Q4_base
     bottom_interface: Q5_top
     set: sands
   - name: clay_5
@@ -132,9 +153,13 @@ paraview:
     - velocity_magnitude
     - active
   include_inactive: false
+  # Include into plots.
   z_scale: 1.0
+  # output Z scaling
   groundwater_surface_timeseries: true
+  # Export groundwater-surface time series for all saved times.
   groundwater_surface_timeseries_name: uhelna_gw_surface_timeseries.pvd
+  # File name of ParaView groundwater-surface time-series index.
 plots:
   xsection_points: []
   xsection_wells:
@@ -142,16 +167,16 @@ plots:
   enabled: true
   output_dir: plots
   dpi: 150
-  active_mask_name: grid_active_mask.png
-  idomain_name: idomain_top.png
-  head_name: head_groundplan.png
-  groundwater_surface_name: groundwater_surface.png
-  groundwater_change_name: groundwater_change.png
-  hydrograph_name: groundwater_hydrograph.png
-  xsection_x_name: materials_x_section.png
-  xsection_y_name: materials_y_section.png
-  xsection_x_times_name: groundwater_x_section_times.png
-  xsection_y_times_name: groundwater_y_section_times.png
+  active_mask_name: grid_active_mask.pdf
+  idomain_name: idomain_top.pdf
+  head_name: head_groundplan.pdf
+  groundwater_surface_name: groundwater_surface.pdf
+  groundwater_change_name: groundwater_change.pdf
+  hydrograph_name: groundwater_hydrograph.pdf
+  xsection_x_name: materials_x_section.pdf
+  xsection_y_name: materials_y_section.pdf
+  xsection_x_times_name: groundwater_x_section_times.pdf
+  xsection_y_times_name: groundwater_y_section_times.pdf
   xsection_depth_window: 40.0
 
 wells:

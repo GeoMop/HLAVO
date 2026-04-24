@@ -180,12 +180,9 @@ paraview:
   # File name of ParaView groundwater-surface time-series index.
   
 plots:
+  
   xsection_wells:
     - pumping_well_1
-  xsection_points:
-    - x_index: 60
-      y_index: 59
-  # Cross-sections at the pumping well grid cell (from run log mapping row=59, col=60).
   enabled: true
   output_dir: plots
   dpi: 150
@@ -210,4 +207,4 @@ wells:
     intervals:
       - top_depth: 10.0
         bottom_depth: 30.0
-        rate_m3_per_day: -0.1
+        rate_m3_per_day: -0.005
