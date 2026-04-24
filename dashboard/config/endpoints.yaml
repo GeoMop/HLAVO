@@ -10,7 +10,7 @@ profiles:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/profiles.zarr"
-    schema_path: "config/profile_schema.yaml"
+    schema_path: "schemas/profile_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -66,7 +66,7 @@ wells:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/wells.zarr"
-    schema_path: "config/wells_schema.yaml"
+    schema_path: "schemas/wells_schema.yaml"
 
   variable_map:
     Uhelna:
