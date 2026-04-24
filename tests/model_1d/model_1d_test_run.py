@@ -2,7 +2,6 @@ import os
 import numpy as np
 import xarray as xr
 import pytest
-from datetime import datetime
 from pathlib import Path
 
 #from dask.distributed import Client, LocalCluster
@@ -27,25 +26,20 @@ def build_model():
     """
     Shared factory usable by pytest fixtures AND __main__.
     """
-
-    work_dir = Path(os.getcwd())
-    config_file = work_dir / '../../runs/composed_1d_only/composed_1d_part_config_test.yaml'
+    work_dir = Path(__file__).parent
+    config_file = work_dir / 'composed_1d_part_config_test.yaml'
     composed_model_config_path = Path(config_file).resolve()
-    config_dir = composed_model_config_path.parent
 
     composed_model_config = load_config(composed_model_config_path)
-
-    composed_model_config = relative_to_absolute_paths(composed_model_config, config_dir)
-
-    start_datetime = datetime.fromisoformat(composed_model_config["start_datetime"])
-    end_datetime = datetime.fromisoformat(composed_model_config["end_datetime"])
+    
+    composed_model_config = relative_to_absolute_paths(composed_model_config, work_dir)
 
     site_id = 1
     seed = composed_model_config["seed"]
 
     kalman_config_path = composed_model_config["1d_models"][0]
     model_1d_config = load_config(Path(kalman_config_path).resolve())
-    model_1d_config = relative_to_absolute_paths(model_1d_config, config_dir)
+    model_1d_config = relative_to_absolute_paths(model_1d_config, work_dir)
 
     model = Model1D(
         site_id=site_id,
@@ -62,7 +56,7 @@ def build_model():
 # Pytest fixtures
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def model(dask_client):
+def model():
     return build_model()
 
 

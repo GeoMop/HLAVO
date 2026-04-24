@@ -1,0 +1,174 @@
+seed: 123456
+start_datetime: "2025-03-06T00:00:00"
+end_datetime: "2025-03-09T00:00:00"
+#model_3d:
+#  common:
+#    class_name: "Model3D"
+#    name: "uhelna"
+#    total_time_days: 15.0
+#    # Total simulated time in days. If omitted, a single step is run.
+#    executable: "mf6"
+#    # executable to run for the 3d model - some version of modflow
+#
+#  geometry:
+#    qgis_project_path: ../../hlavo/deep_model/GIS/uhelna_all.qgs
+#    boundary_layer_name: domain_around_mine
+#    raster_group_name: HG model layers
+#    meshsteps:
+#      x: 40.0
+#      y: 40.0
+#      z: 4.0
+#
+#  materials:
+#    all:
+#      # AGENT: document each parameter here (a demo file)
+#      # Comment quantity name and unit according to modflow6 documentation.
+#      # Put parameters that does not apply to volumetric materials out of the all section
+#      # logic should be that what is in all is applied to all materials as common/default value
+#      horizontal_conductivity: 1.0e-06
+#      vertical_conductivity: 1.0e-06
+#      porosity: 0.3
+#      vG_n: 2.0
+#      vG_alpha: 1.0
+#      recharge_rate: 0.0001
+#      vks: 1.0e-06
+#      thtr: 0.05
+#      thts: 0.3
+#      thti: 0.2
+#      eps: 3.5
+#      surfdep: 0.0
+#      pet: 0.0
+#      extdp: 1.0
+#      extwc: 0.1
+#      ha: 0.0
+#      hroot: 0.0
+#      rootact: 0.0
+#      ntrailwaves: 7
+#      nwavesets: 40
+#      simulate_et: false
+#      unsat_etwc: false
+#      unsat_etae: false
+#      simulate_gwseep: true
+#      hydraulic_conductivity: 1.0e-06
+#      specific_yield: 0.1
+#      specific_storage: 1.0e-05
+#      initial_head_offset: -1.0
+#      perlen: 1.0
+#      nstp: 1
+#      tsmult: 1.0
+#    sand:
+#      horizontal_conductivity: 1.0e-05
+#      vertical_conductivity: 1.0e-05
+#    clay:
+#      horizontal_conductivity: 1.0e-07
+#      vertical_conductivity: 1.0e-07
+#
+#  plots:
+#    enabled: true
+#    dpi: 150
+#    xsection_depth_window: 40.0
+
+model_1d:
+  class_name: "Model1DMock"
+
+#  sites:
+#    - longitude: 14.8800
+#      latitude: 50.8600
+#    - longitude: 14.9000
+#      latitude: 50.8800
+#    - longitude: 14.9200
+#      latitude: 50.8900
+  model_config:
+    model_class_name: "ToyProblem"
+    use_clm: True
+    clm_files:
+        drv_vegm_file: drv_vegm.dat  # relative path to composed config file
+        drv_vegp_file: drv_vegm.dat
+    init_pressure: [-40, -100] #[-0.1, -4]   # bottom, top ; [temporary solution]
+    static_params:
+      ComputationalGrid:
+        "Lower.Z": -135
+        "DZ": 9 #0.2
+        "NZ": 15  #, 0] # Number of grid cells in z-direction
+    params:
+        vG_K_s: "Geom.domain.Perm.Value"
+        vG_n:  ["Geom.domain.Saturation.N", "Geom.domain.RelPerm.N"]
+        vG_Th_s: "Geom.domain.Saturation.SSat"
+        vG_Th_r: "Geom.domain.Saturation.SRes"
+        vG_alpha: ["Geom.domain.Saturation.Alpha", "Geom.domain.RelPerm.Alpha"]
+  measurements_config:
+    measurements_scheme_file: ../../hlavo/ingress/moist_profile/profile_schema.yaml
+    meteo_scheme_file: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
+  kalman_config:
+    model_time_step: 2.5e-2
+    state_params:
+      pressure_field:
+        mean_linear:
+          top: -40
+          bottom: -100  # top, bottom
+        cov_exponential:
+          std: 2.0
+        rel_std_Q: 0.007
+        ref:
+        # ref: TODO: make ref accept mean clases
+        # correlation_length: 0.5
+      vG_K_s:
+        ref: 0.0737
+        #mean_std: [12.833, 0.01]
+        mean_std: [-2.60775248, 0.01] #[0.0737, 0.001] # transformed mean:
+        rel_std_Q: 0.00028 #0.01
+        transform: lognormal             # transform to normal distribution
+        #conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #vG_n:
+      #  ref: 1.89
+      #  mean_std: [1.89, 0.05]
+      #  mean_std: [-0.116533816, 0.005]
+      #  rel_std_Q: 0.081 #0.005 #0.007273926
+      #  transform: log_minus_one           # transform to normal distribution
+      #  conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #vG_Th_s:
+      #  ref: 0.41
+      #  mean_std: [-0.363, 0.01] #[0.41, 0.01]
+      #  rel_std_Q: 0.001 #0.000243902
+      #  transform: logit
+      #vG_Th_r:
+      #  ref: 0.065
+      #  mean_std: [-2.667, 0.01] #[0.065, 0.01]
+      #  rel_std_Q: 0.0001 #0.001538462
+      #  transform: logit
+      #vG_alpha:
+      #  ref: 0.75
+      #  mean_std: [-0.287682072, 0.001]
+      #  rel_std_Q: 0.0026 # 0.001 #0.000133333
+      #  transform: lognormal           # transform to normal distribution
+      #  conf_interval: [0.0001, 0.01]   # implicit 0.95 confidence interval
+      #Th_s:
+      #  transform: none
+      #
+      #  conf_interval: [0.35, 0.41, 0.9]  # explicit 0.9 confidence interval
+    train_measurements:
+      moisture:
+        z_pos: [-10, -20, -60]  #[-10, -20, -30, -40, -50, -60, -70, -80, -90, -100, 110, -120, -130, -140, -150] ##[-0.5, -2.5]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+      #pressure:
+      #  z_pos: [-15]
+      #  noise_level: 0.1
+      #  noise_distr_type: uniform
+      #velocity:
+      #  z_pos: [0.75]
+      #  noise_level: 0.1
+      #  noise_distr_type: uniform
+    test_measurements:
+      moisture:
+        z_pos: [-40]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+    noise_distr_type: gaussian 
+    pressure_saturation_data_noise_level: 0.01   # init state noise
+    init_cov_P_multiplicator: 1
+    sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}
+    parallel_sigmas: false
+  postprocess:
+    show: True
+
