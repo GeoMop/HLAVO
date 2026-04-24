@@ -1,2 +1,2 @@
 #!/bin/sh
-../../dev/hlavo run python composed_model_mock.py ../../runs/composed_mock ../../runs/composed_mock/config.yaml
+../../dev/hlavo run python -m hlavo.main simulate ../../runs/composed_mock/config.yaml -w ../../runs/composed_mock

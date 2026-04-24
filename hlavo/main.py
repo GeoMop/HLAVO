@@ -6,7 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from hlavo.composed.composed_model_mock import run_simulation
+from hlavo.composed.model_composed import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
 
 LOG = logging.getLogger(__name__)

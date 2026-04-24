@@ -1,7 +1,9 @@
 # DRAFT
 """Exports for composed."""
 
-from .composed_model_mock import Model1D, Model1DMock, Model3D, setup_models
+from .model_1d import Model1D, Model1DMock
+from .model_3d import Model3D
+from .model_composed import setup_models
 from .run_map import main
 
 __all__ = [
