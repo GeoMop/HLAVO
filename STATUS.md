@@ -1,5 +1,26 @@
 # Status summary
 
+`2026-04-24`: `d663eee` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
+
+## Goal
+Exercise the composed runtime through real Dask queues using config-selected mocks only, and leave `setup_models()` testable without monkeypatching internal runtime objects.
+
+## Changes summary
+- `HEAD` is now `d663eee` (`Test full mock model_composed.`).
+- Committed: added [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) and [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml).
+- The composed test now calls [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py) `setup_models()` directly, uses a real `LocalCluster` / `Client` and real Dask `Queue`s, and relies on config-selected mocks only (`KalmanMock` and `Model3DBackendMock`) rather than monkeypatching `Model3DConfig`, `Model3D`, or the 1D worker entrypoint.
+- Relevant tracked files are currently clean; the worktree still contains many unrelated untracked files outside this task.
+
+## Verified
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS="composed/test_composed.py" bash ./run`
+  result: `1 passed in 2.50s`
+- `git log -1 --stat --summary --format=fuller`
+  confirmed `d663eee` adds only the two composed test files.
+
+## Open items
+- The test covers real Dask queue orchestration with config-selected mocks, but it does not exercise the real 3D backend or a real one-step Kalman coupling API.
+- The repository remains dirty because of unrelated untracked files; none of them were normalized here.
+
 `2026-04-24`: `82c5c79` @ `main` by `Codex`
 
 ## Goal
