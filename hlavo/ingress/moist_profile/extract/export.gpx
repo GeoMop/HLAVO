@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="https://mapy.com/">
+	<wpt lat="50.863594" lon="14.889818">
+		<ele>303.314697</ele>
+		<name>U01</name>
+	</wpt>
+	<wpt lat="50.863270" lon="14.889037">
+		<ele>310.203979</ele>
+		<name>U02</name>
+	</wpt>
+	<wpt lat="50.863327" lon="14.889308">
+		<ele>310.079132</ele>
+		<name>U03</name>
+	</wpt>
+	<wpt lat="50.863552" lon="14.889700">
+		<ele>304.067719</ele>
+		<name>U04</name>
+	</wpt>
+	<wpt lat="50.863518" lon="14.889911">
+		<ele>305.207245</ele>
+		<name>meteo</name>
+	</wpt>
+	<wpt lat="50.874470" lon="14.882801">
+		<ele>288.870544</ele>
+		<name>U11</name>
+	</wpt>
+	<wpt lat="50.864643" lon="14.892238">
+		<ele>308.385925</ele>
+		<name>U12</name>
+	</wpt>
+	<wpt lat="50.862430" lon="14.885950">
+		<ele>307.571106</ele>
+		<name>U13</name>
+	</wpt>
+	<wpt lat="50.870197" lon="14.887641">
+		<ele>285.798340</ele>
+		<name>U14</name>
+	</wpt>
+	<wpt lat="50.874540" lon="14.882645">
+		<ele>288.848724</ele>
+		<name>U15</name>
+	</wpt>
+	<wpt lat="50.874584" lon="14.882569">
+		<ele>288.675171</ele>
+		<name>U16</name>
+	</wpt>
+	<wpt lat="50.870440" lon="14.879643">
+		<ele>295.799988</ele>
+		<name>U17</name>
+	</wpt>
+	<wpt lat="50.873090" lon="14.872333">
+		<ele>290.000000</ele>
+		<name>U18</name>
+	</wpt>
+	<wpt lat="50.855137" lon="14.872189">
+		<ele>319.339111</ele>
+		<name>U19</name>
+	</wpt>
+	<wpt lat="50.853447" lon="14.883270">
+		<ele>314.528809</ele>
+		<name>U20</name>
+	</wpt>
+	<wpt lat="50.866238" lon="14.869702">
+		<ele>276.782898</ele>
+		<name>U21</name>
+	</wpt>
+	<wpt lat="50.870125" lon="14.866122">
+		<ele>279.085022</ele>
+		<name>U22</name>
+	</wpt>
+	<wpt lat="50.869590" lon="14.909361">
+		<ele>322.197174</ele>
+		<name>U23</name>
+	</wpt>
+	<wpt lat="50.859840" lon="14.900048">
+		<ele>327.350189</ele>
+		<name>U24</name>
+	</wpt>
+	<wpt lat="50.863120" lon="14.895802">
+		<ele>320.959991</ele>
+		<name>U25</name>
+	</wpt>
+	<wpt lat="50.868680" lon="14.893915">
+		<ele>312.968201</ele>
+		<name>U26</name>
+	</wpt>
+	<wpt lat="50.864180" lon="14.911742">
+		<ele>326.799988</ele>
+		<name>U27</name>
+	</wpt>
+	<wpt lat="50.868100" lon="14.899025">
+		<ele>315.211823</ele>
+		<name>U28</name>
+	</wpt>
+	<wpt lat="50.855915" lon="14.876285">
+		<ele>323.200043</ele>
+		<name>U29</name>
+	</wpt>
+	<wpt lat="50.878292" lon="14.889299">
+		<ele>286.440582</ele>
+		<name>U31</name>
+	</wpt>
+	<wpt lat="50.866100" lon="14.894111">
+		<ele>311.726807</ele>
+		<name>U32</name>
+	</wpt>
+	<wpt lat="50.874670" lon="14.894487">
+		<ele>299.556671</ele>
+		<name>U33</name>
+	</wpt>
+	<wpt lat="50.872150" lon="14.902666">
+		<ele>307.777496</ele>
+		<name>U34</name>
+	</wpt>
+	<wpt lat="50.871750" lon="14.912464">
+		<ele>318.799988</ele>
+		<name>4a</name>
+	</wpt>
+	<wpt lat="50.870320" lon="14.888321">
+		<ele>286.041992</ele>
+		<name>7b</name>
+	</wpt>
+</gpx>
+

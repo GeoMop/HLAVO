@@ -1,1 +1,1 @@
-from .hlavo_extract import normalize_yrno_forecast
+from .profile_extract import extract_df
