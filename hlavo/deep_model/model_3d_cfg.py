@@ -76,7 +76,7 @@ def resolve_model_relative_path(workspace: Path, path: Path) -> Path:
 
 @attrs.define(frozen=True)
 class Model3DCommonConfig:
-    class_name: str
+    backend_class_name: str
     model_name: str
     sim_name: str
     exe_name: str
@@ -94,7 +94,7 @@ class Model3DCommonConfig:
         model_name = MODEL_DIRNAME
         sim_name = str(raw.get("sim_name", raw.get("name", "uhelna")))
         exe_name = str(raw.get("exe_name", raw.get("executable", "mf6")))
-        class_name = str(raw.get("class_name", "Model3D"))
+        backend_class_name = str(raw.get("backend_class_name", raw.get("class_name", "Model3DBackend")))
         recharge_rate = to_float(raw, "recharge_rate", 1.0e-4)
 
         recharge_series_raw = raw.get("recharge_series_m_per_day")
@@ -141,7 +141,7 @@ class Model3DCommonConfig:
             )
 
         return cls(
-            class_name=class_name,
+            backend_class_name=backend_class_name,
             model_name=model_name,
             sim_name=sim_name,
             exe_name=exe_name,

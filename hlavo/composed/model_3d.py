@@ -8,6 +8,7 @@ from dask.distributed import Queue
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 from hlavo.deep_model.coupled_runtime import CoupledModel3DConfig as Model3DConfig, Model3DBackend
+from hlavo.misc.class_resolve import resolve_named_class
 
 LOG = logging.getLogger(__name__)
 TIME_ORIGIN = np.datetime64("2000-01-01T00:00:00", "ms")
@@ -24,7 +25,26 @@ def datetime64_to_model_time_days(date_time: np.datetime64) -> float:
     return float(delta_ms) / MILLISECONDS_PER_DAY
 
 
-Model3DBackendMock = Model3DBackend
+class Model3DBackendMock:
+    def __init__(self, model_3d_cfg: Model3DConfig, locations_1d) -> None:
+        self.cfg = model_3d_cfg
+        self.locations_1d = locations_1d
+        self._heads = np.zeros(len(locations_1d), dtype=float)
+
+    def build_cell_assignment(self) -> None:
+        return None
+
+    def initial_heads_to_1d(self) -> np.ndarray:
+        return self._heads.copy()
+
+    def choose_dt(self, current_time: float, t_end: float) -> float:
+        remaining = t_end - current_time
+        return max(min(self.cfg.time_step_days, remaining), 0.0)
+
+    def model_step(self, dt: float, contributions) -> np.ndarray:
+        _ = dt
+        self._heads = np.asarray(contributions, dtype=float)
+        return self._heads.copy()
 
 
 class Model3D:
@@ -33,7 +53,11 @@ class Model3D:
         self.cfg = model_3d_cfg
         self.locations_1d = locations_1d
         self.time: float = float(initial_time)
-        self.backend = Model3DBackendMock(model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
+        backend_class = resolve_named_class(
+            self.cfg.backend_class_name,
+            ("hlavo.composed.model_3d", "hlavo.deep_model.coupled_runtime"),
+        )
+        self.backend = backend_class(model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
 
     def resolve_t_end(self) -> float:
         return self.cfg.common.resolve_t_end()

@@ -53,8 +53,8 @@ class CoupledModel3DConfig:
         return self.common.exe_name
 
     @property
-    def model_class_name(self) -> str:
-        return self.common.class_name
+    def backend_class_name(self) -> str:
+        return self.common.backend_class_name
 
     @property
     def time_step_days(self) -> float:

@@ -1,5 +1,36 @@
 # Status summary
 
+`2026-04-24`: `82c5c79` @ `main` by `Codex`
+
+## Goal
+Split the composed runtime into dedicated modules, remove direct 1D/3D model class selection from testcase configs, simplify `Model1D`, and verify the `runs/composed_3D_only` simulate path through `runs/run_0.sh`.
+
+## Changes summary
+- Staged, not committed: added [hlavo/composed/model_1d.py](/home/hlavo/workspace/hlavo/composed/model_1d.py), [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py), and [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py); [hlavo/composed/composed_model_mock.py](/home/hlavo/workspace/hlavo/composed/composed_model_mock.py) has been removed, and [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py), [hlavo/composed/__init__.py](/home/hlavo/workspace/hlavo/composed/__init__.py), and [hlavo/composed/run_composed.sh](/home/hlavo/workspace/hlavo/composed/run_composed.sh) now point to the split modules.
+- Staged, not committed: [hlavo/composed/model_1d.py](/home/hlavo/workspace/hlavo/composed/model_1d.py) no longer carries `Model1DMock`; `Model1D` now only handles queue plumbing and Kalman selection, resolves `model_1d.kalman_class_name` via `hlavo.misc.class_resolve.resolve_named_class()`, and implements a local `KalmanMock` with a deterministic single-step fixed-velocity API.
+- Staged, not committed: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now resolves the backend class from `backend_class_name`, and includes a minimal local `Model3DBackendMock`.
+- Staged, not committed: [hlavo/deep_model/model_3d_cfg.py](/home/hlavo/workspace/hlavo/deep_model/model_3d_cfg.py) and [hlavo/deep_model/coupled_runtime.py](/home/hlavo/workspace/hlavo/deep_model/coupled_runtime.py) use `backend_class_name` with compatibility fallback from legacy `class_name`.
+- Staged, not committed: [hlavo/kalman/__init__.py](/home/hlavo/workspace/hlavo/kalman/__init__.py) now exports `Kalman`, `KalmanFilter`, `KalmanFilterMock`, and `KalmanMock` names for resolver lookup.
+- Staged, not committed: [runs/composed_3D_only/config.yaml](/home/hlavo/workspace/runs/composed_3D_only/config.yaml) no longer contains `model_1d.class_name` or `model_3d.common.class_name`; it now uses `model_1d.kalman_class_name: "KalmanMock"` and `model_1d.mock_velocity: 3.0e-4`.
+
+## Verified
+- `python -m py_compile hlavo/main.py hlavo/composed/__init__.py hlavo/composed/model_1d.py hlavo/composed/model_3d.py hlavo/composed/model_composed.py hlavo/kalman/__init__.py hlavo/deep_model/model_3d_cfg.py hlavo/deep_model/coupled_runtime.py`
+  compile checks passed.
+- `bash runs/run_0.sh simulate runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  first failed at import time because `hlavo.composed.composed_model_mock` had been removed before entrypoints were rewired.
+- `bash runs/run_0.sh simulate runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  with the compatibility shim temporarily restored, the split runtime completed to `t=15.0`.
+- `bash runs/run_0.sh simulate runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  with `KalmanMock` and `mock_velocity: 0.0`, MODFLOW failed on the first step with `Simulation convergence failure` and exit code `1`.
+- `bash runs/run_0.sh simulate runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  with `KalmanMock` and `mock_velocity: 3.0e-4`, the testcase completed to `t=15.0`; final 1D worker results were `1D model 0 done`, `1D model 1 done`, and `1D model 2 done`.
+- `bash runs/run_0.sh simulate runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  rerun after removing both `model_1d.class_name` and `model_3d.common.class_name` from the testcase config also completed to `t=15.0`.
+
+## Open items
+- If `model_1d.kalman_class_name` is set to `Kalman` / `KalmanFilter`, `Model1D.step()` currently falls back to pressure-head passthrough because a real one-step Kalman coupling API is not wired yet.
+- The 3D testcase still logs sanitization of many invalid heads in [hlavo/deep_model/coupled_runtime.py](/home/hlavo/workspace/hlavo/deep_model/coupled_runtime.py) (`759607` cells each step); this was observed but not debugged here.
+
 `2026-04-21`: `347e41a` @ `Ot_modflow` by `Jan Brezina <jan.brezina@tul.cz>`
 
 ## Goal

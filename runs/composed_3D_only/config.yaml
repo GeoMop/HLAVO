@@ -3,8 +3,8 @@ start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
   common:
-    class_name: "Model3D"
     name: "uhelna"
+    backend_class_name: "Model3DBackend"
     total_time_days: 15.0
     # Total simulated time in days. If omitted, a single step is run.
     executable: "mf6"
@@ -69,7 +69,8 @@ model_3d:
     xsection_depth_window: 40.0
 
 model_1d:
-  class_name: "Model1DMock"
+  kalman_class_name: "KalmanMock"
+  mock_velocity: 3.0e-4
 
   sites:
     - longitude: 14.8800
@@ -116,7 +117,7 @@ model_1d:
         - 0.35
         - 6
   measurements_config:
-    # TODO after merge: make optional at least ofr Model1DMock
+    # TODO after merge: make optional at least for Model1D with a Kalman mock
     measurements_file: ../column/hlavo_lab_merged_data_2025_06_12_state_smoothed_subset.csv
     measurements_time_step: 5
     probe: "pr2"

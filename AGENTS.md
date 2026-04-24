@@ -52,6 +52,7 @@ GIS sources.
 - NEVER remove, rewrite, or move an `AGENT:` comment unless you implement that instruction in the same change
 - if you make only a local fix around an `AGENT:` comment, leave the comment untouched
 - if an `AGENT:` instruction looks outdated or wrong, ask before removing it
+- never stage or commit changes yourself
 - Always review your changes before finishing for human review.
 
 ## Status tracking
