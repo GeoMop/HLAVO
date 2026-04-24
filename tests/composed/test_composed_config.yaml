@@ -1,0 +1,14 @@
+model_3d:
+  common:
+    name: "uhelna"
+    backend_class_name: "Model3DBackendMock"
+    total_time_days: 1.0
+
+model_1d:
+  kalman_class_name: "KalmanMock"
+  mock_velocity: 3.0e-4
+  sites:
+    - longitude: 14.88
+      latitude: 50.86
+    - longitude: 14.90
+      latitude: 50.88
