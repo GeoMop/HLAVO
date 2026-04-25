@@ -22,6 +22,12 @@ def csv_output(csv_file, df):
     df.to_csv(path_or_buf=full_path, header=True, mode='w')
 
 
+def _to_pandas(df):
+    if hasattr(df, "to_pandas"):
+        return df.to_pandas()
+    return df
+
+
 def _sections_with_draw_well(df_sections):
     draw_well_id = "Uh-draw"
     assert (df_sections["well_id"] == draw_well_id).any()
@@ -102,6 +108,7 @@ def test_borehole_water_level(tmp_path):
 
     print("--------------------")
     df = water_level_node.read_df( var_names=["well_id", "well_in_section_file", "date_time", "water_depth", "water_level"] )
+    df = _to_pandas(df)
     print(df)
     assert not df.empty
     assert df["water_level"].notna().any()
@@ -116,6 +123,7 @@ def test_borehole_water_level(tmp_path):
     df_draw = water_draw_node.read_df(
         var_names=["date", "cum_draw", "well_id", "longitude", "latitude"]
     )
+    df_draw = _to_pandas(df_draw)
     assert not df_draw.empty
     assert (df_draw["well_id"] == "Uh-draw").all()
     assert df_draw["cum_draw"].notna().any()
