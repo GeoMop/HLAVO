@@ -29,7 +29,7 @@ profiles:
     map:
       center_lat: 50.8645
       center_lon: 14.892
-      zoom: 14
+      zoom: 10
       title: "Uhelná site overview."
       point_size: 6
       alpha: 0.8
@@ -99,7 +99,7 @@ wells:
     map:
       center_lat: 50.869878
       center_lon: 14.866236
-      zoom: 14
+      zoom: 10
       title: "Geographic Data View"
       point_size: 10
       alpha: 0.8
