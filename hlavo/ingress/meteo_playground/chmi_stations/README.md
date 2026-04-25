@@ -1,4 +1,7 @@
-# CHMI meteostations metadata and scripts 
+# CHMI Meteostations Metadata and Scripts
+
+This package owns `chmi_stations_schema.yaml`, exposed in the project schema
+index as `hlavo/schemas/chmi_stations_schema.yaml`.
 
 ## CHMI metadata
 
@@ -7,23 +10,31 @@
 - `meta3.json` - meteo state abreviations
 - `meta4.json` - data quality states
 
-## metadata processing scripts
-- `meta_description.py` - produce `quantity_definitions.json`
-- `meta_processing.py` - list nearby stations
+## Schema Update Procedure
 
-## data download
+1. Run `meta_description.py` when CHMI quantity metadata changes; it regenerates
+   `quantity_definitions.json`.
+2. Run `meta_processing.py` when station metadata or the selected domain changes;
+   it regenerates nearby-station CSV outputs.
+3. Run `data_scrapper.py` to download CHMI station data and Open-Meteo archive
+   data into local cache directories.
+4. Run `data_processing.py` to update zarr-fuse nodes in
+   `chmi_stations_schema.yaml` and rebuild the ParFlow/CLM forcing dataset.
 
-- `data_scrapper.py` - download CHMI data and Open Meteo data
+## Data Download
 
-creates directories:
+`data_scrapper.py` creates or updates:
 
-    chmi_stations.zarr
-    open_meteo_data_hourly
-    stations_data_daily
-    stations_data_hourly
+- `open_meteo_data_hourly`
+- `stations_data_daily`
+- `stations_data_hourly`
 
-## processing results
+`data_processing.py` writes `chmi_stations.zarr` unless configured otherwise in
+`config.py`.
+
+## Processing Results
+
 - `stations_nearby.csv` - automated stations near the Uhelna model + quantities they produce
 - `stations_nearby_active.csv` - ... active nearby stations 
 - `quantity_definitions.json` - dict of quantity_short -> {description: ..., unit: ... } mapping
-- `data_processing.py` - digest downloaded data into zarr_fuse storage and prepares dataset for Parflow/CLM
+- `data_processing.py` - digests downloaded data into zarr-fuse storage and prepares dataset for ParFlow/CLM

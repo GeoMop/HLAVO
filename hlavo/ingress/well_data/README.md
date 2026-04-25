@@ -1,26 +1,47 @@
 # Water table and water draw measurements
 
-## How to run well data procesing?
+This package updates store of  `wells_schema.yaml`, exposed in the project schema index as
+`hlavo/schemas/wells_schema.yaml`.
+
+## Schema Update Procedure
+
+1. Pull or refresh the source XLSX files with DVC.
+2. Run the processing script from this directory through the project container
+   wrapper:
 
 ```commandline
-../../../dev/hlavo run python well_data_process.py
+python well_data_process.py
 ```
 
-To also generate a single multi-page PDF with water draw first and then water
-levels after writing to zarr, run:
+3. To also generate a single multi-page PDF with water draw first and then
+   water levels after writing to zarr, run:
 
 ```commandline
-../../../dev/hlavo run python well_data_process.py plot
+python well_data_process.py plot
 ```
 
-It extracts data rom the Excel files and store them according to the `wells_schema.yaml` into zarr_fuse storage. 
-You have to update the Excel files using `dvc pull` before running the script. 
-`dev/hlavo run ...` run the cript in the docker container.
-As the default S3 zarr-fuse store specified in the schema requires credentials, 
-you have to set up the `.secrets_env` (see the main README.md) with the credentials for the S3 storage.
+`well_data_process.py` reads the Excel files, removes the previous target
+zarr-fuse store, writes `Uhelna/water_draw`, writes `Uhelna/water_levels`, and
+optionally plots the written data. The default S3 zarr-fuse store specified in
+the schema requires credentials in `.secrets_env`; see the main README.md.
 
 ## Tests
-`tests/ingress/well_data/test_well_data.py.
+
+Use the project test wrapper from `tests/`:
+
+```bash
+PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH \
+PYTEST_ADDOPTS="ingress/well_data/test_well_data.py" \
+bash ./run
+```
+
+For a quick local-store smoke test, run the two lighter tests:
+
+```bash
+PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH \
+PYTEST_ADDOPTS="ingress/well_data/test_well_data.py::test_borehole_sections ingress/well_data/test_well_data.py::test_borehole_draw" \
+bash ./run
+```
 
 ## File overview
 - `1.CS_Zpráva o vlivu na životní prostředí.pdf` - polská zpráva EIA o rozšíření těžby v dole Turow, obsahuje i predikce jejich HG modelu
@@ -30,8 +51,6 @@ you have to set up the `.secrets_env` (see the main README.md) with the credenti
 - 25_09_27_vrty_staré_vše.xlsx
 - struktura_dat_Odberu.xls            - Plné popisy sloupců z tabulky: 25_09_27_Odbery_Uhelna.xlsx
 - Vrty_souradnice_perforace.xlsx      - Přehled poloh zhlaví X,Y,Z a pažení vrtů
-
-TODO: Python skript pro čtení tabulek a jejich případné ruční úpravy
 
 - výsledný formát odběry: 
   pandas DataFrame se sloupci: 'date' (type: datetime64[day]), 'cum_draw' (type: float, unit:m3)

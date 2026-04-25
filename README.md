@@ -19,7 +19,43 @@ The HLAVO system deployment needs to setup three kind of access:
    AGNET: review github actions and which github secrets they use, refer to general zarr_fuse doc for ingress and dashboard.
 
 ## Data ingress
-AGENT: overview of schemas and how they are updated through the ingress scripts and service.
+HLAVO zarr-fuse schemas are indexed in `hlavo/schemas` as symlinks to the
+ingress package that owns each dataset. The update procedures are:
+
+- `hlavo/schemas/profile_schema.yaml` -> `hlavo/ingress/moist_profile/profile_schema.yaml`
+  - Owned by the moisture profile pipeline.
+  - Refresh raw DataFlow exports with `hlavo/ingress/moist_profile/dataflow_grab.py`.
+  - Update site metadata CSV files in `hlavo/ingress/moist_profile/extract/`
+    from the project spreadsheet; use `gpx2csv.py` only to regenerate waypoint
+    CSV support data from `export.gpx`.
+  - Write profiles and lab profile data with
+    `hlavo.ingress.moist_profile.extract.main.run_extract(...)` or the script's
+    `main(source_dir, storage_path)` wrapper.
+
+- `hlavo/schemas/wells_schema.yaml` -> `hlavo/ingress/well_data/wells_schema.yaml`
+  - Owned by the well water-level and draw pipeline.
+  - Pull or update the source XLSX files, then run
+    `cd hlavo/ingress/well_data && ../../../dev/hlavo run python well_data_process.py`.
+  - Add `plot` to the command to also generate the local PDF review output.
+
+- `hlavo/schemas/chmi_stations_schema.yaml` ->
+  `hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml`
+  - Owned by the CHMI station/Open-Meteo processing scripts.
+  - Refresh CHMI metadata outputs with `meta_description.py` and
+    `meta_processing.py` when station or quantity metadata changes.
+  - Download raw CHMI/Open-Meteo data with `data_scrapper.py`.
+  - Update the zarr-fuse nodes and ParFlow/CLM forcing node with
+    `data_processing.py`.
+
+- `hlavo/schemas/hlavo_surface_schema.yaml` ->
+  `hlavo/ingress/scrapper/schemas/hlavo_surface_schema.yaml`
+  - Owned by the automatic ingress service, not by a one-shot local update
+    script.
+  - The service configuration is `hlavo/ingress/scrapper/endpoints_config.yaml`.
+    It connects active endpoint definitions to extractor functions under
+    `hlavo/ingress/scrapper/extract/`.
+  - Current extractors normalize yr.no JSON forecasts and CHMI ALADIN 1 km GRIB
+    files before the ingress worker writes the configured target zarr-fuse node.
 
 
 ## Simulation workflow
@@ -71,4 +107,3 @@ for assimilation of the soil moisture profile measurement.
 ## Deep Vadose Zone model (`deep_model`)
 
 subfolder `GIS` is for various GIS resources.
-
