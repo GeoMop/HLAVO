@@ -6,6 +6,7 @@ Reads all units from given schema, checks validity and prints their names accord
 User can check visually that units are represented as expected.
 Can also print out all available units.
 
-## zarr_fuse_reader.py
+## zf.py
 
-Shortcut script for reading different zarr_fuse storages.
+Lists the real content of HLAVO zarr stores declared in `hlavo/schemas`.
+Supports one optional full-path glob like `wells.zarr/Uhelna/*`.

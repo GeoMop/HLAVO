@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hlavo.composed.model_composed import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
+from hlavo.tools import zf
 
 LOG = logging.getLogger(__name__)
 
@@ -31,6 +32,10 @@ def _build_parser() -> argparse.ArgumentParser:
     simulate_parser = subparsers.add_parser(
         "simulate",
         help="Run the coupled 1D-3D simulation.",
+    )
+    dataset_parser = subparsers.add_parser(
+        "dataset",
+        help="Print overview of all dataset nodes defined by project schemas.",
     )
 
     for subparser in (build_parser, simulate_parser):
@@ -64,10 +69,17 @@ def _run_simulate(*, config_path: Path, workdir: Path) -> int:
     return 0
 
 
+def _run_dataset(argv: list[str]) -> int:
+    return zf.main(argv)
+
+
 def main(argv: list[str] | None = None) -> int:
     _configure_logging()
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args, unknown_args = parser.parse_known_args(argv)
+
+    if args.subcommand == "dataset":
+        return _run_dataset(unknown_args)
 
     config_path = args.config_file.resolve()
     assert config_path.exists(), f"Config file does not exist: {config_path}"

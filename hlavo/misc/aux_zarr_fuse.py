@@ -10,7 +10,9 @@ Auxiliary functions that help opening/reading/writing zarr_fuse storages.
 """
 
 def load_dotenv():
-    dotenv.load_dotenv(root_path / ".env")
+    secrets_path = root_path / ".secrets_env"
+    if secrets_path.exists():
+        dotenv.load_dotenv(secrets_path)
 
 
 def override_local_storage(schema, storage_path: str | Path | None):
@@ -67,4 +69,3 @@ def remove_storage(schema_path: str | Path, storage_path: str | Path = None):
     override_local_storage(schema, storage_path)
     print(f"Removing storage at {schema.ds.ATTRS['STORE_URL']} ...")
     zarr_fuse.remove_store(schema, STORE_URL=storage_path)
-
