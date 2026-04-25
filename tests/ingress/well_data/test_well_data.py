@@ -3,6 +3,7 @@
 # author:   David Flanderka
 
 from pathlib import Path
+
 from hlavo.ingress import well_data
 from hlavo.ingress.well_data import well_data_plot
 
@@ -30,8 +31,6 @@ def _sections_with_draw_well(df_sections):
     assert df_draw_section["latitude"].notna().all()
 
     return df_sections
-
-
 def test_borehole_sections():
     xls_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     sheetname = "List1"
@@ -44,18 +43,19 @@ def test_borehole_sections():
     csv_output(csv_path, excel_df)
 
 
-def test_borehole_draw():
+def test_borehole_draw(tmp_path):
     xls_file = well_data_path / "25_09_27_Odbery_Uhelna.xlsx"
     sheetname = "List1"
     section_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     section_sheetname = "List1"
     csv_path = "./borehole_water_draw_out.csv"
+    store_url = tmp_path / "well_data_store"
 
-    well_data._remove_zarr_store()
+    well_data._remove_zarr_store(STORE_URL=store_url)
     df_sections = _sections_with_draw_well(
         well_data.read_sections(section_file, section_sheetname)
     )
-    excel_df = well_data.read_draw(xls_file, sheetname, df_sections)
+    excel_df = well_data.read_draw(xls_file, sheetname, df_sections, STORE_URL=store_url)
     assert not excel_df.empty
     assert (excel_df["well_id"] == "Uh-draw").all()
     assert excel_df["cum_draw"].notna().any()
@@ -65,7 +65,7 @@ def test_borehole_draw():
     csv_output(csv_file=csv_path, df=excel_df)
     
     
-def test_borehole_water_level():
+def test_borehole_water_level(tmp_path):
     # tests of existing files
     assert (well_data_path / "25_09_27_vrty_III.etapa_vše.xlsx").exists()
     assert (well_data_path / "25_09_27_vrty_nové_vše.xlsx").exists()
@@ -79,15 +79,20 @@ def test_borehole_water_level():
     water_level_files = [well_data_path / "25_09_27_vrty_III.etapa_vše.xlsx",
                          well_data_path / "25_09_27_vrty_nové_vše.xlsx",
                          well_data_path / "25_09_27_vrty_staré_vše.xlsx"]
+    store_url = tmp_path / "well_data_store"
 
-    well_data._remove_zarr_store()
+    well_data._remove_zarr_store(STORE_URL=store_url)
     df_sections = _sections_with_draw_well(well_data.read_sections(section_file, sheetname))
-    well_data.read_draw(draw_file, draw_sheetname, df_sections)
-    final_df = well_data.read_sections_water_levels(df_sections, water_level_files)
+    well_data.read_draw(draw_file, draw_sheetname, df_sections, STORE_URL=store_url)
+    final_df = well_data.read_sections_water_levels(
+        df_sections,
+        water_level_files,
+        STORE_URL=store_url,
+    )
     print(final_df)
 
     # reopen and test data
-    root_node = well_data._open_zarr_schema()
+    root_node = well_data._open_zarr_schema(STORE_URL=store_url)
     water_level_node = root_node['Uhelna']['water_levels']
     print(water_level_node.dataset)
 

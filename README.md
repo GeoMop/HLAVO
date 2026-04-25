@@ -6,15 +6,28 @@
 System for numerical prediction of water table using continuously collected meteorological and 
 soil mosture profile data.
 
+## Get started
+The HLAVO system deployment needs to setup three kind of access:
+
+1. Access to to associated DVC storage with site specific large input files.
+   Follow the instuctions in [DVC usage doc](doc/dvc_usage.md).
+   
+2. Access to zarr_fuse storage, through setting secrets in `.secrets_env`, 
+   see [HLAVO secretes document](https://docs.google.com/document/d/1uNnEJvaM2AmjSlnt9kfAbJh9ZcPZBLFXIjh6WPCNdOg/edit?usp=sharing)
+
+3. Deployment of active ingress and dashboard services. Done through github actions 
+   AGNET: review github actions and which github secrets they use, refer to general zarr_fuse doc for ingress and dashboard.
+
+## Data ingress
+AGENT: overview of schemas and how they are updated through the ingress scripts and service.
 
 
+## Simulation workflow
+TBD.
 
 ---
-# Developers corner
 
-## project HLVO secrets
-Create the file `.secrets_env` in the repository root with content according to:
-[HLAVO secretes document](https://docs.google.com/document/d/1uNnEJvaM2AmjSlnt9kfAbJh9ZcPZBLFXIjh6WPCNdOg/edit?tab=t.0)
+# Developers corner
 
 
 # Kalman
