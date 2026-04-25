@@ -80,7 +80,7 @@ wells:
       water_draw:
         lat: "latitude"
         lon: "longitude"
-        time: "date_time"
+        time: "date"
         vertical: null
         entity: "well_id"
 
@@ -92,7 +92,7 @@ wells:
         entity: "well_id"
 
   defaults:
-    display_variable: "water_depth"
+    display_variable: "cum_draw"
     group_path: "/"
 
   visualization:
