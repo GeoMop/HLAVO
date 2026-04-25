@@ -1,5 +1,5 @@
 _dashboard:
-  default_endpoint: "wells"
+  default_endpoint: "profiles"
 
 profiles:
   description: "HLAVO - moisture profiles"
@@ -23,7 +23,7 @@ profiles:
 
   defaults:
     display_variable: "moisture"
-    group_path: "/"
+    group_path: "/Uhelna/profiles"
 
   visualization:
     map:
@@ -93,7 +93,7 @@ wells:
 
   defaults:
     display_variable: "cum_draw"
-    group_path: "/"
+    group_path: "/Uhelna/water_draw"
 
   visualization:
     map:
@@ -105,6 +105,140 @@ wells:
       alpha: 0.8
     timeseries:
       middle_window_days: 30
+      right_window_hours: 24
+    overlay:
+      enabled: false
+      tile_url: ""
+      cache_dir: ""
+
+  tile_build:
+    enabled: false
+    source_image: ""
+    georef_file: ""
+    vrt_file: ""
+    warped_tif: ""
+    rgba_vrt: ""
+    tiles_dir: ""
+    tile_scheme: "xyz"
+    min_zoom: 0
+    max_zoom: 20
+    target_srs: "EPSG:3857"
+    gcp_srs: "EPSG:4326"
+    resampling: "near"
+    add_alpha: true
+
+chmi_stations:
+  description: "HLAVO - CHMI station and Open-Meteo forcing data"
+  version: "1.0.0"
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: "s3://hlavo-release/chmi_stations.zarr"
+    schema_path: "schemas/chmi_stations_schema.yaml"
+
+  variable_map:
+    Uhelna:
+      # raw_data:
+      #   open_meteo:
+      #     lat: "latitude"
+      #     lon: "longitude"
+      #     time: "date_time"
+      #     vertical: null
+      #     entity: "longitude"
+      # 
+      #   chmi_stations:
+      #     lat: "latitude"
+      #     lon: "longitude"
+      #     time: "date_time"
+      #     vertical: null
+      #     entity: "longitude"
+      # 
+      parflow:
+        version_01:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: null
+          entity: "site_id"
+
+  defaults:
+    display_variable: "APCP"
+    group_path: "/Uhelna/parflow/version_01"
+
+  visualization:
+    map:
+      center_lat: 50.8645
+      center_lon: 14.892
+      zoom: 10
+      title: "CHMI station and Open-Meteo forcing data"
+      point_size: 8
+      alpha: 0.8
+    timeseries:
+      middle_window_days: 30
+      right_window_hours: 24
+    overlay:
+      enabled: false
+      tile_url: ""
+      cache_dir: ""
+
+  tile_build:
+    enabled: false
+    source_image: ""
+    georef_file: ""
+    vrt_file: ""
+    warped_tif: ""
+    rgba_vrt: ""
+    tiles_dir: ""
+    tile_scheme: "xyz"
+    min_zoom: 0
+    max_zoom: 20
+    target_srs: "EPSG:3857"
+    gcp_srs: "EPSG:4326"
+    resampling: "near"
+    add_alpha: true
+
+surface_forecast:
+  description: "HLAVO - automatic surface meteorology forecasts"
+  version: "1.0.0"
+  reload_interval: 300
+
+  source:
+    type: "s3"
+    store_type: "zarr"
+    uri: "s3://hlavo-release/hlavo-release.zarr"
+    schema_path: "schemas/hlavo_surface_schema.yaml"
+
+  variable_map:
+    yr.no:
+      lat: "latitude"
+      lon: "longitude"
+      time: "date_time"
+      vertical: null
+      entity: "lat_lon"
+
+    chmi_aladin_10m:
+      lat: "latitude"
+      lon: "longitude"
+      time: "date_time"
+      vertical: null
+      entity: "longitude"
+
+  defaults:
+    display_variable: "air_temperature"
+    group_path: "/yr.no"
+
+  visualization:
+    map:
+      center_lat: 50.8645
+      center_lon: 14.892
+      zoom: 10
+      title: "Surface meteorology forecasts"
+      point_size: 6
+      alpha: 0.8
+    timeseries:
+      middle_window_days: 7
       right_window_hours: 24
     overlay:
       enabled: false
