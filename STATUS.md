@@ -1,5 +1,37 @@
 # Status summary
 
+`2026-04-25`: `7e8010` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
+
+## Goal
+Finalize the `zf` dataset/store inspection CLI, expose it as an installed console command, and move ingress well-data tests and helpers onto explicit local `STORE_URL` overrides instead of schema rewriting or remote-store access.
+
+## Changes summary
+- `HEAD` is now `7e8010`; relevant committed work in this thread is present in [pyproject.toml](/home/hlavo/workspace/pyproject.toml), [hlavo/tools/zf.py](/home/hlavo/workspace/hlavo/tools/zf.py), [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py), [hlavo/tools/README.md](/home/hlavo/workspace/hlavo/tools/README.md), [hlavo/misc/aux_zarr_fuse.py](/home/hlavo/workspace/hlavo/misc/aux_zarr_fuse.py), [hlavo/ingress/well_data/well_data.py](/home/hlavo/workspace/hlavo/ingress/well_data/well_data.py), [hlavo/ingress/well_data/well_data_process.py](/home/hlavo/workspace/hlavo/ingress/well_data/well_data_process.py), and [tests/ingress/well_data/test_well_data.py](/home/hlavo/workspace/tests/ingress/well_data/test_well_data.py).
+- The `zf` CLI is now available through packaging via `zf = "hlavo.tools.zf:main"` in `pyproject.toml`.
+- [hlavo/tools/zf.py](/home/hlavo/workspace/hlavo/tools/zf.py) now uses `zarr_fuse.open_store(...)` only, matches a single full-path glob like `profiles.zarr/Uhelna/profiles*`, streams matched nodes via generator traversal, supports `-p` / `--print-dataset`, and reports per-store open errors without aborting the whole run.
+- [hlavo/misc/aux_zarr_fuse.py](/home/hlavo/workspace/hlavo/misc/aux_zarr_fuse.py) now defaults shared dotenv loading to repo-root `.secrets_env`.
+- [hlavo/ingress/well_data/well_data.py](/home/hlavo/workspace/hlavo/ingress/well_data/well_data.py) now accepts `STORE_URL` passthrough kwargs in `_remove_zarr_store()`, `_open_zarr_schema()`, `read_draw()`, and `read_sections_water_levels()`, so callers can operate on local zarr stores directly through `zarr_fuse` kwargs.
+- [hlavo/ingress/well_data/well_data_process.py](/home/hlavo/workspace/hlavo/ingress/well_data/well_data_process.py) now imports plotting explicitly from `well_data_plot` instead of incorrectly calling `pdf_plot_all` through the `well_data` implementation module.
+- [tests/ingress/well_data/test_well_data.py](/home/hlavo/workspace/tests/ingress/well_data/test_well_data.py) now uses temporary local `STORE_URL` paths, does not monkeypatch schema helpers, and normalizes `read_df()` results to pandas before pandas-specific assertions.
+- Untracked but relevant: [tests/test_main_dataset.py](/home/hlavo/workspace/tests/test_main_dataset.py) is present in the working tree and covers the `zf` CLI against local test storages; it is not committed yet.
+
+## Verified
+- `python -m py_compile hlavo/tools/zf.py hlavo/main.py tests/test_main_dataset.py`
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS="test_main_dataset.py" bash ./run`
+  result: `3 passed`
+- `python -m hlavo.tools.zf -p 'profiles.zarr/Uhelna/profiles'`
+  confirmed `-p` prints the xarray dataset repr for a matched node.
+- `python -m py_compile hlavo/ingress/well_data/well_data.py hlavo/ingress/well_data/well_data_process.py tests/ingress/well_data/test_well_data.py`
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS="ingress/well_data/test_well_data.py" bash ./run`
+  latest observed log state after the local `STORE_URL` and dataframe-type fixes: `tests/pytest.log` stayed at `..`; the previous `AttributeError: 'DataFrame' object has no attribute 'empty'` failure is fixed, but the final heavy water-level test did not complete within the waits used in this thread, so no full pass is claimed.
+- `python -m py_compile hlavo/ingress/well_data/well_data_process.py`
+  confirmed the `pdf_plot_all` import fix is syntactically valid.
+
+## Open items
+- `tests/ingress/well_data/test_well_data.py::test_borehole_water_level` remains slow/heavy in this environment; the local-store path and dataframe-type failure are fixed, but the thread did not wait for a full green completion.
+- `zf` still emits the existing `hlavo_surface_schema.yaml` warning about `date_time` being defined in both `VARS` and `COORDS` when that schema is deserialized.
+- [tests/test_main_dataset.py](/home/hlavo/workspace/tests/test_main_dataset.py) is still untracked.
+
 `2026-04-24`: `d663eee` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
 
 ## Goal
