@@ -2,7 +2,7 @@
 #(requires "pftools" Python package provided via pip)
 
 import shutil
-import os
+import sys
 import xarray as xr
 from parflow import Run
 from parflow.tools import settings
@@ -19,7 +19,13 @@ from parflow.tools.fs import get_absolute_path
 class ToyProblem(AbstractModel):
     def __init__(self, config, workdir=None):
         # Define a toy problem for PARFLOW simulator
-        self._run = Run("toy_richards", __file__)
+        original_argv = sys.argv
+        try:
+            sys.argv = [original_argv[0]]
+            self._run = Run("toy_richards", __file__)
+        finally:
+            sys.argv = original_argv
+
         if workdir is not None:
             self._workdir = pathlib.Path(workdir)
             pathlib.Path.mkdir(self._workdir, exist_ok=True, parents=True)

@@ -103,6 +103,9 @@ class Model1D:
         data = Model1DData.from_config(site_id, composed, config['schema_files'])
 
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
+        mcfg = config.get('model_config', {})
+        clm_f = mcfg.get('clm_files', {})
+        mcfg['clm_files'] = {k: composed.relative_resolve(v) for k, v in clm_f.items()}
         kalman = kalman_class.from_config(
             composed.workdir,
             config,
@@ -153,7 +156,8 @@ class Model1D:
                 meteo,
                 pressure_at_bottom,
             )
-
+        # TODO: more detailed output and either send through Queue to 3D worker and
+        # save to ZARR from there, or excersize zarr parallel write (preallocation and suitable chunking necessary)
         return darcy_velocity
 
     def save_results(self):

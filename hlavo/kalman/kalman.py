@@ -953,7 +953,7 @@ class KalmanFilter:
             self.test_measurements_struc.encode(measurements_test_dict)
         )
 
-        return velocity
+        return velocity[-1] # Return velocity at the bottom node
 
     def run_kalman_filter(self, ukf, noisy_measurements, measurement_state_flag):
         """

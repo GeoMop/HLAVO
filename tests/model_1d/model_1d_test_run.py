@@ -1,16 +1,13 @@
 import os
-import sys
 import numpy as np
 import xarray as xr
 import pytest
 from pathlib import Path
 
 from hlavo.composed.common_data import ComposedData
-
 from hlavo.kalman.model_1d import Model1D
 from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.config import load_config
-from tests.ingress.scrapper.test_process_one_meteo_raw import workdir
 
 script_dir = Path(__file__).resolve().parent
 
@@ -132,9 +129,33 @@ def test_step(model):
     start = np.datetime64("2025-03-06T00:00:00")
     target = np.datetime64("2025-03-06T02:00:00")
 
+    from filterpy.kalman import UnscentedKalmanFilter
+    from hlavo.kalman.parallel_ukf import ParallelUKF
+
+    assert isinstance(model.data.profiles_dataset, xr.Dataset)
+    assert isinstance(model.data.surface_dataset, xr.Dataset)
+    assert isinstance(model.ukf, (UnscentedKalmanFilter, ParallelUKF))
+    assert model.site_id in model.data.profiles_dataset["site_id"].values
+    assert model.site_id in model.data.surface_dataset["site_id"].values
+    assert np.isfinite(model.longitude)
+    assert np.isfinite(model.latitude)
+
+    n_depths = len(model.data.profiles_dataset["depth_level"])
+    assert model.R_matrix.shape == (n_depths, n_depths)
+    assert np.allclose(model.R_matrix, model.moisture_sigma * np.eye(n_depths))
+
+    measurements = model.data.profiles_dataset.sel(date_time=slice(start, target))
+    meteo = model.data.surface_dataset.sel(date_time=slice(start, target))
+    assert measurements.sizes["date_time"] > 0
+    assert meteo.sizes["date_time"] > 0
+    assert measurements["date_time"].values.min() >= start
+    assert measurements["date_time"].values.max() <= target
+    assert meteo["date_time"].values.min() >= start
+    assert meteo["date_time"].values.max() <= target
+
     velocity = model.step(start, target, pressure_at_bottom=1.0)
     model.save_results()
-
+    assert np.isscalar(velocity)
     assert not np.isnan(velocity)
 
 
