@@ -4,39 +4,12 @@ import argparse
 import logging
 from pathlib import Path
 
-import attrs
 import numpy as np
-import yaml
+
+import hlavo.deep_model.model_3d_cfg as cfg
+import hlavo.misc.config as cfg_common
 
 LOG = logging.getLogger(__name__)
-
-
-@attrs.define(frozen=True)
-class ExportConfig:
-    config_path: Path
-    grid_path: Path
-    output_path: Path
-
-    @staticmethod
-    def from_yaml(config_path: Path, output_path: Path | None = None) -> "ExportConfig":
-        assert config_path.exists(), f"Config file not found: {config_path}"
-        with config_path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
-
-        grid_path = Path(raw.get("grid_output_path", Path("model") / "grid_materials.npz"))
-        if output_path is None:
-            output_raw = raw.get("paraview_grid_output")
-            if output_raw:
-                output_path = Path(str(output_raw))
-            else:
-                output_path = Path("model") / "grid_materials.vtr"
-
-        return ExportConfig(
-            config_path=config_path,
-            grid_path=grid_path,
-            output_path=output_path,
-        )
 
 
 def _load_grid(npz_path: Path) -> dict[str, np.ndarray]:
@@ -82,19 +55,21 @@ def export_grid_to_paraview(grid_npz: Path, output_path: Path) -> Path:
     return output_path
 
 
+def _resolve_workspace(config_path: Path) -> Path:
+    raw, _ = cfg_common.load_config(config_path)
+    common_raw = cfg.resolve_model_3d_common_raw(raw)
+    workspace_root = cfg.resolve_workspace_root(None, common_raw)
+    common = cfg.Model3DCommonConfig.from_mapping(common_raw)
+    return cfg.resolve_model_workspace(workspace_root, common)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export Modflow grid to Paraview VTK.")
     parser.add_argument(
         "--config",
         type=Path,
         default=Path("model_config.yaml"),
-        help="Path to model_config.yaml",
-    )
-    parser.add_argument(
-        "--grid",
-        type=Path,
-        default=None,
-        help="Override grid npz path",
+        help="Path to the 3D YAML config file.",
     )
     parser.add_argument(
         "--output",
@@ -106,9 +81,10 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-    config = ExportConfig.from_yaml(args.config, args.output)
-    grid_path = args.grid if args.grid is not None else config.grid_path
-    export_grid_to_paraview(grid_path, config.output_path)
+    workspace = _resolve_workspace(args.config)
+    grid_path = workspace / cfg.GRID_MATERIALS_FILENAME
+    output_path = args.output if args.output is not None else workspace / "grid_materials.vtr"
+    export_grid_to_paraview(grid_path, output_path)
 
 
 if __name__ == "__main__":

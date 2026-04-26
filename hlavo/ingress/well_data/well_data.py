@@ -31,6 +31,10 @@ def _process_water_level_sheet(df_read, sheetname, well_in_section_file):
 
     df_read["well_id_orig"] = sheetname
     df_read["well_id"] = df_read["well_id_orig"].values.astype("str")
+    df_read["water_depth"] = pd.to_numeric(df_read["water_depth"], errors="coerce").astype(float)
+    df_read["water_level"] = pd.to_numeric(df_read["water_level"], errors="coerce").astype(float)
+    #df_read = df_read.dropna(subset=["water_depth"])
+    #df_read = df_read.dropna(subset=["water_level"])
     df_read["well_in_section_file"] = well_in_section_file
     df = df_read[["well_id", "well_in_section_file", "date_time", "water_depth", "water_level"]].sort_values("date_time").reset_index(drop=True)
 
@@ -103,26 +107,29 @@ def _create_schema_path():
     file_path = root_path / ".secrets_env"
 
     if not file_path.exists():
-        raise FileNotFoundError(f"{file_path} doesn't exist")
+        logger.info("Can not open {file_path}, remote stores will not be accessible.")
+    else:
+        load_dotenv(dotenv_path=file_path)
 
-    load_dotenv(dotenv_path=file_path)
     return script_dir / "wells_schema.yaml"
 
 
-def _remove_zarr_store():
+def _remove_zarr_store(*, STORE_URL: str | Path | None = None):
     """
     Remove zarr fuse storage of well data
     """
     schema_path = _create_schema_path()
-    zf.remove_store(schema_path)
+    kwargs = {} if STORE_URL is None else {"STORE_URL": str(STORE_URL)}
+    zf.remove_store(schema_path, **kwargs)
 
 
-def _open_zarr_schema():
+def _open_zarr_schema(*, STORE_URL: str | Path | None = None):
     """
     Open zarr fuse storage of well data
     """
     schema_path = _create_schema_path()
-    return zf.open_store(schema_path)
+    kwargs = {} if STORE_URL is None else {"STORE_URL": str(STORE_URL)}
+    return zf.open_store(schema_path, **kwargs)
 
 
 def _jtsk_to_wgs84(x_values: pd.Series, y_values: pd.Series) -> pd.DataFrame:
@@ -226,7 +233,7 @@ def read_water_level(file_paths=None):
     return final_df
 
 
-def read_draw(xls_file, sheetname, df_sections):
+def read_draw(xls_file, sheetname, df_sections, *, STORE_URL: str | Path | None = None):
     """
     Process water draw data of one well and store them to DataFrame
     Data is stored in excel file.
@@ -287,7 +294,7 @@ def read_draw(xls_file, sheetname, df_sections):
     if df_result["longitude"].isna().any() or df_result["latitude"].isna().any():
         raise ValueError("Well 'Uh-draw' in df_sections is missing coordinates.")
 
-    root_node = _open_zarr_schema()
+    root_node = _open_zarr_schema(STORE_URL=STORE_URL)
     water_draw_node = root_node['Uhelna']['water_draw']
     water_draw_node.update(df_result)
 
@@ -408,7 +415,7 @@ def read_sections(section_file, sheetname):
 
     return df
 
-def read_sections_water_levels(df_sections, water_level_file_paths):
+def read_sections_water_levels(df_sections, water_level_file_paths, *, STORE_URL: str | Path | None = None):
     """
     Prepare full data.DataFrame containing combination of water levels data and well sections data.
 
@@ -420,7 +427,7 @@ def read_sections_water_levels(df_sections, water_level_file_paths):
 
     df_full = df_water_levels.join(df_sections.set_index("well_id"), on="well_in_section_file")
 
-    root_node = _open_zarr_schema()
+    root_node = _open_zarr_schema(STORE_URL=STORE_URL)
     water_levels_node = root_node['Uhelna']['water_levels']
     water_levels_node.update(df_full)
 

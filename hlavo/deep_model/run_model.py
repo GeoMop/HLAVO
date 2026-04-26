@@ -6,150 +6,148 @@ import os
 import platform
 import shutil
 import struct
+import tempfile
 from pathlib import Path
 
 import attrs
 import numpy as np
-import yaml
-
 import flopy
-from flopy.utils import postprocessing
 
-from build_modflow_grid import build_modflow_grid, raster_to_full_grid
-from qgis_reader import ModelInputs
+
+# Matplotlib needs a writable config/cache directory in the container runtime.
+# Without this override it may try to write under a non-writable HOME and fail
+# during plot export.
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconfig_hlavo"))
+
+from . import model_3d_cfg as cfg3d
+import hlavo.misc.config as cfg
 
 LOG = logging.getLogger(__name__)
 
 
 @attrs.define(frozen=True)
 class RunConfig:
-    config_path: Path
-    workspace: Path
-    sim_name: str
-    exe_name: str
-    recharge_rate: float
-    drain_conductance: float
-    conductivity_default: float
-    conductivity_by_layer: dict[str, float] | None
-    conductivities: tuple[float, ...] | None
-    output_grid_path: Path
-    paraview_output_path: Path
+    config_path: Path | None
+    workspace_root: Path
+    common: cfg3d.Model3DCommonConfig
+    paraview_quantities: tuple[str, ...]
+    paraview_include_inactive: bool
+    paraview_z_scale: float
     plot_enabled: bool
-    plot_output_dir: Path
     plot_dpi: int
-    plot_active_mask_name: str
-    plot_idomain_name: str
-    plot_head_name: str
-    plot_velocity_name: str
-    plot_xsection_x_name: str
-    plot_xsection_y_name: str
     plot_xsection_y_index: int | None
     plot_xsection_x_index: int | None
+    plot_xsection_depth_window: float
 
-    @staticmethod
-    def from_yaml(config_path: Path, workspace: Path | None = None) -> "RunConfig":
-        assert config_path.exists(), f"Config file not found: {config_path}"
-        with config_path.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-        assert isinstance(raw, dict), "Config YAML must be a mapping"
+    @classmethod
+    def from_yaml(cls, config_path: Path, workspace: Path | None = None) -> "RunConfig":
+        raw, resolved_config_path = cfg.load_config(config_path)
+        model_3d = cfg.load_config(config_path, ("model_3d",))[0]
+        common_raw = cfg3d.resolve_model_3d_common_raw(raw)
+        common = cfg3d.Model3DCommonConfig.from_mapping(common_raw)
+        workspace_root = cfg3d.resolve_workspace_root(workspace, common_raw)
 
-        model_raw = raw.get("model", {})
-        assert isinstance(model_raw, dict), "model config must be a mapping"
-
-        sim_name = str(model_raw.get("sim_name", "uhelna"))
-        exe_name = str(model_raw.get("exe_name", "mf6"))
-        recharge_rate = float(model_raw.get("recharge_rate", 1e-4))
-        drain_conductance = float(model_raw.get("drain_conductance", 1.0))
-        conductivity_default = float(model_raw.get("conductivity_default", 1e-6))
-
-        conductivity_by_layer = model_raw.get("conductivity_by_layer")
-        if conductivity_by_layer is not None:
-            assert isinstance(conductivity_by_layer, dict), "conductivity_by_layer must be a mapping"
-            conductivity_by_layer = {
-                str(key): float(value) for key, value in conductivity_by_layer.items()
-            }
-
-        conductivities = model_raw.get("conductivities")
-        if conductivities is not None:
-            assert isinstance(conductivities, (list, tuple)), "conductivities must be a list"
-            conductivities = tuple(float(value) for value in conductivities)
-
-        output_grid_path = Path(raw.get("grid_output_path", Path("model") / "grid_materials.npz"))
-
-        if workspace is None:
-            workspace = Path(model_raw.get("workspace", "model"))
-
-        paraview_raw = model_raw.get("paraview_results_output", raw.get("paraview_results_output"))
-        if paraview_raw:
-            paraview_output_path = Path(str(paraview_raw))
+        #AGENT: Move to new file together with all the plots stuff,
+        # create separate datacalss to config plots (both matplotliba na paraview)
+        # create dataclass to pass the model results
+        paraview_raw = cfg.optional_mapping(model_3d, "paraview")
+        quantities_raw = paraview_raw.get("quantities")
+        if quantities_raw is None:
+            paraview_quantities = (
+                "head",
+                "hk",
+                "idomain",
+                "materials",
+                "velocity",
+                "q",
+                "velocity_magnitude",
+                "active",
+            )
         else:
-            paraview_output_path = Path(workspace) / f"{sim_name}_results.vtr"
+            assert isinstance(quantities_raw, (list, tuple)), "paraview.quantities must be a list"
+            paraview_quantities = tuple(str(item) for item in quantities_raw)
+        paraview_z_scale = float(paraview_raw.get("z_scale", 1.0))
+        assert paraview_z_scale > 0.0, "paraview.z_scale must be > 0"
 
-        plot_raw = raw.get("plots", {})
-        assert isinstance(plot_raw, dict), "plots config must be a mapping"
-        plot_enabled = bool(plot_raw.get("enabled", True))
-        plot_output_dir = Path(plot_raw.get("output_dir", Path(workspace) / "plots"))
-        plot_dpi = int(plot_raw.get("dpi", 150))
-        plot_active_mask_name = str(plot_raw.get("active_mask_name", "grid_active_mask.png"))
-        plot_idomain_name = str(plot_raw.get("idomain_name", "idomain_top.png"))
-        plot_head_name = str(plot_raw.get("head_name", "head_groundplan.png"))
-        plot_velocity_name = str(plot_raw.get("velocity_name", "velocity_groundplan.png"))
-        plot_xsection_x_name = str(plot_raw.get("xsection_x_name", "materials_x_section.png"))
-        plot_xsection_y_name = str(plot_raw.get("xsection_y_name", "materials_y_section.png"))
+        plot_raw = cfg.optional_mapping(model_3d, "plots")
         plot_xsection_y_index = plot_raw.get("xsection_y_index")
         if plot_xsection_y_index is not None:
             plot_xsection_y_index = int(plot_xsection_y_index)
         plot_xsection_x_index = plot_raw.get("xsection_x_index")
         if plot_xsection_x_index is not None:
             plot_xsection_x_index = int(plot_xsection_x_index)
+        plot_xsection_depth_window = float(plot_raw.get("xsection_depth_window", 40.0))
+        assert plot_xsection_depth_window > 0.0, "plots.xsection_depth_window must be > 0"
 
-        return RunConfig(
-            config_path=config_path,
-            workspace=Path(workspace),
-            sim_name=sim_name,
-            exe_name=exe_name,
-            recharge_rate=recharge_rate,
-            drain_conductance=drain_conductance,
-            conductivity_default=conductivity_default,
-            conductivity_by_layer=conductivity_by_layer,
-            conductivities=conductivities,
-            output_grid_path=output_grid_path,
-            paraview_output_path=paraview_output_path,
-            plot_enabled=plot_enabled,
-            plot_output_dir=plot_output_dir,
-            plot_dpi=plot_dpi,
-            plot_active_mask_name=plot_active_mask_name,
-            plot_idomain_name=plot_idomain_name,
-            plot_head_name=plot_head_name,
-            plot_velocity_name=plot_velocity_name,
-            plot_xsection_x_name=plot_xsection_x_name,
-            plot_xsection_y_name=plot_xsection_y_name,
+        return cls(
+            config_path=resolved_config_path,
+            workspace_root=workspace_root,
+            common=common,
+            paraview_quantities=paraview_quantities,
+            paraview_include_inactive=bool(paraview_raw.get("include_inactive", False)),
+            paraview_z_scale=paraview_z_scale,
+            plot_enabled=bool(plot_raw.get("enabled", True)),
+            plot_dpi=int(plot_raw.get("dpi", 150)),
             plot_xsection_y_index=plot_xsection_y_index,
             plot_xsection_x_index=plot_xsection_x_index,
+            plot_xsection_depth_window=plot_xsection_depth_window,
         )
 
+    @property
+    def workspace(self) -> Path:
+        return cfg3d.resolve_model_workspace(self.workspace_root, self.common)
 
-def _layer_conductivities(
-    layer_names: list[str],
-    conductivity_by_layer: dict[str, float] | None,
-    conductivities: tuple[float, ...] | None,
-    default_value: float,
-) -> np.ndarray:
-    if conductivity_by_layer is not None:
-        values = []
-        for name in layer_names:
-            assert name in conductivity_by_layer, f"Missing conductivity for layer {name}"
-            values.append(float(conductivity_by_layer[name]))
-        return np.asarray(values, dtype=float)
+    @property
+    def model_name(self) -> str:
+        return self.common.model_name
 
-    if conductivities is not None:
-        assert len(conductivities) == len(layer_names), (
-            "conductivities length must match number of layers"
-        )
-        return np.asarray(conductivities, dtype=float)
+    @property
+    def sim_name(self) -> str:
+        return self.common.sim_name
 
-    LOG.warning("No layer conductivities provided, using default %s", default_value)
-    return np.full(len(layer_names), float(default_value), dtype=float)
+    @property
+    def exe_name(self) -> str:
+        return self.common.exe_name
+
+    @property
+    def recharge_rate(self) -> float:
+        return self.common.recharge_rate
+
+    @property
+    def recharge_series_m_per_day(self) -> tuple[float, ...] | None:
+        return self.common.recharge_series_m_per_day
+
+    @property
+    def drain_conductance(self) -> float:
+        return self.common.drain_conductance
+
+    @property
+    def simulation_days(self) -> float:
+        return self.common.simulation_days
+
+    @property
+    def stress_periods_days(self) -> tuple[float, ...]:
+        return self.common.stress_periods_days
+
+    @property
+    def grid_output_path(self) -> Path:
+        return self.workspace / cfg3d.GRID_MATERIALS_FILENAME
+
+    @property
+    def material_parameters_path(self) -> Path:
+        return self.workspace / cfg3d.MATERIAL_PARAMETERS_FILENAME
+
+    @property
+    def paraview_output_path(self) -> Path:
+        return self.workspace / cfg3d.PARAVIEW_RESULTS_FILENAME
+
+    @property
+    def paraview_materials_output_path(self) -> Path:
+        return self.workspace / cfg3d.PARAVIEW_MATERIALS_FILENAME
+
+    @property
+    def plot_output_dir(self) -> Path:
+        return self.workspace / cfg3d.PLOTS_DIRNAME
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:
@@ -164,6 +162,13 @@ def _vtk_cell_array(values: np.ndarray) -> np.ndarray:
     return cell_values.ravel(order="F")
 
 
+def _vtk_oriented(values: np.ndarray) -> np.ndarray:
+    assert values.ndim == 3, "Values must be 3D"
+    # Flip Z and Y to align array indexing (top row first, top layer last) with
+    # increasing coordinate axes used by VTK.
+    return values[::-1, ::-1, :]
+
+
 def _vtk_cell_vectors(
     qx: np.ndarray,
     qy: np.ndarray,
@@ -176,6 +181,60 @@ def _vtk_cell_vectors(
     return np.column_stack([qx_flat, qy_flat, qz_flat])
 
 
+def _surface_to_nodes(surface: np.ndarray) -> np.ndarray:
+    assert surface.ndim == 2, "Surface must be 2D"
+    ny, nx = surface.shape
+    nodes = np.empty((ny + 1, nx + 1), dtype=float)
+    nodes[1:-1, 1:-1] = 0.25 * (
+        surface[:-1, :-1]
+        + surface[:-1, 1:]
+        + surface[1:, :-1]
+        + surface[1:, 1:]
+    )
+    nodes[0, 1:-1] = 0.5 * (surface[0, :-1] + surface[0, 1:])
+    nodes[-1, 1:-1] = 0.5 * (surface[-1, :-1] + surface[-1, 1:])
+    nodes[1:-1, 0] = 0.5 * (surface[:-1, 0] + surface[1:, 0])
+    nodes[1:-1, -1] = 0.5 * (surface[:-1, -1] + surface[1:, -1])
+    nodes[0, 0] = surface[0, 0]
+    nodes[0, -1] = surface[0, -1]
+    nodes[-1, 0] = surface[-1, 0]
+    nodes[-1, -1] = surface[-1, -1]
+    return nodes
+
+
+def _deformed_structured_grid(
+    x_nodes: np.ndarray,
+    y_nodes: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    z_scale: float,
+) -> "pv.StructuredGrid":
+    import pyvista as pv
+
+    assert top.ndim == 2, "Top surface must be 2D"
+    assert botm.ndim == 3, "Botm must be 3D"
+    assert z_scale > 0.0, "z_scale must be > 0"
+    nz, ny, nx = botm.shape
+    assert top.shape == (ny, nx), "Top shape mismatch with botm"
+
+    # Build surfaces from bottom to top in VTK coordinate order.
+    surfaces = [botm[k] for k in range(nz - 1, -1, -1)] + [top]
+    # Orient surfaces so Y increases with coordinate axes.
+    node_surfaces = [_surface_to_nodes(surface[::-1, :]) for surface in surfaces]
+
+    x_grid, y_grid = np.meshgrid(x_nodes, y_nodes, indexing="ij")
+    x_3d = np.repeat(x_grid[:, :, None], nz + 1, axis=2)
+    y_3d = np.repeat(y_grid[:, :, None], nz + 1, axis=2)
+    z_3d = np.empty((x_nodes.size, y_nodes.size, nz + 1), dtype=float)
+    for k, nodes in enumerate(node_surfaces):
+        z_3d[:, :, k] = nodes.T
+    if z_scale != 1.0:
+        z_ref = float(np.nanmax(z_3d))
+        z_3d = z_ref + (z_3d - z_ref) * z_scale
+
+    return pv.StructuredGrid(x_3d, y_3d, z_3d)
+
+
 def _export_results_to_paraview(
     output_path: Path,
     grid_data: dict[str, np.ndarray],
@@ -186,37 +245,153 @@ def _export_results_to_paraview(
     qz: np.ndarray,
     idomain: np.ndarray,
     materials: np.ndarray,
+    material_class: np.ndarray | None,
+    top: np.ndarray,
+    botm: np.ndarray,
+    paraview_quantities: tuple[str, ...],
+    include_inactive: bool,
+    z_scale: float,
 ) -> Path:
     import pyvista as pv
+    from pyvista.core.pointset import UnstructuredGrid
 
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
-    z_nodes = grid_data["z_nodes"].astype(float)
-
-    assert head.shape == hk.shape == idomain.shape, "Head, hk, and idomain shape mismatch"
-    assert qx.shape == qy.shape == qz.shape == head.shape, "Velocity shape mismatch"
-    assert materials.shape == head.shape, "Materials shape mismatch"
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    grid = pv.RectilinearGrid(x_nodes, y_nodes, z_nodes)
+    grid = _deformed_structured_grid(x_nodes, y_nodes, top, botm, z_scale)
 
+    quantities = set(paraview_quantities)
     head_masked = np.where(idomain > 0, head, np.nan)
     qx_masked = np.where(idomain > 0, qx, np.nan)
     qy_masked = np.where(idomain > 0, qy, np.nan)
     qz_masked = np.where(idomain > 0, qz, np.nan)
-    qmag = np.sqrt(qx_masked**2 + qy_masked**2 + qz_masked**2)
-    grid.cell_data["head"] = _vtk_cell_array(head_masked[::-1])
-    grid.cell_data["hk"] = _vtk_cell_array(hk[::-1])
-    grid.cell_data["idomain"] = _vtk_cell_array(idomain[::-1].astype(np.int8))
-    grid.cell_data["materials"] = _vtk_cell_array(materials.astype(np.int16))
-    grid.cell_data["q"] = _vtk_cell_vectors(qx_masked[::-1], qy_masked[::-1], qz_masked[::-1])
-    grid.cell_data["qmag"] = _vtk_cell_array(qmag[::-1])
+    idomain_vtk = _vtk_cell_array(_vtk_oriented(idomain).astype(np.int8))
 
-    grid.save(str(output_path))
+    if "head" in quantities:
+        grid.cell_data["head"] = _vtk_cell_array(_vtk_oriented(head_masked))
+    if "hk" in quantities:
+        grid.cell_data["hk"] = _vtk_cell_array(_vtk_oriented(hk))
+    if "idomain" in quantities:
+        grid.cell_data["idomain"] = idomain_vtk
+    if "materials" in quantities:
+        grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+    if material_class is not None:
+        grid.cell_data["material_class"] = _vtk_cell_array(
+            _vtk_oriented(material_class.astype(np.int16))
+        )
+
+    needs_vectors = "velocity" in quantities or "q" in quantities
+    needs_qmag = "velocity_magnitude" in quantities
+    if needs_vectors or needs_qmag:
+        vectors = _vtk_cell_vectors(
+            _vtk_oriented(qx_masked),
+            _vtk_oriented(qy_masked),
+            _vtk_oriented(qz_masked),
+        )
+        if "velocity" in quantities:
+            grid.cell_data["velocity"] = vectors
+        if "q" in quantities:
+            grid.cell_data["q"] = vectors
+        if needs_qmag:
+            qmag = np.sqrt(qx_masked**2 + qy_masked**2 + qz_masked**2)
+            grid.cell_data["velocity_magnitude"] = _vtk_cell_array(_vtk_oriented(qmag))
+
+    active_grid = grid
+    if not include_inactive:
+        active_cells = np.flatnonzero(idomain_vtk > 0)
+        active_grid = grid.extract_cells(active_cells)
+    output_path = Path(output_path)
+    structured_ext = {".vtk", ".vts", ".pkl", ".pickle"}
+    unstructured_ext = {".vtu", ".vtk", ".vtkhdf", ".pkl", ".pickle"}
+    if isinstance(active_grid, UnstructuredGrid):
+        if output_path.suffix.lower() not in unstructured_ext:
+            corrected = output_path.with_suffix(".vtu")
+            LOG.warning(
+                "Paraview output extension %s invalid for UnstructuredGrid; using %s instead.",
+                output_path.suffix,
+                corrected,
+            )
+            output_path = corrected
+    elif output_path.suffix.lower() not in structured_ext:
+        corrected = output_path.with_suffix(".vts")
+        LOG.warning(
+            "Paraview output extension %s invalid for StructuredGrid; using %s instead.",
+            output_path.suffix,
+            corrected,
+        )
+        output_path = corrected
+    active_grid.save(str(output_path))
     assert output_path.exists(), f"Failed to write Paraview results: {output_path}"
     LOG.info("Saved Paraview results to %s", output_path)
+    return output_path
+
+
+def _export_materials_to_paraview(
+    output_path: Path,
+    grid_data: dict[str, np.ndarray],
+    materials: np.ndarray,
+    material_class: np.ndarray | None,
+    active_mask: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+    paraview_quantities: tuple[str, ...],
+    include_inactive: bool,
+    z_scale: float,
+) -> Path:
+    import pyvista as pv
+    from pyvista.core.pointset import UnstructuredGrid
+
+    x_nodes = grid_data["x_nodes"].astype(float)
+    y_nodes = grid_data["y_nodes"].astype(float)
+
+    assert materials.ndim == 3, "Materials array must be 3D"
+    assert active_mask.ndim == 2, "Active mask must be 2D"
+
+    active_cells = np.broadcast_to(active_mask, materials.shape)
+
+    grid = _deformed_structured_grid(x_nodes, y_nodes, top, botm, z_scale)
+    quantities = set(paraview_quantities)
+    active_vtk = _vtk_cell_array(_vtk_oriented(active_cells.astype(np.uint8)))
+    if "materials" in quantities:
+        grid.cell_data["materials"] = _vtk_cell_array(_vtk_oriented(materials.astype(np.int16)))
+    if material_class is not None:
+        grid.cell_data["material_class"] = _vtk_cell_array(
+            _vtk_oriented(material_class.astype(np.int16))
+        )
+    if "active" in quantities:
+        grid.cell_data["active"] = active_vtk
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    active_grid = grid
+    if not include_inactive:
+        active_ids = np.flatnonzero(active_vtk > 0)
+        active_grid = grid.extract_cells(active_ids)
+    structured_ext = {".vtk", ".vts", ".pkl", ".pickle"}
+    unstructured_ext = {".vtu", ".vtk", ".vtkhdf", ".pkl", ".pickle"}
+    if isinstance(active_grid, UnstructuredGrid):
+        if output_path.suffix.lower() not in unstructured_ext:
+            corrected = output_path.with_suffix(".vtu")
+            LOG.warning(
+                "Paraview materials extension %s invalid for UnstructuredGrid; using %s instead.",
+                output_path.suffix,
+                corrected,
+            )
+            output_path = corrected
+    elif output_path.suffix.lower() not in structured_ext:
+        corrected = output_path.with_suffix(".vts")
+        LOG.warning(
+            "Paraview materials extension %s invalid for StructuredGrid; using %s instead.",
+            output_path.suffix,
+            corrected,
+        )
+        output_path = corrected
+    active_grid.save(str(output_path))
+    assert output_path.exists(), f"Failed to write Paraview materials: {output_path}"
+    LOG.info("Saved Paraview materials to %s", output_path)
     return output_path
 
 
@@ -230,6 +405,7 @@ def _write_plan_view_plots(
     idomain: np.ndarray,
     materials: np.ndarray,
     top: np.ndarray,
+    botm: np.ndarray,
 ) -> None:
     if not run_config.plot_enabled:
         return
@@ -249,7 +425,7 @@ def _write_plan_view_plots(
     plt.xlabel("X (local)")
     plt.ylabel("Y (local)")
     plt.tight_layout()
-    active_path = plot_dir / run_config.plot_active_mask_name
+    active_path = plot_dir / "grid_active_mask.pdf"
     plt.savefig(active_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved active mask plot to %s", active_path)
@@ -261,7 +437,7 @@ def _write_plan_view_plots(
     plt.xlabel("X (local)")
     plt.ylabel("Y (local)")
     plt.tight_layout()
-    idomain_path = plot_dir / run_config.plot_idomain_name
+    idomain_path = plot_dir / "idomain_top.pdf"
     plt.savefig(idomain_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved idomain plot to %s", idomain_path)
@@ -274,24 +450,49 @@ def _write_plan_view_plots(
     plt.ylabel("Y (local)")
     plt.colorbar(img, label="Head")
     plt.tight_layout()
-    head_path = plot_dir / run_config.plot_head_name
+    head_path = plot_dir / "head_groundplan.pdf"
     plt.savefig(head_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved head plot to %s", head_path)
 
-    velocity_plan = np.where(
-        idomain[0] > 0, np.sqrt(qx[0] ** 2 + qy[0] ** 2), np.nan
-    )
+    groundwater_surface = _groundwater_surface_from_head(head, idomain, top, botm)
     plt.figure(figsize=(8, 6))
-    img = plt.imshow(velocity_plan, origin="upper", extent=extent, cmap="magma")
-    plt.title("Flow Velocity Magnitude (Top Layer, Plan View)")
+    img = plt.imshow(groundwater_surface, origin="upper", extent=extent, cmap="cividis")
+    plt.title("Groundwater Surface Elevation (Plan View)")
     plt.xlabel("X (local)")
     plt.ylabel("Y (local)")
-    plt.colorbar(img, label="Velocity")
+    plt.colorbar(img, label="Groundwater surface Z")
     plt.tight_layout()
-    velocity_path = plot_dir / run_config.plot_velocity_name
-    plt.savefig(velocity_path, dpi=run_config.plot_dpi)
+    gw_surface_path = plot_dir / "groundwater_surface.pdf"
+    plt.savefig(gw_surface_path, dpi=run_config.plot_dpi)
     plt.close()
+    LOG.info("Saved groundwater surface plot to %s", gw_surface_path)
+
+    velocity_plan = np.where(idomain[0] > 0, np.sqrt(qx[0] ** 2 + qy[0] ** 2), np.nan)
+    x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
+    y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
+    xv, yv = np.meshgrid(x_centers, y_centers)
+    stride = max(1, int(max(x_centers.size, y_centers.size) / 30))
+    xs = xv[::stride, ::stride]
+    ys = yv[::stride, ::stride]
+    u = qx[0][::stride, ::stride]
+    v = qy[0][::stride, ::stride]
+    mask = ~np.isfinite(u) | ~np.isfinite(v) | (idomain[0][::stride, ::stride] <= 0)
+    u = np.where(mask, np.nan, u)
+    v = np.where(mask, np.nan, v)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    img = ax.imshow(velocity_plan, origin="upper", extent=extent, cmap="magma")
+    ax.quiver(xs, ys, u, v, angles="xy", scale_units="xy", scale=None, width=0.002)
+    ax.set_title("Flow Velocity Vectors (Top Layer, Plan View)")
+    ax.set_xlabel("X (local)")
+    ax.set_ylabel("Y (local)")
+    ax.set_ylim(y_nodes[-1], y_nodes[0])
+    fig.colorbar(img, ax=ax, label="Velocity magnitude")
+    fig.tight_layout()
+    velocity_path = plot_dir / "velocity_groundplan.pdf"
+    fig.savefig(velocity_path, dpi=run_config.plot_dpi)
+    plt.close(fig)
     LOG.info("Saved velocity plot to %s", velocity_path)
 
     _write_cross_section_plots(
@@ -299,7 +500,33 @@ def _write_plan_view_plots(
         grid_data,
         materials,
         top,
+        groundwater_surface,
     )
+
+
+def _groundwater_surface_from_head(
+    head: np.ndarray,
+    idomain: np.ndarray,
+    top: np.ndarray,
+    botm: np.ndarray,
+) -> np.ndarray:
+    assert head.ndim == 3 and idomain.ndim == 3 and botm.ndim == 3
+    nz, ny, nx = head.shape
+    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
+    assert top.shape == (ny, nx), "top shape mismatch"
+
+    water_table = np.full((ny, nx), np.nan, dtype=float)
+    for k in range(nz):
+        layer_active = idomain[k] > 0
+        layer_top = top if k == 0 else botm[k - 1]
+        layer_bot = botm[k]
+        layer_head = np.asarray(head[k], dtype=float)
+        saturated = layer_active & np.isfinite(layer_head) & (layer_head > layer_bot)
+        assign = np.isnan(water_table) & saturated
+        if np.any(assign):
+            water_table[assign] = np.minimum(layer_head[assign], layer_top[assign])
+    return water_table
 
 
 def _write_cross_section_plots(
@@ -307,6 +534,7 @@ def _write_cross_section_plots(
     grid_data: dict[str, np.ndarray],
     materials: np.ndarray,
     top: np.ndarray,
+    groundwater_surface: np.ndarray,
 ) -> None:
     x_nodes = grid_data["x_nodes"].astype(float)
     y_nodes = grid_data["y_nodes"].astype(float)
@@ -328,6 +556,7 @@ def _write_cross_section_plots(
     # X-direction cross-section at fixed Y index.
     materials_x = materials[:, y_index, :]
     top_line_x = top[y_index, :]
+    gw_line_x = groundwater_surface[y_index, :]
     z_edges_center = top_line_x[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
     z_edges = np.empty((nz + 1, nx + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
@@ -337,12 +566,18 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(x_edges, z_edges, materials_x, shading="auto", cmap="tab20")
-    plt.gca().invert_yaxis()
+    x_centers = 0.5 * (x_nodes[:-1] + x_nodes[1:])
+    plt.plot(x_centers, gw_line_x, "b-", linewidth=1.5, label="groundwater surface")
+    z_top_x = float(np.nanmax(top_line_x))
+    z_bottom_x = float(np.nanmin(top_line_x - run_config.plot_xsection_depth_window))
+    z_pad_x = 0.05 * run_config.plot_xsection_depth_window
+    plt.ylim(z_bottom_x, z_top_x + z_pad_x)
     plt.title(f"Materials X-Section (y index {y_index})")
     plt.xlabel("X (local)")
     plt.ylabel("Z")
+    plt.legend(loc="best")
     plt.tight_layout()
-    xsec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_x_name
+    xsec_path = Path(run_config.plot_output_dir) / "materials_x_section.pdf"
     plt.savefig(xsec_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved X-section plot to %s", xsec_path)
@@ -350,6 +585,7 @@ def _write_cross_section_plots(
     # Y-direction cross-section at fixed X index.
     materials_y = materials[:, :, x_index]
     top_line_y = top[:, x_index]
+    gw_line_y = groundwater_surface[:, x_index]
     z_edges_center = top_line_y[None, :] - z_step * np.arange(nz + 1, dtype=float)[:, None]
     z_edges = np.empty((nz + 1, ny + 1), dtype=float)
     z_edges[:, 1:-1] = 0.5 * (z_edges_center[:, :-1] + z_edges_center[:, 1:])
@@ -359,63 +595,21 @@ def _write_cross_section_plots(
 
     plt.figure(figsize=(10, 4))
     plt.pcolormesh(y_edges, z_edges, materials_y, shading="auto", cmap="tab20")
-    plt.gca().invert_yaxis()
+    y_centers = 0.5 * (y_nodes[:-1] + y_nodes[1:])
+    plt.plot(y_centers, gw_line_y, "b-", linewidth=1.5, label="groundwater surface")
+    z_top_y = float(np.nanmax(top_line_y))
+    z_bottom_y = float(np.nanmin(top_line_y - run_config.plot_xsection_depth_window))
+    z_pad_y = 0.05 * run_config.plot_xsection_depth_window
+    plt.ylim(z_bottom_y, z_top_y + z_pad_y)
     plt.title(f"Materials Y-Section (x index {x_index})")
     plt.xlabel("Y (local)")
     plt.ylabel("Z")
+    plt.legend(loc="best")
     plt.tight_layout()
-    ysec_path = Path(run_config.plot_output_dir) / run_config.plot_xsection_y_name
+    ysec_path = Path(run_config.plot_output_dir) / "materials_y_section.pdf"
     plt.savefig(ysec_path, dpi=run_config.plot_dpi)
     plt.close()
     LOG.info("Saved Y-section plot to %s", ysec_path)
-
-
-def _materials_from_rasters_per_column(
-    rasters: tuple["RasterLayer", ...],
-    grid: "Grid",
-    active_mask: np.ndarray,
-    top: np.ndarray,
-) -> np.ndarray:
-    ny = int(grid.el_dims[1])
-    nx = int(grid.el_dims[0])
-    nz = int(grid.el_dims[2])
-    z_step = float(grid.step[2])
-
-    z_centers = top[None, :, :] - z_step * (np.arange(nz, dtype=float)[:, None, None] + 0.5)
-    materials = np.full((nz, ny, nx), -1, dtype=int)
-
-    last_top = top - z_step * nz
-    last_id = np.zeros((ny, nx), dtype=int)
-    last_id[~active_mask] = -1
-
-    rasters_bottom_up = tuple(reversed(rasters))
-    for i_layer, raster in enumerate(rasters_bottom_up):
-        layer_full = raster_to_full_grid(raster, grid)
-        layer_data = np.ma.filled(layer_full, np.nan)
-        layer_mask = np.ma.getmaskarray(layer_full)
-
-        valid = active_mask & (~layer_mask) & (layer_data > last_top)
-        if not np.any(valid):
-            LOG.debug("Layer %s has no valid updates", raster.name)
-            continue
-
-        condition = (
-            (z_centers >= last_top[None, :, :])
-            & (z_centers < layer_data[None, :, :])
-            & valid[None, :, :]
-        )
-        materials = np.where(condition, last_id[None, :, :], materials)
-
-        last_top[valid] = layer_data[valid]
-        last_id[valid] = i_layer
-        LOG.debug(
-            "Assigned layer %s (index %s) to %s cells (per-column)",
-            raster.name,
-            i_layer,
-            int(condition.sum()),
-        )
-
-    return materials
 
 
 def _resolve_executable(exe_name: str) -> Path | None:
@@ -424,6 +618,28 @@ def _resolve_executable(exe_name: str) -> Path | None:
         return candidate
     resolved = shutil.which(exe_name)
     return Path(resolved) if resolved else None
+
+
+def _append_grid_lonlat_to_nam(
+    nam_path: Path, grid_corners_lonlat: np.ndarray, epsg: int = 4326
+) -> None:
+    assert grid_corners_lonlat.shape == (2, 2), "grid_corners_lonlat must be 2x2"
+    sw = grid_corners_lonlat[0]
+    ne = grid_corners_lonlat[1]
+    marker = "Grid SW corner lon/lat"
+    lines = [
+        f"# {marker} (EPSG:{epsg}): {sw[1]:.6f}, {sw[0]:.6f}",
+        f"# Grid NE corner lon/lat (EPSG:{epsg}): {ne[1]:.6f}, {ne[0]:.6f}",
+    ]
+
+    content = nam_path.read_text(encoding="utf-8")
+    if marker in content:
+        return
+    existing = content.splitlines()
+    insert_at = 1 if existing and existing[0].startswith("#") else 0
+    updated = existing[:insert_at] + lines + existing[insert_at:]
+    ending = "\n" if content.endswith("\n") else ""
+    nam_path.write_text("\n".join(updated) + ending, encoding="utf-8")
 
 
 def _elf_machine(path: Path) -> int | None:
@@ -463,48 +679,45 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     )
     _assert_mf6_compatible(exe_path)
 
-    model_inputs = ModelInputs.from_yaml(run_config.config_path)
-    grid_output_path = build_modflow_grid(run_config.config_path, run_config.output_grid_path)
-    grid_data = _grid_arrays_from_npz(grid_output_path)
+    assert run_config.grid_output_path.exists(), (
+        f"Grid NPZ not found: {run_config.grid_output_path}. "
+        f"Run: python build_modflow_grid.py --config {run_config.config_path}"
+    )
+    assert run_config.material_parameters_path.exists(), (
+        f"Material parameters NPZ not found: {run_config.material_parameters_path}. "
+        f"Run: python add_material_parameters.py --config {run_config.config_path}"
+    )
 
-    grid = model_inputs.grid
-    nx = int(grid.el_dims[0])
-    ny = int(grid.el_dims[1])
-    nz = int(grid.el_dims[2])
+    grid_data = _grid_arrays_from_npz(run_config.grid_output_path)
+    model_data = _grid_arrays_from_npz(run_config.material_parameters_path)
+
+    el_dims = np.asarray(grid_data["el_dims"], dtype=int)
+    assert el_dims.size == 3, "el_dims must contain 3 values"
+    nx = int(el_dims[0])
+    ny = int(el_dims[1])
+    nz = int(el_dims[2])
+    step = np.asarray(grid_data["step"], dtype=float)
+    assert step.size == 3, "step must contain 3 values"
 
     active_mask = grid_data["active_mask"].astype(bool)
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
 
-    z_nodes = grid_data["z_nodes"].astype(float)
-    assert z_nodes.size == nz + 1, "z_nodes size mismatch"
-
-    top_raster = model_inputs.rasters[0]
-    top_full = raster_to_full_grid(top_raster, grid)
-    top = np.ma.filled(top_full, z_nodes[-1]).astype(float)
-
-    z_step = float(grid.step[2])
-    # Build per-column botm from local top so layer 1 always has thickness z_step.
-    # This avoids deactivating columns when the global botm sits above the local top.
-    botm = top[None, :, :] - z_step * (np.arange(1, nz + 1, dtype=float)[:, None, None])
-
-    idomain = np.broadcast_to(active_mask, (nz, ny, nx)).astype(int)
-    materials = _materials_from_rasters_per_column(
-        model_inputs.rasters, grid, active_mask, top
-    )
+    top = np.asarray(model_data["top"], dtype=float)
+    botm = np.asarray(model_data["botm"], dtype=float)
+    materials = np.asarray(model_data["materials"], dtype=int)
+    idomain = np.asarray(model_data["idomain"], dtype=int)
+    kh = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
+    kv = np.asarray(model_data["kv"] if "kv" in model_data else model_data.get("k33", kh), dtype=float)
+    assert top.shape == (ny, nx), "top shape mismatch"
+    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
     assert materials.shape == (nz, ny, nx), "materials shape mismatch"
+    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
+    assert kh.shape == (nz, ny, nx), "kh shape mismatch"
+    assert kv.shape == (nz, ny, nx), "kv shape mismatch"
 
-    layer_names = [r.name for r in reversed(model_inputs.rasters)]
-    conductivity_values = _layer_conductivities(
-        layer_names,
-        run_config.conductivity_by_layer,
-        run_config.conductivities,
-        run_config.conductivity_default,
-    )
-
-    materials_mf = materials[::-1, :, :]
-    hk = np.full((nz, ny, nx), run_config.conductivity_default, dtype=float)
-    valid = materials_mf >= 0
-    hk[valid] = conductivity_values[materials_mf[valid]]
+    grid_corners_lonlat = grid_data.get("grid_corners_lonlat")
+    assert grid_corners_lonlat is not None, "grid_corners_lonlat missing from grid data"
+    lonlat_epsg = int(grid_data.get("lonlat_epsg", 4326))
 
     workdir = run_config.workspace
     workdir.mkdir(parents=True, exist_ok=True)
@@ -515,7 +728,13 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         sim_ws=str(workdir),
     )
 
-    flopy.mf6.ModflowTdis(sim, time_units="DAYS", perioddata=[(1.0, 1, 1.0)])
+    perioddata = [(float(days), 1, 1.0) for days in run_config.stress_periods_days]
+    flopy.mf6.ModflowTdis(
+        sim,
+        time_units="DAYS",
+        nper=len(perioddata),
+        perioddata=perioddata,
+    )
     flopy.mf6.ModflowIms(sim, complexity="SIMPLE")
 
     gwf = flopy.mf6.ModflowGwf(sim, modelname=run_config.sim_name, save_flows=True)
@@ -525,8 +744,8 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         nlay=nz,
         nrow=ny,
         ncol=nx,
-        delr=float(grid.step[0]),
-        delc=float(grid.step[1]),
+        delr=float(step[0]),
+        delc=float(step[1]),
         top=top,
         botm=botm,
         idomain=idomain,
@@ -541,10 +760,26 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
     icelltype = np.zeros(nz, dtype=int)
     icelltype[0] = 1
-    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=hk, save_specific_discharge=True)
+    specific_yield = float(model_data["specific_yield"]) if "specific_yield" in model_data else 0.1
+    specific_storage = float(model_data["specific_storage"]) if "specific_storage" in model_data else 1.0e-5
+    flopy.mf6.ModflowGwfsto(
+        gwf,
+        iconvert=icelltype,
+        ss=specific_storage,
+        sy=specific_yield,
+        transient={iper: True for iper in range(len(run_config.stress_periods_days))},
+    )
+    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=kh, k33=kv, save_specific_discharge=True)
 
-    recharge = np.where(active_mask, run_config.recharge_rate, 0.0)
-    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge)
+    if run_config.recharge_series_m_per_day is not None:
+        recharge_rates = run_config.recharge_series_m_per_day
+    else:
+        recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
+        recharge_rates = tuple([recharge_rate] * len(run_config.stress_periods_days))
+    recharge_spd = {
+        iper: np.where(active_mask, float(rate), 0.0) for iper, rate in enumerate(recharge_rates)
+    }
+    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge_spd)
 
     top_active = active_mask & (idomain[0] > 0)
     top_rows, top_cols = np.where(top_active)
@@ -563,48 +798,21 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     )
 
     sim.write_simulation()
+    _append_grid_lonlat_to_nam(workdir / "mfsim.nam", grid_corners_lonlat, lonlat_epsg)
+    _append_grid_lonlat_to_nam(
+        workdir / f"{run_config.sim_name}.nam", grid_corners_lonlat, lonlat_epsg
+    )
     success, buffer = sim.run_simulation()
     assert success, "Modflow6 did not terminate successfully"
     LOG.info("Modflow6 run complete")
     if buffer:
         LOG.debug("Modflow6 output: %s", "\n".join(buffer))
 
-    head_path = workdir / f"{run_config.sim_name}.hds"
-    assert head_path.exists(), f"Head output not found: {head_path}"
-    head = flopy.utils.binaryfile.HeadFile(str(head_path)).get_data()
-    assert head.shape == (nz, ny, nx), "Head output shape mismatch"
-    budget_path = workdir / f"{run_config.sim_name}.cbc"
-    assert budget_path.exists(), f"Budget output not found: {budget_path}"
-    cbc = flopy.utils.CellBudgetFile(str(budget_path))
-    spdis = cbc.get_data(text="SPDIS")
-    assert spdis, "Specific discharge (SPDIS) not found in budget file"
-    qx, qy, qz = postprocessing.get_specific_discharge(spdis[0], gwf)
-    _export_results_to_paraview(
-        run_config.paraview_output_path,
-        grid_data,
-        head,
-        hk,
-        qx,
-        qy,
-        qz,
-        idomain,
-        materials,
-    )
-    _write_plan_view_plots(
-        run_config,
-        grid_data,
-        active_mask,
-        head,
-        qx,
-        qy,
-        idomain,
-        materials,
-        top,
-    )
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build grid and run Modflow6.")
+    parser = argparse.ArgumentParser(
+        description="Run Modflow6 from prebuilt grid and material parameter files."
+    )
     parser.add_argument(
         "--config",
         type=Path,

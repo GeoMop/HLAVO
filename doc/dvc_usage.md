@@ -9,7 +9,7 @@ The large development data stored on Google team/shared drive "HLAVO", you need 
 1. Use 'dev/dvc_install.sh' for pip install into a Python environment (independent of the project environment) 
    or [DVC install](https://dvc.org/doc/install) for other options like install it system-wide.
    
-2. Download DVC endorse secret [config script](https://drive.google.com/file/d/1Dag4N3KYz5q9rkLURayXHjUV0yN-zYYH/view?usp=drive_link),
+2. Download DVC secret [config script](https://drive.google.com/file/d/1Dag4N3KYz5q9rkLURayXHjUV0yN-zYYH/view?usp=drive_link),
    place it to endorse root under original name (NEVER COMMIT THIS FILE).
 
 3. Execute the script like:

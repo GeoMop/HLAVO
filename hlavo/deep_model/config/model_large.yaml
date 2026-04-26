@@ -1,0 +1,83 @@
+# Model configuration (fine, with mine)
+
+qgis_project_path: "/home/jb/GIS/uhelna_all.qgs"
+boundary_layer_name: "domain_with_mine"
+raster_group_name: "HG model layers"
+
+grid_output_path: "grid_materials.npz"
+material_parameters_output_path: "material_parameters.npz"
+
+meshsteps:
+  x: 40.0
+  y: 40.0
+  z: 4.0
+
+model:
+  model_name: "with_mine_fine"
+  workspace: "model"
+  sim_name: "uhelna"
+  exe_name: "mf6"
+  paraview:
+    quantities: [head, hk, idomain, materials, velocity, q, velocity_magnitude, active]
+    include_inactive: false
+    z_scale: 5.0
+  drain_conductance: 1.0
+  simulation_days: 30.0
+  stress_periods_days: [5.0, 10.0, 15.0]
+
+materials:
+  all:
+    horizontal_conductivity: 1.0e-6
+    vertical_conductivity: 1.0e-6
+    porosity: 0.30
+    vG_n: 2.0
+    vG_alpha: 1.0
+    recharge_rate: 0.0001
+    vks: 1.0e-6
+    thtr: 0.05
+    thts: 0.3
+    thti: 0.2
+    eps: 3.5
+    surfdep: 0.0
+    pet: 0.0
+    extdp: 1.0
+    extwc: 0.1
+    ha: 0.0
+    hroot: 0.0
+    rootact: 0.0
+    ntrailwaves: 7
+    nwavesets: 40
+    simulate_et: false
+    unsat_etwc: false
+    unsat_etae: false
+    simulate_gwseep: true
+    hydraulic_conductivity: 1.0e-6
+    vertical_conductivity: 1.0e-6
+    specific_yield: 0.10
+    specific_storage: 1.0e-5
+    initial_head_offset: -1.0
+    perlen: 1.0
+    nstp: 1
+    tsmult: 1.0
+  sand:
+    horizontal_conductivity: 1.0e-5
+    vertical_conductivity: 1.0e-5
+  clay:
+    horizontal_conductivity: 1.0e-7
+    vertical_conductivity: 1.0e-7
+
+plots:
+  enabled: true
+  output_dir: "plots"
+  dpi: 150
+  active_mask_name: "grid_active_mask.png"
+  idomain_name: "idomain_top.png"
+  head_name: "head_groundplan.png"
+  groundwater_surface_name: "groundwater_surface.png"
+  groundwater_change_name: "groundwater_change.png"
+  hydrograph_name: "groundwater_hydrograph.png"
+  xsection_x_name: "materials_x_section.png"
+  xsection_y_name: "materials_y_section.png"
+  xsection_x_times_name: "groundwater_x_section_times.png"
+  xsection_y_times_name: "groundwater_y_section_times.png"
+  xsection_depth_window: 40.0

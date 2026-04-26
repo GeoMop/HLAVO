@@ -1,0 +1,164 @@
+ATTRS:
+    description: "Simulated quantities around water source Uhelná."
+    # for the bucket name see the store_create.sh script.
+    STORE_URL: "s3://hlavo-release/simulations.zarr"
+#    STORE_URL: "s3://<bucket>>/<zarr_storage>"
+    S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
+#    STORE_URL: "./boreholes_uhelna"
+    LOGGER: "local"
+
+Uhelna:
+    well_prediction:
+        ATTRS:
+            description: "Prediction of quantities of wells."
+
+        COORDS:
+            date_time:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Time coordinate"
+#                df_col: "timestamp"
+                source_unit: { tick: "m", tz: "CET" }
+                sorted: true
+                chunk_size: 1024
+                # single chunk size about 1MB
+
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 1, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+
+            well_id:
+                description: "Full borehole id."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: [] # Unsorted
+                chunk_size: 64
+            
+                
+            calibration:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Date of calibration indexing the simulation parameters."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: true # Unsorted
+                chunk_size: 1
+
+
+        VARS:
+            # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+            water_level:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water table level, meters above see"
+                coords: ["date_time", "well_id", "calibration"]
+
+            water_depth:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water level depth relative to the borehole head."
+                coords: ["date_time", "well_id", "calibration"]
+
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["well_id"]
+            Z:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Z-coord of well head above sea level."
+                coords: ["well_id"]
+
+    site_prediction:
+        COORDS:
+            date_time:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Time coordinate"
+#                df_col: "timestamp"
+                source_unit: { tick: "m", tz: "CET" }
+                sorted: true
+                chunk_size: 1024
+                # single chunk size about 1MB
+
+                #merge: # configuration of merging existing and new coordinates and transfer (interpolation) of the data arrays
+                #allow_inserts: False  # This is currently only supported and default value.
+                #sorted: None  # Automatic, sort coord by itself for non-composed coordinates.
+                step_limits: [1, 1, "h"]
+                # None - no limits add all new coordinates out of existing range.
+                # scalar - regular grid with this step size (use units to convert string values
+                # [min, max] - regular grid with this step size (TODO)
+
+            site_id:
+                description: "Estimated location ID according to the table of possible locations. Including the lab."
+                type: int32
+                na_value: 0 # valid site ids start with 1
+                sorted: [ ] # Unsorted
+                chunk_size: 512            
+                
+            calibration:
+                unit: { tick: "m", tz: "UTC" }
+                description: "Date of calibration indexing the simulation parameters."
+                type: str[16]
+                # Composed implies unsorted, no support for sparse data interpolation, right now.
+                # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
+                sorted: true # Unsorted
+                chunk_size: 1
+
+
+        VARS:
+            # We put forward varaible keys as valid keywords, but quoted names are valid in YAML
+            velocity:
+                unit: "m/s"
+                type: float
+                na_value: 'nan' # default
+                description: "Infiltration, Darcy velocity of water on the surface and deep model interface."
+                coords: ["date_time", "site_id", "calibration"]
+
+            preasure_head:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Water level depth relative to the borehole head."
+                coords: ["date_time", "site_id", "calibration"]
+
+            longitude:
+                description: "GPS. Signed Earth longitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["site_id"]
+
+            latitude:
+                description: "GPS. Signed Earth latitude. Indicated by the probe itself."
+                #geodetic_system: "WGS84"
+                unit: "deg"
+                type: float
+                na_value: 'nan' # default
+                coords: ["site_id"]
+            Z:
+                unit: "m"
+                type: float
+                na_value: 'nan' # default
+                description: "Z-coord of profile measurement site."
+                coords: ["site_id"]
+
+       

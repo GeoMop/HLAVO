@@ -7,10 +7,11 @@ from .build_modflow_grid import (
     assign_materials,
     build_modflow_grid,
 )
+from .model_3d_cfg import Model3DCommonConfig
 from .qgis_reader import (
     BoundaryPolygon,
     Grid,
-    ModelConfig,
+    GeometryConfig,
     ModelInputs,
     QgisProjectReader,
     RasterLayer,
@@ -18,7 +19,8 @@ from .qgis_reader import (
 )
 
 __all__ = [
-    "ModelConfig",
+    "GeometryConfig",
+    "Model3DCommonConfig",
     "RasterLayer",
     "BoundaryPolygon",
     "Grid",

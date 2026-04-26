@@ -11,10 +11,10 @@ from itertools import groupby
 # from joblib import Memory
 # memory = Memory(location='cache_dir', verbose=10)
 from hlavo.kalman.kalman_result import KalmanResults
-from hlavo.soil_parflow.parflow_model import ToyProblem
 from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 # from soil_model.evapotranspiration_fce import ET0
 from hlavo.misc.auxiliary_functions import sqrt_func, add_noise
+from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
@@ -34,20 +34,30 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_path=None, config_dict=None, verbose=False, seed=None):
+    def from_config(workdir, config_source, verbose=False, seed=None):
         """
-        Create a KalmanFilter from a YAML configuration file.
+        Create a KalmanFilter from YAML configuration source.
 
         :param workdir: Working directory where outputs are written
-        :param config_path: Path to YAML configuration file
-        :param config_dict: Configuration dictionary
+        :param config_source: One of:
+            - pathlib.Path to YAML file
+            - YAML string
+            - config dictionary
         :param verbose: Whether to print verbose runtime logs
         :return: Configured KalmanFilter instance
         """
-        if config_dict is None:
-            with config_path.open("r") as f:
-                config_dict = yaml.safe_load(f)
-        if seed is not None:
+        if isinstance(config_source, dict):
+            config_dict = config_source
+        elif isinstance(config_source, Path):
+            with config_source.open("r", encoding="utf-8") as handle:
+                config_dict = yaml.safe_load(handle)
+        else:
+            raise TypeError(f"Unsupported config_source type: {type(config_source)}")
+
+        assert isinstance(config_dict, dict), "Kalman config must be a mapping"
+        model_1d_cfg = config_dict["model_1d"]
+        assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
+        if seed:
             config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
 
@@ -100,10 +110,11 @@ class KalmanFilter:
 
         :return: Model instance
         """
-        if self.model_config["model_class_name"] == "ToyProblem":
-            model_class = ToyProblem
-        else:
-            raise NotImplemented("Import desired class")
+        model_class_name = self.model_config["model_class_name"]
+        model_class = resolve_named_class(
+            model_class_name,
+            ("hlavo.soil_parflow", "hlavo.soil_parflow.parflow_model"),
+        )
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
     def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag, timestamps):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hlavo"
-version = "0.1.0"
+version = "0.2.0"
 description = "HLAVO project."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,7 @@ dependencies = [
     "filterpy",
     "pftools[all]",
     "matplotlib",
+    "pyvista",
     "xarray",
     "dask",
     "distributed",
@@ -34,6 +35,9 @@ dependencies = [
     # Deep model
     "modflow_devtools",
     "flopy",
+    "geopandas",
+    "shapely",
+    "rasterio",
 
     # Ingress
     "requests",
@@ -54,7 +58,13 @@ dependencies = [
     #weasyprint
     "openpyxl",     # for reading original input datasets
 
+    # deep_model parallel calibration; combine with dask.distributed map  
+    "deap"
 ]
+
+[project.scripts]
+hlavo = "hlavo.main:main"
+zf = "hlavo.tools.zf:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

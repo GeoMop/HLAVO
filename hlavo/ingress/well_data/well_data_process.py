@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 import pandas as pd
 from hlavo.ingress import well_data
+from hlavo.ingress.well_data import well_data_plot
 
 
 """
@@ -64,7 +65,7 @@ def plot_written_data():
         water_draw_node,
         var_names=["date", "cum_draw", "well_id", "longitude", "latitude"]
     )
-    well_data.pdf_plot_all(
+    well_data_plot.pdf_plot_all(
         "well_data.pdf",
         df_draw=df_draw,
         df_water_levels=df_water_levels,

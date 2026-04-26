@@ -201,10 +201,10 @@ def add_location_to_measurements(
         .select(
             pl.col("datetime").alias("event_dt"),
             pl.col("active_probe").alias("event_probe"),
-            pl.lit(None).cast(pl.Int64).alias("site_id"),
+            pl.lit(None).cast(pl.Int32).alias("site_id"),
             pl.lit(None).cast(pl.Float64).alias("latitude"),
             pl.lit(None).cast(pl.Float64).alias("longitude"),
-            pl.lit(0).cast(pl.Int64).alias("site_status"),
+            pl.lit(0).cast(pl.Int32).alias("site_status"),
             pl.lit(True).alias("is_unassign"),
         )
     )
@@ -286,5 +286,11 @@ def extract_df(file_path: str | Path, df_sites,
 
     # add latitude, longitude
     df = add_location_to_measurements(df, df_sites)
+
+    # TODO: PE 7.4.25
+    #  filter the data:
+    # - update schema with new columns for filtered data
+    # - update schema with a column that flags filtered jumps
+    # - finally, update all to the zarr fuse storage
 
     return df

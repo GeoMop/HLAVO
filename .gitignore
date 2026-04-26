@@ -1,7 +1,22 @@
-.secrets_env
+runs/composed_3D_only/model_with_mine_work
+runs/composed_3D_only/model_with_mine
+
+
 tests/ingress/aladin_data
+tests/ingress/scrapper/test_meteo_raw_data
+tests/ingress/scrapper/workdir
+tests/deep_model/pv_output
+
+
+dev/.codex_docker
+hlavo/deep_model/model
+runs/composed_mock/3d_models
+.secrets_env
 ZF
+hlavo/deep_model/GIS
+**/.gpkg
 _*/*
+.DS_Store
 
 dev/.codex_docker
 dev/parflow_install
@@ -18,13 +33,7 @@ notebooks/*.pdf
 notebooks/202*
 
 
-DeepSensor/3Dprint_models/**/*.stl
-DeepSensor/EM_models/**/*.out
-DeepSensor/EM_models/**/*.pdf
-DeepSensor/EM_models/**/*.vti
-DeepSensor/EM_models/**/*.png
-DeepSensor/EM_models/**/*.zip
-
+DeepSensor/
 
 # secret files
 dvc_secret_config.sh
@@ -205,3 +214,4 @@ microchip_SW/.vscode
 
 data_processing/.env
 /data_processing/.python-version
+/hlavo/kalman/pristupy.txt

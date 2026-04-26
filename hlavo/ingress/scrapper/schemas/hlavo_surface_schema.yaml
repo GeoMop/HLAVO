@@ -1,6 +1,6 @@
 ATTRS:
   S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
-  S3_STORE_URL: "s3://hlavo-release/hlavo-release.zarr"
+  STORE_URL: "s3://hlavo-release/hlavo-release.zarr"
   grid_min: [50.840000, 14.850000] # unit deg
   grid_max: [50.8900000, 14.9600000] # unit deg
   grid_step: [1e-2, 1e-2] # unit deg; about 1000m; approximately resolution of the yr.no service
@@ -90,13 +90,11 @@ yr.no:
       description: "Signed Earth longitude."
       coords: "lat_lon"
 
+  COORDS:
     date_time:
       unit: { tick: "h", tz: "UTC" }
       description: "Time coordinate, UTC time zone, hour resolution"
       source_unit: { tick: "h", tz: "UTC" }
-
-  COORDS:
-    date_time:
       chunk_size: 1024
       merge:
         step_limits: [1, 1, "h"]

@@ -1,5 +1,9 @@
-# How to work with GRB data
+# CHMI ALADIN GRIB Notes
 
+This directory documents the source GRIB format. The active automatic update of
+the `chmi_aladin_10m` zarr-fuse node is configured in
+`../../scrapper/endpoints_config.yaml` and implemented by
+`../../scrapper/extract/chmi_aladin_1km_extract.py`.
 
 ## Dataset, Aladin numerical model, CZ only, step 1km
 [FTP URL](https://opendata.chmi.cz/meteorology/weather/nwp_aladin/CZ_1km/)
@@ -35,4 +39,3 @@ Attributes:
 [FTP URL](https://opendata.chmi.cz/meteorology/weather/nwp_aladin/)
 [Documentation](https://geoportal.gov.cz/php/micka/record/basic/664b1c63-c510-40b8-9a84-313264c0a8017c)
 Boundary: 1.288, 36.038, 35.145, 55.253
-

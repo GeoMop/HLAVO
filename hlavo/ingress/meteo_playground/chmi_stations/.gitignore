@@ -1,1 +1,7 @@
-/meta4.json
+/meta*.json
+chmi_stations.zarr/
+open_meteo_data_hourly/
+stations_data_daily/
+stations_data_hourly/
+parflow_clm_vs_open_meteo.pdf
+

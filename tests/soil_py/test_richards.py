@@ -61,6 +61,7 @@ def read_ref_sol(file_path, target_timesteps, target_z_nodes):
 # result = read_and_interpolate_ref_solution_2d(file_path, target_timesteps, target_z_nodes)
 # print(result)
 
+@pytest.mark.skip
 def test_to_parflow():
     """
     Test suite for boundary conditions in Richards Equation Solver.

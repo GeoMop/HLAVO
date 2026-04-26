@@ -1,44 +1,33 @@
 import json
+import logging
 import math
 from collections import defaultdict
+from pathlib import Path
 
 import pandas as pd
 
+from hlavo.ingress.meteo_playground.chmi_stations.config import (
+    ACTIVE_STATIONS_CSV_PATH,
+    QUANTITY_DEFINITIONS_PATH,
+    STATIONS_NEARBY_CSV_PATH,
+)
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def get_data_block(doc):
+LOGGER = logging.getLogger(__name__)
+
+
+def get_data_block(doc: dict) -> dict:
     """
-    For CHMI-style JSON:
+    Return the CHMI payload block containing ``header`` and ``values``.
 
-    {
-      "data": {
-        "type": "DataCollection",
-        "data": {
-          "header": "...",
-          "values": [...]
-        }
-      }
-    }
+    Supported layouts:
 
-    or sometimes:
-
-    {
-      "type": "DataCollection",
-      "data": {
-        "header": "...",
-        "values": [...]
-      }
-    }
-
-    return the dict that has 'header' and 'values'.
+    - ``{"header": ..., "values": ...}``
+    - ``{"data": {"header": ..., "values": ...}}``
+    - ``{"data": {"data": {"header": ..., "values": ...}}}``
     """
-    # case 1: top level is DataCollection
     if "header" in doc and "values" in doc:
         return doc
 
-    # case 2: outer 'data' with inner 'data'
     data = doc.get("data")
     if isinstance(data, dict):
         if "header" in data and "values" in data:
@@ -221,7 +210,9 @@ def build_station_dataframe(
         rec = {
             "WSI": wsi,
             "FULL_NAME": st["FULL_NAME"],
-            "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            # "GPS": f"{st['LAT']:.6f},{st['LON']:.6f}",
+            "LAT": st['LAT'],
+            "LON": st['LON'],
             "ELEVATION": st["ELEVATION"],
             "DIST_KM": dist,
             "BEGIN_DATE": st["BEGIN_DATE"],
@@ -240,6 +231,29 @@ def build_station_dataframe(
     return df
 
 
+def filter_active_today(df):
+    """
+    Keep only stations active on today's local date based on BEGIN_DATE/END_DATE.
+    """
+    if df.empty:
+        return df.copy()
+
+    begin_dates = pd.to_datetime(df["BEGIN_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    end_dates = pd.to_datetime(df["END_DATE"], format="ISO8601", utc=True, errors="coerce").dt.date
+    today = pd.Timestamp.now(tz="Europe/Prague").date()
+
+    is_active = begin_dates.le(today) & (end_dates.ge(today) | end_dates.isna())
+    return df.loc[is_active].reset_index(drop=True)
+
+
+def process_chmi_stations_csv():
+    # not found:
+    # wet_bulb_temperature_2m
+    # ventilation_index
+    # cloud_fraction_xxx is not provided by meteostations,
+    # cloud_fraction is N/8 (osminy)
+    pass
+
 # -----------------------------
 # main: call subscripts
 # -----------------------------
@@ -247,8 +261,6 @@ def main():
     # --- parameters you can tweak ---
     meta1_path = "meta1.json"
     meta2_path = "meta2.json"
-    output_csv = "stations_nearby.csv"
-    quantity_defs_path = "quantity_definitions.json"  # <--- new output file
 
     # reference location & radius (example: somewhere near Cheb)
     center_lat = 50.8659928
@@ -270,10 +282,10 @@ def main():
         for abbr, pairs in quantity_defs.items()
     }
 
-    with open(quantity_defs_path, "w", encoding="utf-8") as f:
+    with Path(QUANTITY_DEFINITIONS_PATH).open("w", encoding="utf-8") as f:
         json.dump(serializable_defs, f, ensure_ascii=False, indent=2)
 
-    print(f"Quantity definitions written to {quantity_defs_path}")
+    print(f"Quantity definitions written to {QUANTITY_DEFINITIONS_PATH}")
     # 2) station -> available quantities from meta2
     all_abbrs, station_to_quantities = build_station_quantity_map(meta2_path)
     print(f"Found {len(all_abbrs)} distinct abbreviations in meta2.")
@@ -293,8 +305,12 @@ def main():
     )
 
     # 5) output to CSV
-    df.to_csv(output_csv, index=False, encoding="utf-8")
-    print(f"Written {len(df)} stations to {output_csv}")
+    df.to_csv(STATIONS_NEARBY_CSV_PATH, index=False, encoding="utf-8")
+    print(f"Written {len(df)} stations to {STATIONS_NEARBY_CSV_PATH}")
+
+    active_df = filter_active_today(df)
+    active_df.to_csv(ACTIVE_STATIONS_CSV_PATH, index=False, encoding="utf-8")
+    print(f"Written {len(active_df)} active stations to {ACTIVE_STATIONS_CSV_PATH}")
 
 
 if __name__ == "__main__":
