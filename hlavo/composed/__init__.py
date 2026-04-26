@@ -2,12 +2,11 @@
 """Exports for composed."""
 
 from .model_composed import setup_models
-from .model_1d import Model1D
+from .worker_1d import Worker1D
 from .model_3d import Model3D
-from .run_map import main
 
 __all__ = [
     "setup_models",
-    "Model1D",
+    "Worker1D",
     "Model3D",
 ]

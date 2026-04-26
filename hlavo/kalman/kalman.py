@@ -18,6 +18,7 @@ from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
+from hlavo.soil_parflow.parflow_model import ToyProblem
 import threading
 from datetime import datetime
 import xarray as xr
@@ -55,9 +56,7 @@ class KalmanFilter:
             raise TypeError(f"Unsupported config_source type: {type(config_source)}")
 
         assert isinstance(config_dict, dict), "Kalman config must be a mapping"
-        model_1d_cfg = config_dict["model_1d"]
-        assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
-        if seed:
+        if seed is not None:
             config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
 
@@ -113,7 +112,7 @@ class KalmanFilter:
         model_class_name = self.model_config["model_class_name"]
         model_class = resolve_named_class(
             model_class_name,
-            ("hlavo.soil_parflow", "hlavo.soil_parflow.parflow_model"),
+            (ToyProblem,),
         )
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 

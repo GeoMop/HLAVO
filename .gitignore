@@ -6,7 +6,7 @@ tests/ingress/aladin_data
 tests/ingress/scrapper/test_meteo_raw_data
 tests/ingress/scrapper/workdir
 tests/deep_model/pv_output
-
+tests/*/sandbox
 
 dev/.codex_docker
 hlavo/deep_model/model
