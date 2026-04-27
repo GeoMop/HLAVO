@@ -47,7 +47,7 @@ OPEN_METEO_REQUIRED_VARS = [
     "dlwr_estimate",
 ]
 
-STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
+STATION_DF_METADATA_COLUMNS = {"STATION", "station_id", "VTYPE", "date_time", "latitude", "longitude"}
 
 HISTORICAL_DAILY_URL = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
 HISTORICAL_HOURLY_URL = "https://opendata.chmi.cz/meteorology/climate/historical/data/1hour/"

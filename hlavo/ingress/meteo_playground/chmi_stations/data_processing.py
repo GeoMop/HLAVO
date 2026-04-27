@@ -299,6 +299,7 @@ def load_active_station_dataframe(
             continue
 
         station_df = station_df.with_columns(
+            pl.lit(station["WSI"]).cast(pl.Utf8).alias("station_id"),
             pl.lit(station["LAT"]).cast(pl.Float64).alias("latitude"),
             pl.lit(station["LON"]).cast(pl.Float64).alias("longitude"),
         )
@@ -407,10 +408,12 @@ def load_cached_open_meteo_dataframe(
         # pl.lit(f"open_meteo:{site_id}").alias("STATION"),
         pl.lit(latitude).cast(pl.Float64).alias("latitude"),
         pl.lit(longitude).cast(pl.Float64).alias("longitude"),
+        pl.lit(site_id).alias("site_id")
     ).select(
         [
             # "STATION",
             "date_time",
+            "site_id",
             "latitude",
             "longitude",
             *[
@@ -663,13 +666,20 @@ def select_station_variable(ds, var_name, station):
     """
     Select one variable for one station and reduce it to a time series.
     """
-    station_da = ds[var_name].sel(
-        latitude=station["LAT"],
-        longitude=station["LON"],
-        method="nearest",
-    )
+    station_da = ds[var_name].sel(station_id=station["WSI"])
     return station_da.squeeze(drop=True).drop_vars(
-        [coord_name for coord_name in ["latitude", "longitude"] if coord_name in station_da.coords],
+        [coord_name for coord_name in ["station_id", "latitude", "longitude"] if coord_name in station_da.coords],
+        errors="ignore",
+    )
+
+
+def select_site_variable(ds, var_name, site_id):
+    """
+    Select one variable for one site and reduce it to a time series.
+    """
+    site_da = ds[var_name].sel(site_id=site_id)
+    return site_da.squeeze(drop=True).drop_vars(
+        [coord_name for coord_name in ["site_id", "latitude", "longitude"] if coord_name in site_da.coords],
         errors="ignore",
     )
 
@@ -755,15 +765,18 @@ def build_open_meteo_parflow_comparison_dataset(
     Read the stored Open-Meteo data and convert it to ParFlow/CLM-like quantities
     for comparison against parflow_clm_ds.
     """
-    station = get_priority_station_metadata(stations_csv_path=stations_csv_path)[0]
+    site_id = build_site_metadata_dataset()["site_id"].values[0]
     _, open_meteo_ds = read_storage(
         schema_path=schema_path,
         node_path=NODE_OPEN_METEO,
         var_names=OPEN_METEO_REQUIRED_VARS,
         storage_path=storage_path,
     )
+    assert open_meteo_ds.sizes.get("site_id", 0) > 0, (
+        "Open-Meteo storage has no site_id values. Rebuild the open_meteo node after adding site_id to the schema/dataframe."
+    )
     open_meteo_inputs = {
-        var_name: select_station_variable(open_meteo_ds, var_name, station)
+        var_name: select_site_variable(open_meteo_ds, var_name, site_id)
         for var_name in OPEN_METEO_REQUIRED_VARS
     }
 
@@ -1023,7 +1036,7 @@ def build_parflow_clm_input_dataset(
 def main(start_date: str, end_date: str):
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
-    if not Path("chmi_stations.zarr").exists():
+    if CHMI_STATIONS_STORAGE_PATH is None or not CHMI_STATIONS_STORAGE_PATH.exists():
         active_station_daily_df = load_active_station_daily_data(start_date=start_date, end_date=end_date)
         # active_station_daily_df.sort(["date_time"])
         print("Active stations daily dataframe preview:")
@@ -1043,6 +1056,9 @@ def main(start_date: str, end_date: str):
             [active_station_daily_df, active_station_hourly_df],
             how="diagonal_relaxed",
         )
+        if "STATION" in active_station_df.columns:
+            active_station_df = active_station_df.drop("STATION")
+        print(active_station_df)
         update_storage(active_station_df, node_path=NODE_CHMI_STATIONS)
 
         # latitude, longitude, site_id = get_station_coordinates(active_station_df)
