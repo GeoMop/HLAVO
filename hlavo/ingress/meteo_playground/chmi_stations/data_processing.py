@@ -31,9 +31,9 @@ from hlavo.ingress.meteo_playground.chmi_stations.config import (
     STATIONS_DATA_HOURLY_PATH,
     STATION_DF_METADATA_COLUMNS,
 )
-from hlavo.ingress.moist_profile.extract.main import load_site_coords_csv
+from hlavo.ingress.moist_profile.extract.profile_process import load_site_coords_csv
 from hlavo.ingress.meteo_playground.chmi_stations.open_meteo import open_meteo
-from hlavo.ingress.meteo_playground.chmi_stations.data_scrapper import get_station_coordinates
+from hlavo.ingress.meteo_playground.chmi_stations.data_scraper import get_station_coordinates
 
 
 LOGGER = logging.getLogger(__name__)
@@ -1020,10 +1020,8 @@ def build_parflow_clm_input_dataset(
     return parflow_clm_ds
 
 
-def main():
+def main(start_date: str, end_date: str):
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    start_date = "2020-01-01T00:00:00Z"
-    end_date = "2025-12-31T23:59:59Z"
 
     if not Path("chmi_stations.zarr").exists():
         active_station_daily_df = load_active_station_daily_data(start_date=start_date, end_date=end_date)
@@ -1073,7 +1071,3 @@ def main():
     update_parflow_input_storage(parflow_clm_ds)
     print(parflow_clm_ds)
     print(f"Saved ParFlow/Open-Meteo comparison plot to: {comparison_plot_path}")
-
-
-if __name__ == "__main__":
-    main()
