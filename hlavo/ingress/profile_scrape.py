@@ -1,6 +1,6 @@
 from pathlib import Path
 import datetime
-from hlavo.ingress.moist_profile.profile_scrapper import run_dataflow_extraction
+from hlavo.ingress.moist_profile.profile_scraper import run_dataflow_extraction
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 

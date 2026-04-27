@@ -7,9 +7,9 @@ datasets exposed through `hlavo/schemas`.
 
 - `moist_profile/profile_schema.yaml`
   - Raw source: DataFlow/Odyssey profile CSV exports plus site metadata CSVs.
-  - Update scripts: `moist_profile/dataflow_grab.py`,
+  - Update scripts: `moist_profile/profile_scraper.py`,
     `moist_profile/extract/gpx2csv.py`, and
-    `moist_profile/extract/main.py`.
+    `moist_profile/extract/profile_process.py`.
   - Writes `Uhelna/profiles` and `Uhelna/lab`.
 
 - `well_data/wells_schema.yaml`
@@ -20,7 +20,7 @@ datasets exposed through `hlavo/schemas`.
 - `meteo_playground/chmi_stations/chmi_stations_schema.yaml`
   - Raw source: CHMI station metadata/data and Open-Meteo archive data.
   - Update scripts: `meta_description.py`, `meta_processing.py`,
-    `data_scrapper.py`, and `data_processing.py`.
+    `data_scraper.py`, and `data_processing.py`.
   - Writes raw station/Open-Meteo nodes and the ParFlow/CLM forcing node.
 
 - `scrapper/schemas/hlavo_surface_schema.yaml`

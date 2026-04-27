@@ -16,14 +16,14 @@ index as `hlavo/schemas/chmi_stations_schema.yaml`.
    `quantity_definitions.json`.
 2. Run `meta_processing.py` when station metadata or the selected domain changes;
    it regenerates nearby-station CSV outputs.
-3. Run `data_scrapper.py` to download CHMI station data and Open-Meteo archive
+3. Run `data_scraper.py` to download CHMI station data and Open-Meteo archive
    data into local cache directories.
 4. Run `data_processing.py` to update zarr-fuse nodes in
    `chmi_stations_schema.yaml` and rebuild the ParFlow/CLM forcing dataset.
 
 ## Data Download
 
-`data_scrapper.py` creates or updates:
+`data_scraper.py` creates or updates:
 
 - `open_meteo_data_hourly`
 - `stations_data_daily`
