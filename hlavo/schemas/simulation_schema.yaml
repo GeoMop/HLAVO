@@ -111,7 +111,7 @@ Uhelna:
                 type: int32
                 na_value: 0 # valid site ids start with 1
                 sorted: [ ] # Unsorted
-                chunk_size: 512            
+                chunk_size: 1   # contribution from parallel 1D solvers            
                 
             calibration:
                 unit: { tick: "m", tz: "UTC" }

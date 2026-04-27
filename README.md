@@ -7,6 +7,47 @@ System for numerical prediction of water table using continuously collected mete
 soil mosture profile data.
 
 ## Get started
+We assume Linux based operation system (WSL should work as well.)
+
+1. install `docker`, optionaly `docker-buildx-plugin` for building
+
+2. clone the repository: 
+   ```
+   git clone https://github.com/GeoMop/HLAVO.git
+   ```
+   
+3. get the docker image
+
+    ```
+    dev/hlavo-build pull
+    ```
+
+4. complete the instalation of the Python venv overlay
+
+    ```
+    dev/hlavo-build venv
+    ```
+
+5. check that hlavo is installed
+
+    ```
+    def/hlavo run python -c "import hlavo"
+    ```
+
+### Builds
+
+Alternatively you can build / rebuild the docker image using:
+```
+dev/hlavo-build build
+```
+
+or use lightweight but more fragile conda environment:
+```
+dev/hlavo-build -c venv
+dev/hlavo -c run python -c "import hlavo"
+```
+
+## Secrets
 The HLAVO system deployment needs to setup three kind of access:
 
 1. Access to to associated DVC storage with site specific large input files.
@@ -59,7 +100,7 @@ ingress package that owns each dataset. The update procedures are:
 
 
 ## Simulation workflow
-TBD.
+
 
 ---
 
