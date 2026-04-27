@@ -26,7 +26,7 @@ The exploratory scripts expect this local data layout:
    waypoint support data must be regenerated.
 4. Run `hlavo.ingress.profiles_process` to process the raw data and update the zarr-fuse nodes in
    `profile_schema.yaml`.
-   TODO: describe if this includes configured filtering or manual processing through process_data.py is necesary first. 
+   TODO: describe if this includes configured filtering or manual processing through process_data.py is necessary first. 
    document data update procedure.
 
 

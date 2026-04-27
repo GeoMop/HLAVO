@@ -7,7 +7,7 @@ index as `hlavo/schemas/chmi_stations_schema.yaml`.
 
 - `meta1.json` - list of stations active and historic: WSI, station name, activity interval, GPS coords
 - `meta2.json` - list of all measured quantities on all stations: [measurement period, WSI, from_date, to_date,quantity_short, quantity_long,unit, height, schedule_str]
-- `meta3.json` - meteo state abreviations
+- `meta3.json` - meteo state abbreviations
 - `meta4.json` - data quality states
 
 ## Schema Update Procedure
@@ -20,6 +20,8 @@ index as `hlavo/schemas/chmi_stations_schema.yaml`.
    data into local cache directories.
 4. Run `data_processing.py` to update zarr-fuse nodes in
    `chmi_stations_schema.yaml` and rebuild the ParFlow/CLM forcing dataset.
+
+Configuration of CHMI stations and quantities, download directories etc. can be set in `config.py`.
 
 ## Data Download
 

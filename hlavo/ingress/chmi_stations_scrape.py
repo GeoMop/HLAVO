@@ -1,4 +1,4 @@
-from hlavo.ingress.meteo_playground.chmi_stations.data_scrapper import main as data_scrape
+from hlavo.ingress.meteo_playground.chmi_stations.data_scraper import main as data_scrape
 
 if __name__ == '__main__':
     start_date = "2020-01-01T00:00:00"
