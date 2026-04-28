@@ -12,8 +12,8 @@ Helper file contains constants including:
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
-CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations.zarr"
-# CHMI_STATIONS_STORAGE_PATH = None
+# CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations.zarr"
+CHMI_STATIONS_STORAGE_PATH = None
 
 ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
 STATIONS_NEARBY_CSV_PATH = SCRIPT_DIR / "stations_nearby.csv"
@@ -47,7 +47,7 @@ OPEN_METEO_REQUIRED_VARS = [
     "dlwr_estimate",
 ]
 
-STATION_DF_METADATA_COLUMNS = {"STATION", "VTYPE", "date_time", "latitude", "longitude"}
+STATION_DF_METADATA_COLUMNS = {"STATION", "station_id", "VTYPE", "date_time", "latitude", "longitude"}
 
 HISTORICAL_DAILY_URL = "https://opendata.chmi.cz/meteorology/climate/historical/data/daily/"
 HISTORICAL_HOURLY_URL = "https://opendata.chmi.cz/meteorology/climate/historical/data/1hour/"
