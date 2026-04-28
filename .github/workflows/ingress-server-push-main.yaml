@@ -12,7 +12,7 @@ jobs:
       tag: generate
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
-      s3-store-url: s3://hlavo-release/meteo.zarr
+      s3-store-url: s3://hlavo-release/rancher-meteo.zarr
       configuration-dir-path: hlavo/ingress/scrapper
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
