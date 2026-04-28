@@ -455,6 +455,7 @@ class KalmanFilter:
         :return: Encoded measurement vector for the requested structure
         """
         measurements_train_dict, measurements_test_dict = self.state_measurements[tuple(state_vec)]
+        measurement = measurements_train_dict
 
         if measurements_type == "train":
             calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
@@ -465,17 +466,14 @@ class KalmanFilter:
                     self.state_struc.decode_state(state_vec)["calibration_coeffs"],
                     np.squeeze(calibration_coeffs_z_positions)
                 )
-                return self.train_measurements_struc.encode(
-                    measurements_train, state=self.state_struc.decode_state(state_vec)
-                )
-            else:
-                return self.train_measurements_struc.encode(
-                    measurements_train_dict, state=self.state_struc.decode_state(state_vec)
-                )
-        elif measurements_type == "test":
-            return self.test_measurements_struc.encode(
-                measurements_test_dict, state=self.state_struc.decode_state(state_vec)
-            )
+                measurement = measurements_train
+
+        m = self.train_measurements_struc.encode(
+            measurement, state=self.state_struc.decode_state(state_vec)
+        )
+        print("measurement function output size =  ", m)
+        return m
+
 
     @staticmethod
     def get_sigma_points_obj(sigma_points_params, num_state_params):
@@ -917,6 +915,7 @@ class KalmanFilter:
                 print("[UKF] Skipping update (NaN in measurement)")
 
             else:
+                print(f"[UKF] R shape: {ukf.R.shape}; measurement shape: {encoded_measurement.shape}")
                 ukf.update(encoded_measurement)
 
             # --------------------------------------------------------------

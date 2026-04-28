@@ -7,9 +7,9 @@ import yaml
 from dask.distributed import Client, LocalCluster, Queue
 
 from hlavo.composed.common_data import ComposedData
-from hlavo.composed.worker_1d import Model1DLocation, model1d_worker_entry
+from hlavo.composed.worker_1d import model1d_worker_entry
 from hlavo.composed.model_3d import Model3D
-from hlavo.deep_model.coupled_runtime import CoupledModel3DConfig as Model3DConfig
+from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.config import load_config
 
 LOG = logging.getLogger(__name__)
@@ -19,9 +19,10 @@ def setup_models(work_dir, config_path, client):
     work_dir = Path(work_dir).resolve()
     config_path = Path(config_path).resolve()
 
+    load_dotenv()  # load zarr secrets
     config_data, _ = load_config(config_path)
     composed = ComposedData.from_config(work_dir, config_data, config_path)
-    locations_1d = config_data["model_1d"]["sites"]
+    locations_1d = config_data["model_1d"]["site_ids"]
 
     queue_names_3d_to_1d = []
     futures_1d = []
@@ -33,22 +34,21 @@ def setup_models(work_dir, config_path, client):
     model_3d = Model3D(composed, config_data['model_3d'], locations_1d)
     #t_end = model_3d.resolve_t_end()
 
-    for i in range(len(locations_1d)):
-        q_name_3d_to_1d = f"q-3d-to-1d-{i}"
+    for site_id in locations_1d:
+        q_name_3d_to_1d = f"q-3d-to-1d-{site_id}"
         Queue(q_name_3d_to_1d, client=client)
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
 
         fut = client.submit(
             model1d_worker_entry,
             composed,
-            i,
-            locations_1d[i],
+            site_id,
             config_data['model_1d'],
             q_name_3d_to_1d,
             queue_name_1d_to_3d,
         )
         futures_1d.append(fut)
-        LOG.info("[SETUP] Submitted Model1D idx=%s", i)
+        LOG.info("[SETUP] Submitted Model1D site_id=%s", site_id)
 
     final_state_3d = model_3d.run_loop(
         queue_names_out_to_1d=queue_names_3d_to_1d,

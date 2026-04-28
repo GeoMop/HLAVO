@@ -1,83 +1,18 @@
 seed: 123456
 start_datetime: "2025-03-06T00:00:00"
 end_datetime: "2025-03-09T00:00:00"
-#model_3d:
-#  common:
-#    class_name: "Model3D"
-#    name: "uhelna"
-#    total_time_days: 15.0
-#    # Total simulated time in days. If omitted, a single step is run.
-#    executable: "mf6"
-#    # executable to run for the 3d model - some version of modflow
-#
-#  geometry:
-#    qgis_project_path: ../../hlavo/deep_model/GIS/uhelna_all.qgs
-#    boundary_layer_name: domain_around_mine
-#    raster_group_name: HG model layers
-#    meshsteps:
-#      x: 40.0
-#      y: 40.0
-#      z: 4.0
-#
-#  materials:
-#    all:
-#      # AGENT: document each parameter here (a demo file)
-#      # Comment quantity name and unit according to modflow6 documentation.
-#      # Put parameters that does not apply to volumetric materials out of the all section
-#      # logic should be that what is in all is applied to all materials as common/default value
-#      horizontal_conductivity: 1.0e-06
-#      vertical_conductivity: 1.0e-06
-#      porosity: 0.3
-#      vG_n: 2.0
-#      vG_alpha: 1.0
-#      recharge_rate: 0.0001
-#      vks: 1.0e-06
-#      thtr: 0.05
-#      thts: 0.3
-#      thti: 0.2
-#      eps: 3.5
-#      surfdep: 0.0
-#      pet: 0.0
-#      extdp: 1.0
-#      extwc: 0.1
-#      ha: 0.0
-#      hroot: 0.0
-#      rootact: 0.0
-#      ntrailwaves: 7
-#      nwavesets: 40
-#      simulate_et: false
-#      unsat_etwc: false
-#      unsat_etae: false
-#      simulate_gwseep: true
-#      hydraulic_conductivity: 1.0e-06
-#      specific_yield: 0.1
-#      specific_storage: 1.0e-05
-#      initial_head_offset: -1.0
-#      perlen: 1.0
-#      nstp: 1
-#      tsmult: 1.0
-#    sand:
-#      horizontal_conductivity: 1.0e-05
-#      vertical_conductivity: 1.0e-05
-#    clay:
-#      horizontal_conductivity: 1.0e-07
-#      vertical_conductivity: 1.0e-07
-#
-#  plots:
-#    enabled: true
-#    dpi: 150
-#    xsection_depth_window: 40.0
+model_3d:
+  backend_class_name: "Model3DBackendMock"
+  common:
+    name: "uhelna"
 
 model_1d:
-  class_name: "Model1DMock"
-
-#  sites:
-#    - longitude: 14.8800
-#      latitude: 50.8600
-#    - longitude: 14.9000
-#      latitude: 50.8800
-#    - longitude: 14.9200
-#      latitude: 50.8900
+  kalman_class_name: "KalmanFilter"  
+  
+  site_ids: [ 1 ]
+  moisture_sigma: 0.05
+  # Standard deviation of mositure profile measurements. Assuming independent sensors.
+  
   model_config:
     model_class_name: "ToyProblem"
     use_clm: True
@@ -96,9 +31,10 @@ model_1d:
         vG_Th_s: "Geom.domain.Saturation.SSat"
         vG_Th_r: "Geom.domain.Saturation.SRes"
         vG_alpha: ["Geom.domain.Saturation.Alpha", "Geom.domain.RelPerm.Alpha"]
-  measurements_config:
-    measurements_scheme_file: ../../hlavo/ingress/moist_profile/profile_schema.yaml
-    meteo_scheme_file: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
+  measurements_config: {}
+  schema_files:
+    profiles: ../../hlavo/ingress/moist_profile/profile_schema.yaml
+    surface: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
   kalman_config:
     model_time_step: 2.5e-2
     state_params:

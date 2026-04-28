@@ -5,75 +5,37 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Dict
 
-import attrs
 import flopy
 import numpy as np
 from flopy.utils.binaryfile import HeadFile
 
 import hlavo.deep_model.model_3d_cfg as cfg3d
 import hlavo.misc.config as cfg
+from hlavo.composed.common_data import ComposedData
 
 LOG = logging.getLogger(__name__)
 INVALID_HEAD_ABS_THRESHOLD = 1.0e20
 
 
-@attrs.define(frozen=True)
-class CoupledModel3DConfig:
-    common: cfg3d.Model3DCommonConfig
-    workspace_root: Path
-
-    @classmethod
-    def from_source(
-        cls,
-        config_source: Path | dict,
-        workspace: Path | None = None,
-    ) -> "CoupledModel3DConfig":
-        raw, _ = cfg.load_config(config_source)
-        common_raw = cfg3d.resolve_model_3d_common_raw(raw)
-        return cls(
-            common=cfg3d.Model3DCommonConfig.from_mapping(common_raw),
-            workspace_root=cfg3d.resolve_workspace_root(workspace, common_raw),
-        )
-
-    @property
-    def model_folder(self) -> Path:
-        return cfg3d.resolve_model_workspace(self.workspace_root, self.common)
-
-    @property
-    def work_folder(self) -> Path:
-        return self.workspace_root / f"{self.common.model_name}_work"
-
-    @property
-    def sim_name(self) -> str:
-        return self.common.sim_name
-
-    @property
-    def exe_name(self) -> str:
-        return self.common.exe_name
-
-    @property
-    def backend_class_name(self) -> str:
-        return self.common.backend_class_name
-
-    @property
-    def time_step_days(self) -> float:
-        return cfg3d.MODEL_3D_STEP_DAYS
-
-
 class Model3DBackend:
-    def __init__(self, model_3d_cfg: CoupledModel3DConfig, locations_1d) -> None:
-        self.cfg = model_3d_cfg
-        self.locations_1d = locations_1d
+    def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
+        """
+        model_3d_cfg is the 'model_3d:' part of the common config.
+        """
+        self.composed = composed
+        self.cfg = cfg3d.Model3DCommonConfig.from_mapping(model_3d_cfg)
+        self.locations_1d : int = locations_1d
 
         self._prepare_model_workspace()
 
-        self.dis_file = self.cfg.work_folder / f"{self.cfg.sim_name}.dis"
-        self.nam_file = self.cfg.work_folder / f"{self.cfg.sim_name}.nam"
-        self.rcha_file = self.cfg.work_folder / f"{self.cfg.sim_name}.rcha"
-        self.ic_file = self.cfg.work_folder / f"{self.cfg.sim_name}.ic"
-        self.tdis_file = self.cfg.work_folder / f"{self.cfg.sim_name}.tdis"
-        self.hds_file = self.cfg.work_folder / f"{self.cfg.sim_name}.hds"
+        self.dis_file = self.composed.workdir / f"{self.cfg.sim_name}.dis"
+        self.nam_file = self.composed.workdir / f"{self.cfg.sim_name}.nam"
+        self.rcha_file = self.composed.workdir / f"{self.cfg.sim_name}.rcha"
+        self.ic_file = self.composed.workdir / f"{self.cfg.sim_name}.ic"
+        self.tdis_file = self.composed.workdir / f"{self.cfg.sim_name}.tdis"
+        self.hds_file = self.composed.workdir / f"{self.cfg.sim_name}.hds"
 
         self.nlay, self.nrow, self.ncol = self._read_dis_dimensions(self.dis_file)
         self.lon_sw, self.lat_sw, self.lon_ne, self.lat_ne = self._read_grid_corners(self.nam_file)
@@ -82,7 +44,7 @@ class Model3DBackend:
 
     def _prepare_model_workspace(self) -> None:
         src = self.cfg.model_folder
-        dst = self.cfg.work_folder
+        dst = self.composed.workdir
         assert src.exists(), f"3D source model folder not found: {src}"
         assert src.is_dir(), f"3D source model folder must be a directory: {src}"
         if dst.exists():
@@ -112,7 +74,7 @@ class Model3DBackend:
         return lon_sw, lat_sw, lon_ne, lat_ne
 
     def _read_active_mask_3d(self) -> np.ndarray:
-        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.cfg.work_folder), verbosity_level=0)
+        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.composed.workdir), verbosity_level=0)
         gwf = sim.get_model(self.cfg.sim_name)
         idomain = np.asarray(gwf.dis.idomain.array, dtype=int)
         assert idomain.shape == (self.nlay, self.nrow, self.ncol), "Unexpected idomain shape"
@@ -161,10 +123,10 @@ class Model3DBackend:
         executable = self.cfg.exe_name
         resolved_executable = shutil.which(executable)
         assert resolved_executable is not None, f"MODFLOW executable not found: {executable}"
-        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", resolved_executable, self.cfg.work_folder)
+        LOG.info("[3D] running MODFLOW: %s (cwd=%s)", resolved_executable, self.composed.workdir)
         result = subprocess.run(
             [resolved_executable],
-            cwd=self.cfg.work_folder,
+            cwd=self.composed.workdir,
             check=False,
         )
         if result.returncode != 0:
@@ -178,7 +140,7 @@ class Model3DBackend:
             return np.asarray(hds.get_data(totim=times[-1]), dtype=float)
 
         LOG.info("[3D] head file missing at startup, using initial conditions from %s", self.ic_file)
-        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.cfg.work_folder), verbosity_level=0)
+        sim = flopy.mf6.MFSimulation.load(sim_ws=str(self.composed.workdir), verbosity_level=0)
         gwf = sim.get_model(self.cfg.sim_name)
         heads = np.asarray(gwf.ic.strt.array, dtype=float)
         assert heads.shape == (self.nlay, self.nrow, self.ncol), "Unexpected initial head shape"
@@ -226,21 +188,18 @@ class Model3DBackend:
             recharge[self.cell_owner == idx] = float(value)
         return recharge
 
-    def heads_to_1d(self, heads: np.ndarray) -> np.ndarray:
+    def heads_to_1d(self, heads: np.ndarray) -> Dict[int, float]:
         assert heads.shape == (self.nlay, self.nrow, self.ncol)
-        values = np.zeros(len(self.locations_1d), dtype=float)
-        for idx in range(len(self.locations_1d)):
-            mask = (self.cell_owner[None, :, :] == idx) & self.active_mask_3d
-            if np.any(mask):
-                values[idx] = float(np.nanmean(heads[mask]))
-        return values
+        mask = lambda idx : (self.cell_owner[None, :, :] == idx) & self.active_mask_3d
+        mean_head = lambda idx: np.nanmean(heads[mask(idx)])
+        return {site_id: mean_head(idx) for idx, site_id in self.locations_1d}
 
-    def initial_heads_to_1d(self) -> np.ndarray:
+    def initial_heads_to_1d(self) -> Dict[int, float]:
         return self.heads_to_1d(self.sanitize_heads(self._read_last_heads()))
 
-    def choose_dt(self, current_time: float, t_end: float) -> float:
+    def choose_dt(self, current_time: np.datetime64['s'], t_end: np.datetime64['s']) -> np.timedelta64['s']:
         remaining = t_end - current_time
-        return max(min(self.cfg.time_step_days, remaining), 0.0)
+        return max(min(self.cfg.time_step_days, remaining), np.timedelta64(1, 's'))
 
     def model_step(self, dt: float, contributions) -> np.ndarray:
         recharge = self.spread_recharges(contributions)
