@@ -12,8 +12,8 @@ Helper file contains constants including:
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 CHMI_STATIONS_SCHEMA_PATH = SCRIPT_DIR / "chmi_stations_schema.yaml"
-CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations.zarr"
-# CHMI_STATIONS_STORAGE_PATH = None
+# CHMI_STATIONS_STORAGE_PATH = SCRIPT_DIR / "chmi_stations.zarr"
+CHMI_STATIONS_STORAGE_PATH = None
 
 ACTIVE_STATIONS_CSV_PATH = SCRIPT_DIR / "stations_nearby_active.csv"
 STATIONS_NEARBY_CSV_PATH = SCRIPT_DIR / "stations_nearby.csv"

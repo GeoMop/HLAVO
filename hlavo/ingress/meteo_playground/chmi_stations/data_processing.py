@@ -505,6 +505,14 @@ def update_storage(stations_df, node_path: list[str]):
     )
     node.update(stations_df)
 
+    _, ds = read_storage(
+        CHMI_STATIONS_SCHEMA_PATH,
+        node_path=node_path,
+        var_names=[],
+        storage_path=CHMI_STATIONS_STORAGE_PATH,
+    )
+    print(ds)
+
 
 def update_parflow_input_storage(
     parflow_clm_ds,
