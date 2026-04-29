@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -xeuo pipefail
 
 COMMON_ROOT="$( cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 ; pwd -P )"
 REPO_ROOT="$( cd -- "$COMMON_ROOT/.." >/dev/null 2>&1 ; pwd -P )"
@@ -142,6 +142,13 @@ base_run_conda() {
   "$CONDA_BIN" run -n "$ENV_NAME" --no-capture-output "$@"
 }
 
+path_abs() {
+  python3 -c 'import os,sys; print(os.path.abspath(os.path.normpath(sys.argv[1])))' "$1"
+}
+
+path_rel_to() {
+  python3 -c 'import os,sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))' "$1" "$2"
+}
 
 translate_path_arg() {
   local arg="$1"
@@ -152,8 +159,8 @@ translate_path_arg() {
     return 0
   }
 
-  abs="$(realpath -m -- "$arg")"
-  rel="$(realpath -m --relative-to="$REPO_ROOT" -- "$abs")"
+  abs="$(path_abs "$arg")"
+  rel="$(path_rel_to "$REPO_ROOT" "$abs")"
 
   case "$rel" in
     ..|../*)
@@ -186,9 +193,12 @@ base_run_docker() {
   fi
 
   docker_args=()
+  echo "========================="
+  echo "$@"
   for arg in "$@"; do
     docker_args+=("$(translate_path_arg "$arg")") || exit 1
   done
+  echo "$docker_args"
 
   MSYS_NO_PATHCONV=1 \
   docker run --rm \
@@ -239,6 +249,8 @@ env_build() {
 run_cmd() {
   venv_ensure
   [[ $# -ge 1 ]] || die "Missing command."
+  echo "==================================="
+  echo $ACTIVATE_AND_RUN
   base_run "$ACTIVATE_AND_RUN" "$HOST_VENV_DIR" "$@"
 }
 
