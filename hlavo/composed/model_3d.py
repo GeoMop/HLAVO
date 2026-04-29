@@ -14,6 +14,7 @@ from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 import hlavo.deep_model.model_3d_cfg as cfg3d
 from hlavo.deep_model.coupled_runtime import Model3DBackend
+from hlavo.composed.prediction_writer import prediction_writer_from_config
 from hlavo.misc.class_resolve import resolve_named_class
 
 TIME_ORIGIN = np.datetime64("2000-01-01T00:00:00", "ms")
@@ -55,6 +56,29 @@ class Model3DBackendMock:
         self._heads = self._heads + recharge * dt_days
         return {site_id: self._heads[i] for i, site_id in enumerate(self.locations_1d)}
 
+    def well_prediction(self, wells_dataset):
+        _ = wells_dataset
+        return {}
+
+
+class Model3DDelay(Model3DBackendMock):
+    def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
+        super().__init__(composed, model_3d_cfg, locations_1d)
+        self.water_level = float(model_3d_cfg["initial_water_level"])
+
+    def model_step(self, dt: float, contributions) -> dict[int, float]:
+        dt_days = float(dt / np.timedelta64(1, "D"))
+        recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)
+        self.water_level = self.water_level + float(np.sum(recharge)) * dt_days
+        self.water_level = self.water_level - max(self.water_level - (-60.0), 0.0) * dt_days * 0.1
+        return {site_id: self.water_level for site_id in self.locations_1d}
+
+    def well_prediction(self, wells_dataset):
+        if wells_dataset is None:
+            return {}
+        return {str(well_id): self.water_level for well_id in wells_dataset["well_id"].values}
+
+
 class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
@@ -62,9 +86,10 @@ class Model3D:
         common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
             common_cfg['backend_class_name'],
-            (Model3DBackendMock, Model3DBackend),
+            (Model3DBackendMock, Model3DDelay, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
+        self.writer = prediction_writer_from_config(composed, locations_1d, common_cfg)
 
 
     def run_loop(
@@ -100,6 +125,7 @@ class Model3D:
                 LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, head)
 
             contributions = {}
+            site_messages = []
             while len(contributions) < len(self.locations_1d):
                 msg_in = q_1d_to_3d.get()
                 assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
@@ -107,10 +133,17 @@ class Model3D:
                 assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
                 LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
                 contributions[id] = float(msg_in.velocity)
+                site_messages.append(msg_in)
 
             heads_to_1d = self.backend.model_step(dt, contributions)
+            if self.writer is not None:
+                site_messages = sorted(site_messages, key=lambda msg: int(msg.site_id))
+                well_prediction = self.backend.well_prediction(self.writer.wells)
+                self.writer.write_step(target_time, site_messages, heads_to_1d, well_prediction)
 
             time = target_time
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        if self.writer is not None:
+            self.writer.close()
         return heads_to_1d
