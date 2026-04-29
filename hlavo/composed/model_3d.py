@@ -1,123 +1,111 @@
 from __future__ import annotations
+from typing import *
 
 import logging
+
+from hlavo.composed.common_data import ComposedData
+
+LOG = logging.getLogger(__name__)
 
 import numpy as np
 from dask.distributed import Queue
 
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
-from hlavo.deep_model.coupled_runtime import CoupledModel3DConfig as Model3DConfig, Model3DBackend
+import hlavo.deep_model.model_3d_cfg as cfg3d
+from hlavo.deep_model.coupled_runtime import Model3DBackend
 from hlavo.misc.class_resolve import resolve_named_class
 
-LOG = logging.getLogger(__name__)
 TIME_ORIGIN = np.datetime64("2000-01-01T00:00:00", "ms")
 MILLISECONDS_PER_DAY = 86_400_000.0
 
-
-def model_time_days_to_datetime64(model_time_days: float) -> np.datetime64:
-    milliseconds = int(round(float(model_time_days) * MILLISECONDS_PER_DAY))
-    return TIME_ORIGIN + np.timedelta64(milliseconds, "ms")
-
-
-def datetime64_to_model_time_days(date_time: np.datetime64) -> float:
-    delta_ms = (np.datetime64(date_time, "ms") - TIME_ORIGIN) / np.timedelta64(1, "ms")
-    return float(delta_ms) / MILLISECONDS_PER_DAY
-
+#
+# def model_time_days_to_datetime64(model_time_days: float) -> np.datetime64:
+#     milliseconds = int(round(float(model_time_days) * MILLISECONDS_PER_DAY))
+#     return TIME_ORIGIN + np.timedelta64(milliseconds, "ms")
+#
+#
+# def datetime64_to_model_time_days(date_time: np.datetime64) -> float:
+#     delta_ms = (np.datetime64(date_time, "ms") - TIME_ORIGIN) / np.timedelta64(1, "ms")
+#     return float(delta_ms) / MILLISECONDS_PER_DAY
+#
 
 class Model3DBackendMock:
-    def __init__(self, model_3d_cfg: Model3DConfig, locations_1d) -> None:
-        self.cfg = model_3d_cfg
+    def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
+        self.composed = composed
         self.locations_1d = locations_1d
         self._heads = np.zeros(len(locations_1d), dtype=float)
 
     def build_cell_assignment(self) -> None:
         return None
 
-    def initial_heads_to_1d(self) -> np.ndarray:
-        return self._heads.copy()
+    def initial_heads_to_1d(self) -> List[float]:
+        return {site_id: self._heads[i] for i, site_id in enumerate(self.locations_1d)}
 
     def choose_dt(self, current_time: float, t_end: float) -> float:
         remaining = t_end - current_time
-        return max(min(self.cfg.time_step_days, remaining), 0.0)
+        max_step = np.timedelta64(24*3600, 's')  * 5
+        return max(min(max_step, remaining), np.timedelta64(1, 's'))
 
     def model_step(self, dt: float, contributions) -> np.ndarray:
         _ = dt
         self._heads = np.asarray(contributions, dtype=float)
         return self._heads.copy()
 
-
 class Model3D:
-    def __init__(self, n_1d, model_3d_cfg: Model3DConfig, locations_1d, initial_time=0.0):
-        self.n_1d = n_1d
-        self.cfg = model_3d_cfg
+    def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
+        self.composed = composed
         self.locations_1d = locations_1d
-        self.time: float = float(initial_time)
         backend_class = resolve_named_class(
-            self.cfg.backend_class_name,
-            ("hlavo.composed.model_3d", "hlavo.deep_model.coupled_runtime"),
+            model_3d_cfg['backend_class_name'],
+            (Model3DBackendMock, Model3DBackend),
         )
-        self.backend = backend_class(model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
+        self.backend = backend_class(composed, model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
 
-    def resolve_t_end(self) -> float:
-        return self.cfg.common.resolve_t_end()
 
     def run_loop(
         self,
-        t_interval: float | tuple[np.datetime64, np.datetime64],
         queue_names_out_to_1d: list[str],
         queue_name_in_from_1d: str,
     ):
-        if isinstance(t_interval, tuple):
-            _, t_end_raw = t_interval
-            t_end = datetime64_to_model_time_days(t_end_raw)
-        else:
-            t_end = float(t_interval)
+        start_t = self.composed.start
+        time = start_t
+        end_t = self.composed.end
+
         q_3d_to_1d = [Queue(name) for name in queue_names_out_to_1d]
         q_1d_to_3d = Queue(queue_name_in_from_1d)
 
         self.backend.build_cell_assignment()
-        initial_heads = self.backend.initial_heads_to_1d()
-        for i in range(self.n_1d):
-            msg_out = Data3DTo1D(
-                date_time=model_time_days_to_datetime64(self.time),
-                site_id=i,
-                pressure_head=float(initial_heads[i]),
-            )
-            q_3d_to_1d[i].put(msg_out)
-            LOG.info("[3D] startup push -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, initial_heads[i])
+        heads_to_1d = self.backend.initial_heads_to_1d()
 
-        while self.time < t_end:
-            dt = self.backend.choose_dt(self.time, t_end)
-            if dt <= 0.0:
-                LOG.info("[3D] dt <= 0, stopping to avoid infinite loop.")
-                break
+        while time < end_t:
+            dt = self.backend.choose_dt(time, end_t)
+            assert  dt > np.timedelta64(0, 's'), f"Non-positive time step: {dt}"
 
-            target_time = self.time + dt
-            LOG.info("[3D] === Step: t=%s -> t=%s ===", self.time, target_time)
+            target_time = time + dt
+            LOG.info("[3D] === Step: t=%s -> t=%s ===", time, target_time)
 
-            contributions = [None] * self.n_1d
-            received = 0
-            while received < self.n_1d:
-                msg_in = q_1d_to_3d.get()
-                assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
-                idx = int(msg_in.site_id)
-                assert 0 <= idx < self.n_1d, f"site_id out of range: {idx}"
-                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", idx, msg_in.date_time, msg_in.velocity)
-                contributions[idx] = float(msg_in.velocity)
-                received += 1
-
-            heads_to_1d = self.backend.model_step(dt, contributions)
-            for i in range(self.n_1d):
+            for i, site_id in enumerate(self.locations_1d):
+                head = heads_to_1d[site_id]
                 msg_out = Data3DTo1D(
-                    date_time=model_time_days_to_datetime64(target_time),
-                    site_id=i,
-                    pressure_head=float(heads_to_1d[i]),
+                    date_time=target_time,
+                    site_id=site_id,
+                    pressure_head=head,
                 )
                 q_3d_to_1d[i].put(msg_out)
-                LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, heads_to_1d[i])
+                LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, head)
 
-            self.time = target_time
+            contributions = {}
+            while len(contributions) < len(self.locations_1d):
+                msg_in = q_1d_to_3d.get()
+                assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
+                id = int(msg_in.site_id)
+                assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
+                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", idx, msg_in.date_time, msg_in.velocity)
+                contributions[id] = float(msg_in.velocity)
 
-        LOG.info("[3D] finished time loop at t=%s (t_end=%s)", self.time, t_end)
-        return self.time
+            heads_to_1d = self.backend.model_step(dt, contributions)
+
+            time = target_time
+
+        LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")

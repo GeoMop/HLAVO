@@ -11,14 +11,19 @@ from itertools import groupby
 # from joblib import Memory
 # memory = Memory(location='cache_dir', verbose=10)
 from hlavo.kalman.kalman_result import KalmanResults
-from filterpy.kalman import MerweScaledSigmaPoints
+from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 # from soil_model.evapotranspiration_fce import ET0
 from hlavo.misc.auxiliary_functions import sqrt_func, add_noise
 from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.ingress.moist_profile.load_data import load_data
 from hlavo.kalman.kalman_state import StateStructure, MeasurementsStructure
 from hlavo.kalman.parallel_ukf import ParallelUKF
+from hlavo.soil_parflow.parflow_model import ToyProblem
 import threading
+from datetime import datetime
+import xarray as xr
+import pandas as pd
+
 
 ######
 # Unscented Kalman Filter for Parflow model
@@ -30,7 +35,7 @@ class KalmanFilter:
     """High-level driver for configuring and running a UKF on a ParFlow-based model."""
 
     @staticmethod
-    def from_config(workdir, config_source, verbose=False):
+    def from_config(workdir, config_source, verbose=False, seed=None):
         """
         Create a KalmanFilter from YAML configuration source.
 
@@ -47,24 +52,12 @@ class KalmanFilter:
         elif isinstance(config_source, Path):
             with config_source.open("r", encoding="utf-8") as handle:
                 config_dict = yaml.safe_load(handle)
-        elif isinstance(config_source, str):
-            maybe_path = Path(config_source)
-            if "\n" not in config_source and maybe_path.exists():
-                with maybe_path.open("r", encoding="utf-8") as handle:
-                    config_dict = yaml.safe_load(handle)
-            else:
-                config_dict = yaml.safe_load(config_source)
         else:
             raise TypeError(f"Unsupported config_source type: {type(config_source)}")
 
         assert isinstance(config_dict, dict), "Kalman config must be a mapping"
-        if "model_1d" in config_dict:
-            model_1d_cfg = config_dict["model_1d"]
-            assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
-            normalized = dict(model_1d_cfg)
-            if "seed" not in normalized and "seed" in config_dict:
-                normalized["seed"] = config_dict["seed"]
-            config_dict = normalized
+        if seed is not None:
+            config_dict["seed"] = seed
         return KalmanFilter(config_dict, workdir, verbose)
 
     def __init__(self, config, workdir, verbose=False):
@@ -98,10 +91,11 @@ class KalmanFilter:
         self.lock = threading.Lock()
 
         # Expand rainfall schedule into a per-timestep list
-        precipitation_list = []
-        for (time_prec, precipitation) in self.measurements_config['rain_periods']:
-            precipitation_list.extend([precipitation] * time_prec)
-        self.measurements_config["precipitation_list"] = precipitation_list
+        if "rain_periods" in self.measurements_config:
+            precipitation_list = []
+            for (time_prec, precipitation) in self.measurements_config['rain_periods']:
+                precipitation_list.extend([precipitation] * time_prec)
+            self.measurements_config["precipitation_list"] = precipitation_list
 
         self.results = KalmanResults(
             workdir, nodes_z, self.state_struc,
@@ -118,11 +112,11 @@ class KalmanFilter:
         model_class_name = self.model_config["model_class_name"]
         model_class = resolve_named_class(
             model_class_name,
-            ("hlavo.soil_parflow", "hlavo.soil_parflow.parflow_model"),
+            (ToyProblem,),
         )
         return model_class(self.model_config, workdir=self.work_dir / "output-toy")
 
-    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag):
+    def process_loaded_measurements(self, noisy_measurements_train, noisy_measurements_test, measurement_state_flag, timestamps):
         """
         Align preloaded measurements with precipitation schedule and iteration grouping.
 
@@ -139,6 +133,7 @@ class KalmanFilter:
         noisy_train_measurements = []
         noisy_test_measurements = []
         measurement_state_flag_sampled = []
+        meas_model_iter_timestamps = []
 
         print("len(noisy_measurements_train) ", len(noisy_measurements_train))
         total_index = 0
@@ -166,16 +161,18 @@ class KalmanFilter:
                     noisy_train_measurements.append(noisy_measurements_train[total_index])
                     noisy_test_measurements.append(noisy_measurements_test[total_index])
                     measurement_state_flag_sampled.append(measurement_state_flag[total_index])
+                    meas_model_iter_timestamps.append(datetime.fromisoformat(timestamps[total_index]))
                 except IndexError as idxerr:
                     print("idx_error ", idxerr)
                     noisy_train_measurements.append(noisy_measurements_train[total_index - 1])
                     noisy_test_measurements.append(noisy_measurements_test[total_index - 1])
                     measurement_state_flag_sampled.append(measurement_state_flag[total_index - 1])
+                    meas_model_iter_timestamps.append(timestamps[total_index - 1])
 
                 meas_model_iter_time.append(prec_time)
                 meas_model_iter_flux.append(prec_flux)
 
-        return noisy_train_measurements, noisy_test_measurements, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux
+        return noisy_train_measurements, noisy_test_measurements, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps
 
     def run(self):
         """
@@ -189,7 +186,7 @@ class KalmanFilter:
         ### Generate measurements ###
         #############################
         if "measurements_file" in self.measurements_config:
-            noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag = load_data(
+            noisy_measurements, noisy_measurements_to_test, meas_model_iter_flux, measurement_state_flag, timestamps = load_data(
                 self.train_measurements_struc,
                 self.test_measurements_struc,
                 data_csv=self.measurements_config["measurements_file"],
@@ -201,8 +198,11 @@ class KalmanFilter:
                 precipitation_list.extend([precipitation] * time_prec)
             self.measurements_config["precipitation_list"] = precipitation_list
 
-            noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux = \
-                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag)
+            print("precipitation_list ", len(precipitation_list))
+            print("noisy measurements ", len(noisy_measurements))
+
+            noisy_measurements, noisy_measurements_to_test, measurement_state_flag_sampled, meas_model_iter_time, meas_model_iter_flux, meas_model_iter_timestamps = \
+                self.process_loaded_measurements(noisy_measurements, noisy_measurements_to_test, measurement_state_flag, timestamps)
 
             sample_variance = np.nanvar(noisy_measurements, axis=0)
             measurement_noise_covariance = np.diag(sample_variance)
@@ -212,6 +212,7 @@ class KalmanFilter:
             # Generate synthetic measurements via forward model runs
             measurements, noisy_measurements, measurements_to_test, noisy_measurements_to_test, \
             state_data_iters, meas_model_iter_time, meas_model_iter_flux = self.generate_measurements()
+            measurement_state_flag_sampled = []
 
             measurement_state_flag = []  # No state flag for synthetic data
             residuals = noisy_measurements - measurements
@@ -225,6 +226,7 @@ class KalmanFilter:
             print("self.results.times_measurements ", self.results.times_measurements)
 
         self.results.precipitation_flux_measurements = meas_model_iter_flux
+
 
         #######################################
         ### UKF settings: sigma points, Q/R ###
@@ -381,7 +383,7 @@ class KalmanFilter:
     #####################
     ### Kalman filter ###
     #####################
-    def state_transition_function(self, state_vec, dt, iter_duration, precipitation_flux):
+    def state_transition_function(self, state_vec, dt, model_num_iters, precipitation_flux=None, met_data=None):
         """
         UKF state transition function: advance model state over one iteration.
 
@@ -389,12 +391,14 @@ class KalmanFilter:
 
         :param state_vec: Encoded current state vector
         :param dt: UKF dt parameter (not used directly when iter_duration provided)
-        :param iter_duration: Physical duration of this iteration (model time)
+        :param model_num_iters: number of model iterations
         :param precipitation_flux: Precipitation flux applied during this iteration
+        :param met_data: xarray dataset of meteo data
         :return: Encoded next state vector
         """
-        print("dt: ", dt, "iter duration time: ", iter_duration)
+        print("dt: ", dt, "number of model iterations: ", model_num_iters)
         print("process PID:", os.getpid(), "thread:", threading.get_ident())
+        pid = os.getpid()
         timestamp = int(time.time())
 
         if os.environ.get("SCRATCHDIR"):
@@ -408,23 +412,30 @@ class KalmanFilter:
         pressure_data = state["pressure_field"]
 
         et_per_time = 0  # placeholder for ET computation
-        iter_duration = float(iter_duration)
+        model_num_iters = float(model_num_iters)
 
-        self.model.run(
-            init_pressure=pressure_data, precipitation_value=precipitation_flux,
-            state_params=state, start_time=0, stop_time=iter_duration,
-            time_step=self.kalman_config["model_time_step"],
-            working_dir=parflow_working_dir
-        )
+        if met_data is not None:
+            self.model.run(
+                init_pressure=pressure_data, met_data=met_data,
+                state_params=state, working_dir=parflow_working_dir
+            )
+        else:
+            assert precipitation_flux is not None
+            self.model.run(
+                init_pressure=pressure_data, precipitation_value=precipitation_flux,
+                state_params=state, start_time=0, stop_time=model_num_iters,
+                time_step=self.kalman_config["model_time_step"],
+                working_dir=parflow_working_dir
+            )
 
-        state["pressure_field"] = self.model.get_data(current_time_step=iter_duration, data_name="pressure")
+        state["pressure_field"] = self.model.get_data(current_time_step=model_num_iters, data_name="pressure")
 
-        velocity = self.model.get_data(current_time_step=iter_duration, data_name="velocity")
-        moisture = self.model.get_data(current_time_step=iter_duration, data_name="moisture")
+        velocity = self.model.get_data(current_time_step=model_num_iters, data_name="velocity")
+        moisture = self.model.get_data(current_time_step=model_num_iters, data_name="moisture")
 
-        measurements_train = self.get_measurement(current_time_step=iter_duration,
+        measurements_train = self.get_measurement(current_time_step=model_num_iters,
                                                   measurements_struct=self.train_measurements_struc)
-        measurements_test = self.get_measurement(current_time_step=iter_duration,
+        measurements_test = self.get_measurement(current_time_step=model_num_iters,
                                                  measurements_struct=self.test_measurements_struc)
         new_state_vec = self.state_struc.encode_state(state)
 
@@ -444,6 +455,7 @@ class KalmanFilter:
         :return: Encoded measurement vector for the requested structure
         """
         measurements_train_dict, measurements_test_dict = self.state_measurements[tuple(state_vec)]
+        measurement = measurements_train_dict
 
         if measurements_type == "train":
             calibration_coeffs_z_positions = self.state_struc.get_calibration_coeffs_z_positions()
@@ -454,17 +466,14 @@ class KalmanFilter:
                     self.state_struc.decode_state(state_vec)["calibration_coeffs"],
                     np.squeeze(calibration_coeffs_z_positions)
                 )
-                return self.train_measurements_struc.encode(
-                    measurements_train, state=self.state_struc.decode_state(state_vec)
-                )
-            else:
-                return self.train_measurements_struc.encode(
-                    measurements_train_dict, state=self.state_struc.decode_state(state_vec)
-                )
-        elif measurements_type == "test":
-            return self.test_measurements_struc.encode(
-                measurements_test_dict, state=self.state_struc.decode_state(state_vec)
-            )
+                measurement = measurements_train
+
+        m = self.train_measurements_struc.encode(
+            measurement, state=self.state_struc.decode_state(state_vec)
+        )
+        print("measurement function output size =  ", m)
+        return m
+
 
     @staticmethod
     def get_sigma_points_obj(sigma_points_params, num_state_params):
@@ -519,11 +528,18 @@ class KalmanFilter:
 
         time_step = 1  # UKF internal dt (hours) — physical duration passed via kwargs
 
-        ukf = ParallelUKF(
-            dim_x=num_state_params, dim_z=dim_z, dt=time_step,
-            fx=self.state_transition_function, hx=self.measurement_function,
-            points=sigma_points
-        )
+        if "parallel_sigmas" in self.kalman_config and self.kalman_config["parallel_sigmas"]:
+            ukf = ParallelUKF(
+                dim_x=num_state_params, dim_z=dim_z, dt=time_step,
+                fx=self.state_transition_function, hx=self.measurement_function,
+                points=sigma_points
+            )
+        else:
+            ukf = UnscentedKalmanFilter(
+                dim_x=num_state_params, dim_z=dim_z, dt=time_step,
+                fx=self.state_transition_function, hx=self.measurement_function,
+                points=sigma_points
+            )
 
         Q_state = self.state_struc.compose_Q()
         ukf.Q = Q_state
@@ -554,6 +570,390 @@ class KalmanFilter:
 
         return ukf
 
+
+    def align_meteo_to_measurements(self, meteo_ds: xr.Dataset, meas_ds: xr.Dataset) -> xr.Dataset:
+        """
+        Align meteorological dataset to measurement time grid.
+
+        Performs:
+        - Linear interpolation of continuous variables
+        - Handling of accumulated variables
+          (convert to rate → interpolate → re-accumulate)
+
+        :param meteo_ds: Meteorological dataset with coarse time resolution (e.g. hourly)
+        :param meas_ds: Measurement dataset defining target time grid (e.g. 15-min)
+        :return: Meteo dataset aligned to measurement time grid
+        """
+        # Extract target time coordinate
+        target_time = meas_ds["date_time"]
+
+        # Define variable groups
+        continuous_vars = [
+            "air_pressure_at_sea_level",
+            "surface_temperature",
+            "wind_from_direction_10m",
+            "wet_bulb_temperature_2m",
+            "cloud_fraction",
+            "cloud_fraction_low",
+            "cloud_fraction_medium",
+            "cloud_fraction_high",
+            "surface_direct_solar_radiation_downwards",
+        ]
+
+        accum_vars = [
+            "precipitation_amount_accum",
+            "snowfall_amount_accum",
+        ]
+
+        # Keep only variables present in dataset
+        continuous_vars = [v for v in continuous_vars if v in meteo_ds]
+        accum_vars = [v for v in accum_vars if v in meteo_ds]
+
+        # ------------------------------------------------------------------
+        # Interpolate continuous variables
+        # ------------------------------------------------------------------
+        print("target time ", target_time)
+        meteo_cont_interp = meteo_ds[continuous_vars].interp(date_time=target_time)
+
+        print("meteo_cont_interp.date_time.values ", meteo_cont_interp.date_time.values)
+
+        # ------------------------------------------------------------------
+        # Process accumulated variables
+        # ------------------------------------------------------------------
+        meteo_accum_interp = []
+
+        print("meteo_ds.date_time ", meteo_ds.date_time)
+
+        if accum_vars:
+            rate_ds = {}
+            for var in accum_vars:
+                diff = meteo_ds[var].diff("date_time")
+
+                dt = (
+                        meteo_ds["date_time"].diff("date_time")
+                        / np.timedelta64(1, "s")
+                )
+
+                # ensure identical coordinates
+                dt = dt.assign_coords(date_time=diff["date_time"])
+
+                rate = diff / dt
+
+                # create first timestamp explicitly
+                first_time = meteo_ds["date_time"].values[0]
+
+                first_value = rate.isel(date_time=0)
+
+                first_value = first_value.assign_coords(
+                    date_time=first_time
+                )
+
+                rate = xr.concat([first_value, rate], dim="date_time")
+
+                rate_ds[var] = rate
+
+            rate_ds = xr.Dataset(rate_ds)
+
+            print("rate ds", rate_ds.date_time)
+
+            # Interpolate rate to target time grid
+            rate_interp = rate_ds.interp(date_time=target_time)
+
+            time = target_time.values
+
+            dt_seconds = np.diff(time) / np.timedelta64(1, "s")
+
+            dt_target = xr.DataArray(
+                np.concatenate(([dt_seconds[0]], dt_seconds)),
+                dims=["date_time"],
+                coords={"date_time": time}
+            )
+
+            accum_interp = {}
+
+            for var in accum_vars:
+                # Reconstruct accumulation from interpolated rate
+                accum = (rate_interp[var] * dt_target).cumsum("date_time")
+                # Ensure no NaNs at start
+                accum = accum.fillna(0)
+                accum_interp[var] = accum
+
+            meteo_accum_interp = xr.Dataset(accum_interp)
+
+        # ------------------------------------------------------------------
+        # Merge continuous and accumulated variables
+        # ------------------------------------------------------------------
+        datasets_to_merge = [meteo_cont_interp]
+
+        print("datasets_to_merge ", datasets_to_merge)
+        print("meteo_accum_interp ", meteo_accum_interp)
+
+        if accum_vars:
+            datasets_to_merge.append(meteo_accum_interp)
+
+        meteo_final = xr.merge(datasets_to_merge)
+
+        # Ensure exact coordinate alignment
+        meteo_final = meteo_final.assign_coords(
+            date_time=("date_time", target_time.values)
+        )
+
+        # Update dataset attributes
+        meteo_final = meteo_final.assign_attrs(
+            **meteo_ds.attrs,
+            time_step=(target_time[1] - target_time[0]).values,
+            time_interval=(target_time[-1] - target_time[0]).values,
+        )
+
+        return meteo_final
+
+    def resample_meteo_to_model_timestep(
+            self,
+            meteo_ds: xr.Dataset,
+            model_time_step: pd.Timedelta
+    ) -> xr.Dataset:
+        """
+        Resample meteorological dataset to a fixed model time step.
+
+        Handles:
+        - continuous variables via linear interpolation
+        - accumulated variables (per-interval totals) via constant-rate redistribution
+
+        :param meteo_ds: Input dataset with datetime coordinate
+        :param model_time_step: Target time step
+        :return: Resampled dataset (aligned on interval grid)
+        """
+
+        # ------------------------------------------------------------------
+        # Clean time coordinate
+        # ------------------------------------------------------------------
+        meteo_ds = meteo_ds.sortby("date_time")
+
+        print("meteo_ds ", meteo_ds)
+
+        _, idx = np.unique(meteo_ds.date_time.values, return_index=True)
+        meteo_ds = meteo_ds.isel(date_time=np.sort(idx))
+
+        time = meteo_ds.date_time.values
+        assert len(time) >= 2, "Need at least 2 timestamps"
+
+        # ------------------------------------------------------------------
+        # Build new time grid
+        # ------------------------------------------------------------------
+        new_time = pd.date_range(
+            start=time[0],
+            end=time[-1],
+            freq=model_time_step
+        )
+
+        # interval grid (IMPORTANT)
+        new_time_mid = new_time[1:]
+
+        # ------------------------------------------------------------------
+        # Define variable groups
+        # ------------------------------------------------------------------
+        accum_vars = [
+            "precipitation_amount_accum",
+            "snowfall_amount_accum",
+        ]
+        accum_vars = [v for v in accum_vars if v in meteo_ds]
+
+        cont_vars = [v for v in meteo_ds.data_vars if v not in accum_vars]
+
+        # ------------------------------------------------------------------
+        # 1. Continuous variables → interpolate then align to interval grid
+        # ------------------------------------------------------------------
+        if cont_vars:
+            ds_cont = meteo_ds[cont_vars].interp(date_time=new_time_mid)
+        else:
+            ds_cont = xr.Dataset()
+
+        # ------------------------------------------------------------------
+        # 2. Accumulated variables → redistribute (constant rate)
+        # ------------------------------------------------------------------
+        ds_accum = {}
+
+        if accum_vars:
+            time_np = meteo_ds.date_time.values
+
+            # original timestep (seconds)
+            dt_orig = (time_np[1] - time_np[0]) / np.timedelta64(1, "s")
+
+            # new timestep durations
+            dt_new = np.diff(new_time.values) / np.timedelta64(1, "s")
+
+            dt_new_da = xr.DataArray(
+                dt_new,
+                dims=["date_time"],
+                coords={"date_time": new_time_mid}
+            )
+
+            for var in accum_vars:
+                # interval total (ONLY second value!)
+                total = meteo_ds[var].isel(date_time=1)
+
+                # constant rate over interval
+                rate = total / dt_orig
+
+                # broadcast to new grid
+                rate_broadcast = rate.expand_dims(date_time=new_time_mid)
+
+                # compute redistributed values
+                accum = (rate_broadcast * dt_new_da).transpose("loc", "date_time")
+
+                ds_accum[var] = accum
+
+        ds_accum = xr.Dataset(ds_accum) if ds_accum else xr.Dataset()
+
+        # ------------------------------------------------------------------
+        # Merge (now aligned!)
+        # ------------------------------------------------------------------
+        ds_final = xr.merge([ds_cont, ds_accum])
+
+        # ------------------------------------------------------------------
+        # Assertions (mass conservation)
+        # ------------------------------------------------------------------
+        for var in accum_vars:
+            original_total = meteo_ds[var].isel(date_time=slice(1, None)).sum().values
+            resampled_total = ds_final[var].sum().values
+
+            assert np.isclose(original_total, resampled_total, rtol=1e-5), \
+                f"{var}: mass not conserved ({original_total} vs {resampled_total})"
+
+        return ds_final
+
+    def kalman_step(self, ukf, measurements_dataset, meteo_data, pressure_at_bottom):
+        """
+        Execute one full UKF assimilation cycle over a meteo time window.
+
+        For each interval:
+        1. Resample meteorological forcing to model timestep
+        2. Run UKF prediction for the corresponding number of model steps
+        3. Perform measurement update (if valid)
+
+        :param ukf: Unscented Kalman Filter instance
+        :param xarray.Dataset measurements_dataset: Measurement data indexed by date_time
+        :param xarray.Dataset meteo_data: Meteorological forcing (interval-based)
+        :param float pressure_at_bottom: Boundary condition for the physical model
+        :return: Final estimated velocity from the state model
+        """
+        print(f"[UKF] Running Kalman step (pid={os.getpid()})")
+
+        # ------------------------------------------------------------------
+        # Apply boundary condition to the physical model
+        # ------------------------------------------------------------------
+        self.model.set_pressure_at_bottom(pressure_at_bottom)
+
+        # ------------------------------------------------------------------
+        # Resolve model timestep (in hours → Timedelta)
+        # ------------------------------------------------------------------
+        parflow_model_time_step = self.kalman_config["model_time_step"]
+        model_time_step = pd.Timedelta(hours=parflow_model_time_step)
+
+        meteo_times = meteo_data.date_time.values
+
+        collected_measurements = []
+
+        # ------------------------------------------------------------------
+        # Main time loop (interval-based)
+        # ------------------------------------------------------------------
+        for i in range(1, len(meteo_times)):
+            t_start = meteo_times[i - 1]
+            t_end = meteo_times[i]
+
+            print(f"[UKF] Step {i}: {t_start} → {t_end}")
+
+            # --------------------------------------------------------------
+            # 1. Extract measurement for current timestep
+            # --------------------------------------------------------------
+            measurement = measurements_dataset.isel(date_time=i)
+            encoded_measurement = self.train_measurements_struc.encode(measurement)
+
+            # --------------------------------------------------------------
+            # 2. Extract meteo data for current interval
+            # --------------------------------------------------------------
+            met_interval = meteo_data.sel(date_time=slice(t_start, t_end))
+
+            # Resample forcing to model timestep
+            met_resampled = self.resample_meteo_to_model_timestep(
+                met_interval,
+                model_time_step
+            )
+
+            # Store timing metadata
+            met_resampled.attrs["time_step"] = model_time_step
+            met_resampled.attrs["time_interval"] = t_end - t_start
+
+            # --------------------------------------------------------------
+            # 3. Compute number of model iterations
+            # --------------------------------------------------------------
+            dt_step = model_time_step / np.timedelta64(1, "h")
+            dt_interval = (t_end - t_start) / np.timedelta64(1, "h")
+
+            model_num_iters = int(dt_interval / dt_step)
+
+            # Safety check
+            assert model_num_iters > 0, "Model iteration count must be positive"
+
+            # --------------------------------------------------------------
+            # 4. UKF prediction step
+            # --------------------------------------------------------------
+            ukf.predict(
+                model_num_iters=model_num_iters,
+                met_data=met_resampled
+            )
+
+            # --------------------------------------------------------------
+            # 5. UKF update step (if valid measurement)
+            # --------------------------------------------------------------
+            status = measurements_dataset.site_status.isel(date_time=i).values.item()
+
+            if not (10 <= status < 20):
+                print(f"[UKF] Skipping update (invalid status={status})")
+
+            elif np.isnan(encoded_measurement).any():
+                print("[UKF] Skipping update (NaN in measurement)")
+
+            else:
+                print(f"[UKF] R shape: {ukf.R.shape}; measurement shape: {encoded_measurement.shape}")
+                ukf.update(encoded_measurement)
+
+            # --------------------------------------------------------------
+            # Debug / diagnostics
+            # --------------------------------------------------------------
+            print(f"[UKF] Covariance sum: {np.sum(ukf.P)}")
+            print(f"[UKF] State estimate: {ukf.x}")
+
+            collected_measurements.append(measurement)
+
+        # ------------------------------------------------------------------
+        # Store results
+        # ------------------------------------------------------------------
+        final_time = t_end
+
+        self.results.times.append(final_time)
+        self.results.ukf_x.append(ukf.x.copy())
+        self.results.ukf_P.append(ukf.P.copy())
+        self.results.measurement_in.append(collected_measurements)
+
+        # Extract latest state-derived quantities
+        last_key = list(self.state_measurements.keys())[-1]
+
+        velocity, moisture = self.state_model_velocity_moisture[last_key]
+        self.results.velocities.append(velocity)
+        self.results.moistures.append(moisture)
+
+        measurements_train_dict, measurements_test_dict = self.state_measurements[last_key]
+
+        self.results.ukf_train_meas.append(
+            self.train_measurements_struc.encode(measurements_train_dict)
+        )
+        self.results.ukf_test_meas.append(
+            self.test_measurements_struc.encode(measurements_test_dict)
+        )
+
+        return velocity[-1] # Return velocity at the bottom node
+
     def run_kalman_filter(self, ukf, noisy_measurements, measurement_state_flag):
         """
         Run the UKF predict/update loop for all measurement timesteps.
@@ -566,6 +966,7 @@ class KalmanFilter:
         iter_durations = [self.results.times_measurements[0]] + list(
             np.array(self.results.times_measurements[1:]) - np.array(self.results.times_measurements[:-1])
         )
+        print("RUN kalman filter, process id:", os.getpid())
 
         measurement_state_flag = np.array(measurement_state_flag)
         for i, measurement in enumerate(noisy_measurements):
@@ -596,8 +997,17 @@ class KalmanFilter:
             self.results.ukf_train_meas.append(self.train_measurements_struc.encode(measurements_train_dict))
             self.results.ukf_test_meas.append(self.test_measurements_struc.encode(measurements_test_dict))
 
-        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
+        self.save_results()
         return self.results
+
+
+    def get_longitude_latitude(self):
+        longitude, latitude = 0, 0 #@TODO: get correct values
+        return longitude, latitude
+
+
+    def save_results(self):
+        joblib.dump(self.results, self.work_dir / 'kalman_results.pkl')
 
 
 # @memory.cache
@@ -631,18 +1041,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
-    import pstats
-
-    pr = cProfile.Profile()
-    pr.enable()
-
     main()
-
-    # Configure ParFlow executable paths if needed
-    # os.environ['PARFLOW_HOME'] = '/opt/parflow_install'
-    # os.environ['PATH'] += ':/opt/parflow_install/bin'
-
-    pr.disable()
-    ps = pstats.Stats(pr).sort_stats('cumtime')
-    ps.print_stats(50)

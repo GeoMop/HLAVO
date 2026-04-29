@@ -29,6 +29,10 @@ model_config = {
             "Geom.domain.RelPerm.Alpha",
         ],
     },
+    "use_clm": True,
+   "clm_files": {
+    "drv_vegm_file": "drv_vegm.dat",  # relative path to composed config file
+    "drv_vegp_file": "drv_vegm.dat"}
 }
 
 
@@ -89,7 +93,7 @@ def test_parflow_model_with_clm():
             coords=dict(
                 lon=("loc", lon),
                 lat=("loc", lat),
-                time=time,
+                date_time=time,
             ),
             attrs=dict(
                 description="Meteorological dataset from CHMI opendata.",

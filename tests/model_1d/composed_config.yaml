@@ -1,0 +1,70 @@
+seed: 123456
+start_datetime: "2025-03-06T00:00:00"
+end_datetime: "2025-03-09T00:00:00"
+model_3d:
+  backend_class_name: "Model3DBackendMock"
+  common:
+    name: "uhelna"  
+model_1d:
+  kalman_class_name: "KalmanFilter"  
+  # site_ids: [ 1 ]
+  # Processed directly by Worker, site IDs supplied by the test source
+     
+  moisture_sigma: 0.05
+  # Standard deviation of mositure profile measurements. Assuming independent sensors.
+  
+  model_config:
+    model_class_name: "ToyProblem"
+    use_clm: True
+    clm_files:
+      drv_vegm_file: drv_vegm.dat
+      drv_vegp_file: drv_vegm.dat
+    init_pressure: [-40, -100]
+    static_params:
+      ComputationalGrid:
+        "Lower.Z": -135
+        "DZ": 9
+        "NZ": 15
+    params:
+      vG_K_s: "Geom.domain.Perm.Value"
+      vG_n: ["Geom.domain.Saturation.N", "Geom.domain.RelPerm.N"]
+      vG_Th_s: "Geom.domain.Saturation.SSat"
+      vG_Th_r: "Geom.domain.Saturation.SRes"
+      vG_alpha: ["Geom.domain.Saturation.Alpha", "Geom.domain.RelPerm.Alpha"]
+  measurements_config: {}
+  schema_files:
+    profiles: ../../hlavo/ingress/moist_profile/profile_schema.yaml
+    surface: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
+  kalman_config:
+    model_time_step: 2.5e-2
+    state_params:
+      pressure_field:
+        mean_linear:
+          top: -40
+          bottom: -100
+        cov_exponential:
+          std: 2.0
+        rel_std_Q: 0.007
+        ref:
+      vG_K_s:
+        ref: 0.0737
+        mean_std: [-2.60775248, 0.01]
+        rel_std_Q: 0.00028
+        transform: lognormal
+    train_measurements:
+      moisture:
+        z_pos: [-10, -20, -40, -60, -100]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+    test_measurements:
+      moisture:
+        z_pos: [-40]
+        noise_level: 0.01
+        noise_distr_type: gaussian
+    noise_distr_type: gaussian
+    pressure_saturation_data_noise_level: 0.01
+    init_cov_P_multiplicator: 1
+    sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}
+    parallel_sigmas: false
+  postprocess:
+    show: True
