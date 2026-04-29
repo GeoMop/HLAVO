@@ -19,7 +19,7 @@ WELLS_SCHEMA = REPO_ROOT / "hlavo/ingress/well_data/wells_schema.yaml"
 SIMULATION_SCHEMA = REPO_ROOT / "hlavo/schemas/simulation_schema.yaml"
 
 
-def test_file_prediction_writer_counts_entries(tmp_path):
+def test_b_file_prediction_writer_counts_entries(tmp_path):
     paths = _prepare_input_stores(tmp_path)
     config_path = _write_config(tmp_path, paths, writer_class_name="FilePredictionWriter")
 
@@ -33,7 +33,7 @@ def test_file_prediction_writer_counts_entries(tmp_path):
     assert sum(row["node"] == "well_prediction" for row in rows) == 62
 
 
-def test_zarr_prediction_writer_coord_sizes(tmp_path):
+def test_a_zarr_prediction_writer_coord_sizes(tmp_path):
     paths = _prepare_input_stores(tmp_path)
     config_path = _write_config(tmp_path, paths, writer_class_name="ZarrPredictionWriter")
 
