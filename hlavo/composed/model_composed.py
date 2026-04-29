@@ -22,7 +22,8 @@ def setup_models(work_dir, config_path, client):
     load_dotenv()  # load zarr secrets
     config_data, _ = load_config(config_path)
     composed = ComposedData.from_config(work_dir, config_data, config_path)
-    locations_1d = config_data["model_1d"]["site_ids"]
+    model_1d_cfg = config_data["model_1d"]
+    locations_1d = _model_1d_site_ids(model_1d_cfg)
 
     queue_names_3d_to_1d = []
     futures_1d = []
@@ -62,24 +63,12 @@ def setup_models(work_dir, config_path, client):
     return final_state_3d
 
 
-# def _parse_locations(config_data):
-#     model_1d_cfg = config_data.get("model_1d", {})
-#     assert isinstance(model_1d_cfg, dict), "model_1d must be a mapping"
-#     raw_locations = model_1d_cfg.get("sites", [])
-#     assert isinstance(raw_locations, list), "model_1d.sites must be a list"
-#     assert raw_locations, "model_1d.sites must not be empty"
-#
-#     locations = []
-#     for idx, item in enumerate(raw_locations):
-#         assert isinstance(item, dict), "Each model_1d item must be a mapping"
-#         locations.append(
-#             Model1DLocation(
-#                 idx=idx,
-#                 longitude=float(item["longitude"]),
-#                 latitude=float(item["latitude"]),
-#             )
-#         )
-#     return locations
+def _model_1d_site_ids(model_1d_cfg: dict) -> list[int]:
+    if "site_ids" in model_1d_cfg:
+        return [int(site_id) for site_id in model_1d_cfg["site_ids"]]
+    sites = model_1d_cfg["sites"]
+    assert isinstance(sites, list), "model_1d.sites must be a list"
+    return list(range(len(sites)))
 
 
 def run_simulation(work_dir: Path, config_path: Path) -> float:

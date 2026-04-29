@@ -34,6 +34,7 @@ class Model3DBackendMock:
     def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
         self.composed = composed
         self.locations_1d = locations_1d
+        self.model_3d_cfg = model_3d_cfg
         self._heads = np.zeros(len(locations_1d), dtype=float)
 
     def build_cell_assignment(self) -> None:
@@ -44,23 +45,26 @@ class Model3DBackendMock:
 
     def choose_dt(self, current_time: float, t_end: float) -> float:
         remaining = t_end - current_time
-        max_step = np.timedelta64(24*3600, 's')  * 5
+        time_step_hours = float(self.model_3d_cfg["time_step_hours"])
+        max_step = np.timedelta64(int(round(time_step_hours * 3600)), "s")
         return max(min(max_step, remaining), np.timedelta64(1, 's'))
 
     def model_step(self, dt: float, contributions) -> np.ndarray:
-        _ = dt
-        self._heads = np.asarray(contributions, dtype=float)
-        return self._heads.copy()
+        dt_days = float(dt / np.timedelta64(1, "D"))
+        recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)
+        self._heads = self._heads + recharge * dt_days
+        return {site_id: self._heads[i] for i, site_id in enumerate(self.locations_1d)}
 
 class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
         self.locations_1d = locations_1d
+        common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
-            model_3d_cfg['backend_class_name'],
+            common_cfg['backend_class_name'],
             (Model3DBackendMock, Model3DBackend),
         )
-        self.backend = backend_class(composed, model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
+        self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
 
 
     def run_loop(
@@ -101,7 +105,7 @@ class Model3D:
                 assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
                 id = int(msg_in.site_id)
                 assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
-                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", idx, msg_in.date_time, msg_in.velocity)
+                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
                 contributions[id] = float(msg_in.velocity)
 
             heads_to_1d = self.backend.model_step(dt, contributions)
@@ -109,3 +113,4 @@ class Model3D:
             time = target_time
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        return heads_to_1d
