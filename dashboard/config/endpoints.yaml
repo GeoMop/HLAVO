@@ -140,21 +140,21 @@ chmi_stations:
 
   variable_map:
     Uhelna:
-      # raw_data:
-      #   open_meteo:
-      #     lat: "latitude"
-      #     lon: "longitude"
-      #     time: "date_time"
-      #     vertical: null
-      #     entity: "longitude"
-      # 
-      #   chmi_stations:
-      #     lat: "latitude"
-      #     lon: "longitude"
-      #     time: "date_time"
-      #     vertical: null
-      #     entity: "longitude"
-      # 
+      raw_data:
+        open_meteo:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: null
+          entity: "site_id"
+
+        chmi_stations:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: null
+          entity: "station_id"
+
       parflow:
         version_01:
           lat: "latitude"

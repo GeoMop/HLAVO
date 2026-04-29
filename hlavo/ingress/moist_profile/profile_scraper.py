@@ -1,12 +1,15 @@
+import logging
 import os
 import datetime
 import time
 import requests
 import re
 import csv
+import shutil
 import traceback
 
 import selenium.webdriver.remote.webelement
+from pathlib import Path
 from urllib.parse import urlparse
 
 from hlavo.misc.aux_zarr_fuse import load_dotenv
@@ -16,32 +19,89 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException, JavascriptException
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
+logger = logging.getLogger(__name__)
+
+
+def _resolve_existing_path(candidates):
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.exists():
+            return str(path)
+    return None
 
 
 def create_driver(default_download_dir):
     """
     Creates and returns a Selenium WebDriver instance with configured download settings.
     """
-    # SETUP browser
+    browser_binary = _resolve_existing_path(
+        [
+            os.getenv("CHROME_BINARY"),
+            shutil.which("chromium"),
+            shutil.which("chromium-browser"),
+            shutil.which("google-chrome"),
+            "/usr/bin/chromium",
+            "/snap/bin/chromium",
+        ]
+    )
+    if browser_binary is None:
+        raise FileNotFoundError(
+            "Chromium/Chrome binary not found. Set CHROME_BINARY or install chromium."
+        )
+
+    driver_binary = _resolve_existing_path(
+        [
+            os.getenv("CHROMEDRIVER"),
+            shutil.which("chromedriver"),
+            shutil.which("chromium.chromedriver"),
+            "/usr/bin/chromedriver",
+            "/snap/bin/chromium.chromedriver",
+        ]
+    )
+    if driver_binary is None:
+        raise FileNotFoundError(
+            "Chromedriver not found. Set CHROMEDRIVER or install chromium-driver."
+        )
+
+    download_path = Path(script_dir) / default_download_dir
+    logger.info(
+        "Creating Selenium driver with browser '%s' and driver '%s'.",
+        browser_binary,
+        driver_binary,
+    )
+
     options = Options()
-    options.BinaryLocation = "/snap/bin/chromium"
+    options.binary_location = browser_binary
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--headless=new")
     options.add_experimental_option('prefs', {
-        "download.default_directory": os.path.join(script_dir, default_download_dir),  # Change to your desired download folder
-        "download.prompt_for_download": False,  # Disable download prompt
+        "download.default_directory": str(download_path),
+        "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "safebrowsing.enabled": True
     })
 
-    # tips for snap and chromium: https://stackoverflow.com/questions/5731953/use-selenium-with-chromium-browser
-    # open chrome driver service
-    chrome_service = Service(executable_path="/snap/bin/chromium.chromedriver")
-    # open browser
+    chrome_service = Service(executable_path=driver_binary)
     return webdriver.Chrome(service=chrome_service, options=options)
+
+
+def _dismiss_datepicker(driver):
+    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+    try:
+        WebDriverWait(driver, timeout=5).until_not(
+            EC.visibility_of_element_located((By.CLASS_NAME, "ui-datepicker"))
+        )
+    except Exception:
+        pass
 
 
 def login(driver):
@@ -97,13 +157,14 @@ def fill_in_form(driver, date_interval, logger_group):
     date_from_input.clear()
     dt = datetime.datetime.strptime(date_interval['start_date'], '%Y-%m-%d').date()
     dt_str = dt.strftime('%d-%m-%Y')
-    date_from_input.send_keys(dt_str)
+    date_from_input.send_keys(dt_str, Keys.TAB)
 
     date_to_input = driver.find_element(By.ID, "report_to_date")
     date_to_input.clear()
     dt = datetime.datetime.strptime(date_interval['end_date'], '%Y-%m-%d').date()
     dt_str = dt.strftime('%d-%m-%Y')
-    date_to_input.send_keys(dt_str)
+    date_to_input.send_keys(dt_str, Keys.TAB)
+    _dismiss_datepicker(driver)
 
 
 def gather_logger_info(driver, logger_group, download_dir):
@@ -218,9 +279,11 @@ def submit_loggers(driver):
 
         logger_dropdown.select_by_visible_text(option.text)
         time.sleep(0.5)
+        _dismiss_datepicker(driver)
 
         # <input class="btn btn-primary" id="btn_report_submit" type="submit" value="Submit">
-        submit_btn = driver.find_element(By.ID, "btn_report_submit")
+        wait = WebDriverWait(driver, timeout=10)
+        submit_btn = wait.until(EC.element_to_be_clickable((By.ID, "btn_report_submit")))
         submit_btn.click()
         print(f"    [{logger_count}] submit {option.text} ...", end=" ")
         # time.sleep(0.5)
@@ -233,7 +296,6 @@ def submit_loggers(driver):
         # <div class="jconfirm-content" id="jconfirm-box34841">Press the refresh button shortly.</div></div>
         # <div class="jconfirm-buttons"><button type="button" class="btn btn-default">ok</button></div><div class="jconfirm-clear"></div></div>
         # Wait for the message box to appear
-        wait = WebDriverWait(driver, timeout=10)
         message_box = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "jconfirm-box")))
         # Wait for the "OK" button inside the message box
         ok_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='ok']")))
@@ -602,26 +664,3 @@ def run_dataflow_extraction(download_dir, date_interval, logger_groups, flags):
     finally:
         print("DataFlow webpage extraction FINISHED")
         driver.quit()  # Ensure the browser is closed after the script runs
-
-
-# Main script only defines parameters
-if __name__ == '__main__':
-    download_dir = datetime.datetime.now().strftime("%Y%m%dT%H%M%S") + "_dataflow_grab"
-    os.makedirs(download_dir)
-
-    # logger_groups = ["Lab", "Uhelná lesík", "Uhelná"]
-    # logger_groups = ["Uhelná lesík"]
-    # logger_groups = ["Lab", "Uhelná lesík"]
-    logger_groups = ["Uhelná"]
-    # date_interval = {'start_date': '2025-08-01', 'end_date': '2025-08-31'}
-    date_interval = {'start_date': '2025-11-01', 'end_date': '2025-11-30'}
-
-    # flags = {'location': True, 'data_reports': False}
-    flags = {'location': False, 'data_reports': True,
-             # 'submit': True,
-             # in case we do not submit, but only download
-             # (grace_time: [min] how old are the table rows, we want to process)
-             'submit': False, 'N_submissions': 24, 'grace_time': 55
-             }
-    # Run the extraction
-    run_dataflow_extraction(download_dir, date_interval, logger_groups, flags)

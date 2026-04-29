@@ -73,8 +73,7 @@ def plot_written_data():
     )
 
 
-def main():
-    args = parse_args()
+def main(plot: bool):
     section_file = well_data_path / "Vrty_souradnice_perforace.xlsx"
     section_sheetname = "List1"
     df_sections = well_data.read_sections(section_file, section_sheetname)
@@ -83,8 +82,5 @@ def main():
     read_borehole_draw(df_sections)
     read_borehole_water_level(df_sections)
 
-    if args.plot == "plot":
+    if plot:
         plot_written_data()
-
-if __name__ == "__main__":
-   main()
