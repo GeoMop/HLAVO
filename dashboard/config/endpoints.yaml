@@ -33,6 +33,10 @@ profiles:
       title: "Uhelná site overview."
       point_size: 6
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -103,6 +107,10 @@ wells:
       title: "Geographic Data View"
       point_size: 10
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -126,4 +134,3 @@ wells:
     gcp_srs: "EPSG:4326"
     resampling: "near"
     add_alpha: true
-    
