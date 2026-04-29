@@ -23,4 +23,7 @@ def test_setup_models_uses_real_dask_queues_with_config_mocks(tmp_path):
         client.close()
         cluster.close()
 
-    assert final_state == 1.0
+    assert final_state == {
+        0: 3.0e-4,
+        1: 3.0e-4,
+    }

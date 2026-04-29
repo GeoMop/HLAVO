@@ -1,12 +1,17 @@
+seed: 123456
+start_datetime: "2025-03-06T00:00:00"
+end_datetime: "2025-03-07T00:00:00"
+
 model_3d:
   common:
     name: "uhelna"
     backend_class_name: "Model3DBackendMock"
-    total_time_days: 1.0
+    time_step_hours: 12.0
 
 model_1d:
   kalman_class_name: "KalmanMock"
   mock_velocity: 3.0e-4
+  moisture_sigma: 0.05
   sites:
     - longitude: 14.88
       latitude: 50.86
