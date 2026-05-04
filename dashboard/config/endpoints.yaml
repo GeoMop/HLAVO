@@ -10,7 +10,7 @@ profiles:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/profiles.zarr"
-    schema_path: "schemas/profile_schema.yaml"
+    schema_path: "../hlavo/ingress/moist_profile/profile_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -33,6 +33,10 @@ profiles:
       title: "Uhelná site overview."
       point_size: 6
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -66,7 +70,7 @@ wells:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/wells.zarr"
-    schema_path: "schemas/wells_schema.yaml"
+    schema_path: "../hlavo/ingress/well_data/wells_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -103,6 +107,10 @@ wells:
       title: "Geographic Data View"
       point_size: 10
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -136,7 +144,7 @@ chmi_stations:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/chmi_stations.zarr"
-    schema_path: "schemas/chmi_stations_schema.yaml"
+    schema_path: "../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -175,6 +183,10 @@ chmi_stations:
       title: "CHMI station and Open-Meteo forcing data"
       point_size: 8
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -208,7 +220,7 @@ surface_forecast:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/hlavo-release.zarr"
-    schema_path: "schemas/hlavo_surface_schema.yaml"
+    schema_path: "../hlavo/ingress/scrapper/schemas/hlavo_surface_schema.yaml"
 
   variable_map:
     yr.no:
@@ -237,6 +249,10 @@ surface_forecast:
       title: "Surface meteorology forecasts"
       point_size: 6
       alpha: 0.8
+      cluster_enabled: true
+      cluster_eps_factor: 0.05
+      cluster_buffer_factor: 0.1
+      cluster_size_scale: 3.0
     timeseries:
       middle_window_days: 7
       right_window_hours: 24
@@ -260,4 +276,3 @@ surface_forecast:
     gcp_srs: "EPSG:4326"
     resampling: "near"
     add_alpha: true
-    
