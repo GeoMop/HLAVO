@@ -1,6 +1,6 @@
 seed: 123456
 start_datetime: "2025-03-06T00:00:00"
-end_datetime: "2025-03-09T00:00:00"
+end_datetime: "2025-03-07T00:00:00"
 model_3d:
   backend_class_name: "Model3DBackendMock"
   common:
@@ -82,11 +82,11 @@ model_1d:
       #  transform: none
       #
       #  conf_interval: [0.35, 0.41, 0.9]  # explicit 0.9 confidence interval
-    train_measurements:
-      moisture:
-        z_pos: [-10, -20, -60]  #[-10, -20, -30, -40, -50, -60, -70, -80, -90, -100, 110, -120, -130, -140, -150] ##[-0.5, -2.5]
-        noise_level: 0.01
-        noise_distr_type: gaussian
+    #train_measurements:
+    #  moisture:
+      #  z_pos: [-10, -20, -40, -60, -100] 
+      #  noise_level: 0.01
+      #  noise_distr_type: gaussian
       #pressure:
       #  z_pos: [-15]
       #  noise_level: 0.1
@@ -95,12 +95,14 @@ model_1d:
       #  z_pos: [0.75]
       #  noise_level: 0.1
       #  noise_distr_type: uniform
-    test_measurements:
-      moisture:
-        z_pos: [-40]
-        noise_level: 0.01
-        noise_distr_type: gaussian
-    noise_distr_type: gaussian 
+    #test_measurements:
+    #  moisture:
+    #    z_pos: [-40]
+    #    noise_level: 0.01
+    #    noise_distr_type: gaussian
+    measurements_noise_level: 0.01
+    measurements_noise_distr_type: uniform
+    noise_distr_type: gaussian
     pressure_saturation_data_noise_level: 0.01   # init state noise
     init_cov_P_multiplicator: 1
     sigma_points_params: {"alpha": 0.01, "beta": 2, "kappa": 1}

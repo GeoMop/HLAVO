@@ -101,7 +101,7 @@ class Model3D:
                 assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
                 id = int(msg_in.site_id)
                 assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
-                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", idx, msg_in.date_time, msg_in.velocity)
+                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
                 contributions[id] = float(msg_in.velocity)
 
             heads_to_1d = self.backend.model_step(dt, contributions)

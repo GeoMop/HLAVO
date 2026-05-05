@@ -515,6 +515,10 @@ class MeasurementsStructure(dict):
         :return: 1D numpy array
         """
         components = [var.encode(value_dict[key], state, noisy) for key, var in self.items()]
+
+        if not components:
+            return np.array([])
+
         return np.concatenate(components)
 
     def mult_calibration_coef(self, measurements_struct, measurements, calibration_coefs, calibration_coeffs_z_positions):

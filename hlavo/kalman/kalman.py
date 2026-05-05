@@ -82,7 +82,8 @@ class KalmanFilter:
         self.state_struc = StateStructure(len(nodes_z) - 1, self.kalman_config["state_params"])
 
         self.train_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["train_measurements"])
-        self.test_measurements_struc = MeasurementsStructure(nodes_z, self.kalman_config["test_measurements"])
+        test_meas_cfg = self.kalman_config.get("test_measurements", {})
+        self.test_measurements_struc = (MeasurementsStructure(nodes_z, test_meas_cfg))
 
         # Thread-safe (not process-safe) shared state
         # This is correct because each KalmanFilter lives entirely within one Dask worker.

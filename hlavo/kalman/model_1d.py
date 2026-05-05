@@ -102,6 +102,8 @@ class Model1D:
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         data = Model1DData.from_config(site_id, composed, config['schema_files'])
 
+        config = Model1D.create_kalman_measurements_config(data, config)
+
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})
@@ -162,4 +164,22 @@ class Model1D:
 
     def save_results(self):
         self.kalman.save_results()
+
+    @staticmethod
+    def create_kalman_measurements_config(data, config):
+        sensor_depth = np.squeeze(data.profiles_dataset["sensor_depth"].values)
+
+        # Configure Kalman filter measurement settings for training
+        # "moisture" is treated as the observed variable
+        config["kalman_config"]["train_measurements"] = {
+            "moisture": {
+                # Convert sensor depth to centimeters and invert sign
+                "z_pos": sensor_depth * -100,
+                # Measurement noise level (e.g., standard deviation)
+                "noise_level": config["kalman_config"]["measurements_noise_level"],
+                # Type of noise distribution (e.g., Gaussian, uniform)
+                "noise_distr_type": config["kalman_config"]["measurements_noise_distr_type"]
+            }
+        }
+        return config
 
