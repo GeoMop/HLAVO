@@ -5,6 +5,7 @@ from functools import cached_property
 from pathlib import Path
 
 import attrs
+import dask
 import numpy as np
 import xarray
 
@@ -75,14 +76,29 @@ class Model1DData:
 
     @classmethod
     def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
-        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
-        profiles = select(load_measurments_data(scheme_file=
-                                         composed.relative_resolve(schemas['profiles'])))
+        profile_kwargs = {}
+        surface_kwargs = {}
+        if "store_urls" in schemas:
+            store_urls = schemas["store_urls"]
+            assert isinstance(store_urls, dict), "model_1d.schema_files.store_urls must be a mapping"
+            if "profiles" in store_urls:
+                profile_kwargs["STORE_URL"] = str(store_urls["profiles"])
+            if "surface" in store_urls:
+                surface_kwargs["STORE_URL"] = str(store_urls["surface"])
+        def select(ds):
+            with dask.config.set(scheduler="synchronous"):
+                return ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).load()
+        profiles = select(load_measurments_data(
+            scheme_file=composed.relative_resolve(schemas['profiles']),
+            **profile_kwargs,
+        ))
         LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)
         start_profiles =  profiles.isel(date_time=0)
         long_lat = (start_profiles["longitude"].item(), start_profiles["latitude"].item())
-        surface = select(load_meteo_data(scheme_file=
-                                  composed.relative_resolve(schemas['surface'])))
+        surface = select(load_meteo_data(
+            scheme_file=composed.relative_resolve(schemas['surface']),
+            **surface_kwargs,
+        ))
         LOG.debug("Loaded 1D surface dataset for site_id=%s: %s", site_id, surface)
 
         return cls(
@@ -129,17 +145,94 @@ class KalmanMock:
     def save_results(self):
         return None
 
+
+@attrs.define
+class KalmanScalingMock:
+    dry_scale: float = 0.1
+    wet_scale: float = 0.8
+    saturation_moisture: float = 1.0
+    precipitation_window: np.timedelta64 = attrs.field(factory=lambda: np.timedelta64(48, "h"))
+
+    @classmethod
+    def from_config(cls, workdir, config_source, verbose=False, seed=None):
+        config_data, _ = load_config(config_source)
+        model_1d_cfg = config_data.get("model_1d", config_data)
+        assert isinstance(model_1d_cfg, dict), "model_1d config must be a mapping"
+        _ = workdir
+        _ = verbose
+        _ = seed
+        return cls(
+            dry_scale=float(model_1d_cfg.get("dry_scale", 0.1)),
+            wet_scale=float(model_1d_cfg.get("wet_scale", 0.8)),
+            saturation_moisture=float(model_1d_cfg.get("saturation_moisture", 1.0)),
+        )
+
+    @staticmethod
+    def _mean_moisture(measurements: xarray.Dataset) -> float | None:
+        if "moisture" not in measurements:
+            return None
+        moisture = np.asarray(measurements["moisture"], dtype=float)
+        if moisture.size == 0 or np.isnan(moisture).all():
+            return None
+        return float(np.nanmean(moisture))
+
+    @staticmethod
+    def _precipitation_var_name(meteo: xarray.Dataset) -> str:
+        for name in ("precipitation", "APCP"):
+            if name in meteo:
+                return name
+        raise KeyError("Expected precipitation-like variable in meteo dataset")
+
+    def _scaling_factor(self, mean_moisture: float | None) -> float:
+        if mean_moisture is None:
+            return self.dry_scale
+        normalized = np.clip(mean_moisture / self.saturation_moisture, 0.0, 1.0)
+        return self.dry_scale + (self.wet_scale - self.dry_scale) * normalized
+
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+        _ = ukf
+        _ = pressure_at_bottom
+        precipitation_name = self._precipitation_var_name(meteo)
+        date_time = np.asarray(meteo["date_time"].values)
+        assert date_time.size > 0, "Expected non-empty meteo slice in KalmanScalingMock"
+        latest_time = np.datetime64(date_time.max(), "s")
+        earliest_time = latest_time - self.precipitation_window
+        meteo_window = meteo.sel(date_time=slice(earliest_time, latest_time))
+        precipitation = np.asarray(meteo_window[precipitation_name], dtype=float)
+        assert precipitation.size > 0, "Expected precipitation data in the 48h window"
+        mean_precipitation = float(np.nanmean(precipitation))
+        mean_moisture = self._mean_moisture(measurements)
+        scaling_factor = self._scaling_factor(mean_moisture)
+        recharge = scaling_factor * mean_precipitation
+        LOG.info(
+            "Scaling mock recharge=%s from precip=%s scale=%s mean_moisture=%s",
+            recharge,
+            mean_precipitation,
+            scaling_factor,
+            mean_moisture,
+        )
+        return recharge
+
+    def set_kalman_filter(self, kalman_R_matrix):
+        return kalman_R_matrix
+
+    def save_results(self):
+        return None
+
 @attrs.define
 class Model1D:
     composed: 'ComposedData'
     site_id: int
     moisture_sigma: float
     data: Model1DData
-    kalman: KalmanFilter | KalmanMock
+    kalman: KalmanFilter | KalmanMock | KalmanScalingMock
 
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
-        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
+        kalman_class = resolve_named_class(
+            config['kalman_class_name'],
+            (KalmanFilter, KalmanMock, KalmanScalingMock),
+        )
         if kalman_class is KalmanMock:
             data = Model1DData.from_mock_config(site_id, composed, config)
         else:

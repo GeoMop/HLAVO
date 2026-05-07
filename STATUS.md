@@ -1,5 +1,31 @@
 # Status summary
 
+`2026-05-07`: `ec7d588` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 2 of `plan.md`: add the scaling 1D mock, delayed 3D mock backend, composed output writers, and milestone-2 composed tests with local zarr-fuse stores.
+
+## Changes summary
+- Unstaged, relevant: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now supports `KalmanScalingMock`, optional schema-local `STORE_URL` overrides for input datasets, and synchronous worker-local loading of zarr-backed slices to avoid nested Dask deadlock inside 1D worker tasks.
+- Unstaged, relevant: [hlavo/ingress/moist_profile/load_zarr_data.py](/home/hlavo/workspace/hlavo/ingress/moist_profile/load_zarr_data.py) now passes `**kwargs` through to `zarr_fuse.open_store(...)` so callers can direct reads to local stores.
+- Unstaged, relevant: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now adds `Model3DDelay`, resolves an optional writer class from config, writes site-step outputs from the 1D/3D queue exchange, and writes well outputs when the backend exposes them.
+- Untracked, relevant: [hlavo/composed/writer.py](/home/hlavo/workspace/hlavo/composed/writer.py) introduces `NullModel3DWriter`, `JsonlModel3DWriter`, `ZarrModel3DWriter`, and local well-metadata loading from a wells schema/store.
+- Unstaged, relevant: [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) still keeps the existing composed mock test and now adds two milestone-2 tests that build minimal local schemas/stores, run the composed loop with `KalmanScalingMock` + `Model3DDelay`, and verify JSONL line counts plus ZARR coord sizes.
+
+## Verified
+- `python -m py_compile hlavo/ingress/moist_profile/load_zarr_data.py hlavo/kalman/model_1d.py hlavo/composed/writer.py hlavo/composed/model_3d.py tests/composed/test_composed.py`
+  compile checks passed.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='composed/test_composed.py' bash ./run`
+  result: `3 passed, 68 warnings in 10.27s`.
+- Manual debug script reproduced the earlier milestone-2 deadlock to one missing 1D response, then the final `dask.config.set(scheduler="synchronous")` worker-local load change removed that blocker and allowed both 1D sites to answer in the composed test slice.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='model_1d/test_model_1d.py' bash ./run`
+  only partial observation recorded in this thread: `sss` appeared in `tests/pytest.log`, but the command did not finish within the waits used here, so no pass/fail claim is made for that older test slice.
+
+## Open items
+- `KalmanScalingMock` currently supports precipitation variable names `precipitation` and `APCP`; if production meteo schemas expose a different recharge-driving variable, extend the selector in [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py).
+- The milestone-2 tests use minimal local schemas/stores under `tmp_path` rather than the full production schemas, specifically to keep `zarr_fuse.update(...)` focused on the exercised variables and avoid unrelated production-schema requirements.
+- JSONL and ZARR writer coverage is now in place for the composed mock path; milestone 3 still remains to swap the 3D mock backend for a `modflowapi`-driven backend while reusing the same output path.
+
 `2026-04-25`: `7e8010` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
 
 ## Goal

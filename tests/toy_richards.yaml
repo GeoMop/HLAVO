@@ -1,0 +1,199 @@
+BCPressure:
+  PatchNames: bottom top
+ComputationalGrid:
+  DX: 1
+  DY: 1
+  DZ: 9
+  Lower:
+    X: 0.0
+    Y: 0.0
+    Z: -135
+  NX: 1
+  NY: 1
+  NZ: 15
+Contaminants:
+  Names: ''
+Cycle:
+  Names: constant
+  constant:
+    Names: alltime
+    Repeat: -1
+    alltime:
+      Length: 1
+Domain:
+  GeomName: domain
+FileVersion: 4
+Geom:
+  Perm:
+    Names: domain
+    TensorByGeom:
+      Names: domain
+  Porosity:
+    GeomNames: domain
+  domain:
+    ICPressure:
+      FileName: toy_richards.init_pressure.pfb
+    Lower:
+      X: 0.0
+      Y: 0.0
+      Z: -135
+    Patches: left right front back bottom top
+    Perm:
+      TensorValX: 1.0
+      TensorValY: 1.0
+      TensorValZ: 1.0
+      Type: Constant
+      Value: !!python/object/apply:numpy._core.multiarray.scalar
+      - &id001 !!python/object/apply:numpy.dtype
+        args:
+        - f8
+        - false
+        - true
+        state: !!python/tuple
+        - 3
+        - <
+        - null
+        - null
+        - null
+        - -1
+        - -1
+        - 0
+      - !!binary |
+        Ae6zLGvOsj8=
+    Porosity:
+      Type: Constant
+      Value: 1.0
+    RelPerm:
+      Alpha: 0.75
+      N: 1.89
+    Saturation:
+      Alpha: 0.75
+      N: 1.89
+      SRes: 0.065
+      SSat: 0.41
+    SpecificStorage:
+      Value: 1.0
+    Upper:
+      X: 1.0
+      Y: 1.0
+      Z: 0
+GeomInput:
+  Names: domain_input
+  domain_input:
+    GeomName: domain
+    InputType: Box
+Gravity: 1.0
+ICPressure:
+  GeomNames: domain
+  Type: PFBFile
+KnownSolution: NoKnownSolution
+Mannings:
+  Geom:
+    domain:
+      Value: 0.0
+  GeomNames: ''
+  Type: Constant
+Patch:
+  bottom:
+    BCPressure:
+      Cycle: constant
+      RefGeom: domain
+      RefPatch: bottom
+      Type: DirEquilRefPatch
+      alltime:
+        Value: 1.0
+  top:
+    BCPressure:
+      Cycle: constant
+      Type: FluxConst
+      alltime:
+        Value: 0
+Perm:
+  TensorType: TensorByGeom
+Phase:
+  Names: water
+  RelPerm:
+    GeomNames: domain
+    Type: VanGenuchten
+  Saturation:
+    GeomNames: domain
+    Type: VanGenuchten
+  water:
+    Density:
+      Type: Constant
+      Value: 1.0
+    Mobility:
+      Type: Constant
+      Value: 1.0
+    Viscosity:
+      Type: Constant
+      Value: 1.0
+PhaseSources:
+  water:
+    Geom:
+      domain:
+        Value: 0.0
+    GeomNames: domain
+    Type: Constant
+Process:
+  Topology:
+    P: 1
+    Q: 1
+    R: 1
+Solver:
+  AbsTol: 1.0e-12
+  CLM:
+    MetFileName: narr_1hr.txt
+    MetForcing: 1D
+  Drop: 1.0e-20
+  LSM: CLM
+  Linear:
+    KrylovDimension: 20
+    MaxRestart: 2
+    Preconditioner:
+      MGSemi:
+        MaxIter: 1
+        MaxLevels: 10
+      _value_: MGSemi
+  MaxIter: 25000
+  Nonlinear:
+    DerivativeEpsilon: 1.0e-12
+    EtaChoice: EtaConstant
+    EtaValue: 0.001
+    Globalization: LineSearch
+    MaxIter: 300
+    ResidualTol: 1.0e-06
+    StepTol: 1.0e-30
+    UseJacobian: true
+  PrintVelocities: true
+  _value_: Richards
+SpecificStorage:
+  GeomNames: ''
+  Type: Constant
+TimeStep:
+  Type: Constant
+  Value: 0.025
+TimingInfo:
+  BaseUnit: 1
+  DumpInterval: -1
+  StartCount: 0
+  StartTime: 0
+  StopTime: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAA8D8=
+TopoSlopesX:
+  Geom:
+    domain:
+      Value: 0.0
+  GeomNames: ''
+  Type: Constant
+TopoSlopesY:
+  Geom:
+    domain:
+      Value: 0.0
+  GeomNames: ''
+  Type: Constant
+Wells:
+  Names: ''
+_run_file: /home/hlavo/workspace/tests/model_1d/sandbox/output-toy/parflow_working_dir_1332_1778144151/toy_richards
