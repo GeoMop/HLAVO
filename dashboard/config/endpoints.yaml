@@ -1,6 +1,12 @@
 _dashboard:
   default_endpoint: "profiles"
 
+_cluster_defaults: &cluster_defaults
+  cluster_enabled: true
+  cluster_eps_factor: 0.05
+  cluster_buffer_factor: 0.1
+  cluster_size_scale: 3.0
+
 profiles:
   description: "HLAVO - moisture profiles"
   version: "1.0.0"
@@ -33,10 +39,7 @@ profiles:
       title: "Uhelná site overview."
       point_size: 6
       alpha: 0.8
-      cluster_enabled: true
-      cluster_eps_factor: 0.05
-      cluster_buffer_factor: 0.1
-      cluster_size_scale: 3.0
+      <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -107,10 +110,7 @@ wells:
       title: "Geographic Data View"
       point_size: 10
       alpha: 0.8
-      cluster_enabled: true
-      cluster_eps_factor: 0.05
-      cluster_buffer_factor: 0.1
-      cluster_size_scale: 3.0
+      <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -183,10 +183,7 @@ chmi_stations:
       title: "CHMI station and Open-Meteo forcing data"
       point_size: 8
       alpha: 0.8
-      cluster_enabled: true
-      cluster_eps_factor: 0.05
-      cluster_buffer_factor: 0.1
-      cluster_size_scale: 3.0
+      <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -249,10 +246,7 @@ surface_forecast:
       title: "Surface meteorology forecasts"
       point_size: 6
       alpha: 0.8
-      cluster_enabled: true
-      cluster_eps_factor: 0.05
-      cluster_buffer_factor: 0.1
-      cluster_size_scale: 3.0
+      <<: *cluster_defaults
     timeseries:
       middle_window_days: 7
       right_window_hours: 24
