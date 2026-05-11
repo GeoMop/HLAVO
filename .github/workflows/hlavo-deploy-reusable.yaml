@@ -41,14 +41,6 @@ on:
         description: 'Frontend image name'
         required: true
         type: string
-      s3_access_key:
-        description: 'S3 access key for backend'
-        required: true
-        type: string
-      s3_secret_key:
-        description: 'S3 secret key for backend'
-        required: true
-        type: string
       namespace:
         description: 'Kubernetes namespace to deploy into'
         required: false
@@ -61,6 +53,10 @@ on:
         required: true
       zarr_repo_token:
         required: false
+      s3_access_key:
+        required: true
+      s3_secret_key:
+        required: true
 
 jobs:
   deploy:
@@ -113,8 +109,8 @@ jobs:
             --set frontend.image.name="${{ inputs.frontend_image }}" \
             --set backend.image.tag="${{ inputs.version_tag }}" \
             --set frontend.image.tag="${{ inputs.version_tag }}" \
-            --set backend.s3.secrets.accessKey="${{ inputs.s3_access_key }}" \
-            --set backend.s3.secrets.secretKey="${{ inputs.s3_secret_key }}" \
+            --set backend.s3.secrets.accessKey="${{ secrets.s3_access_key }}" \
+            --set backend.s3.secrets.secretKey="${{ secrets.s3_secret_key }}" \
             --set backend.extraEnv[0].name="ENDPOINTS_PATH" \
             --set backend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
             --set backend.extraVolumes[0].name="hlavo-config" \
