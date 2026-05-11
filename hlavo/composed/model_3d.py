@@ -10,6 +10,7 @@ LOG = logging.getLogger(__name__)
 import numpy as np
 from dask.distributed import Queue
 
+from hlavo.composed.model_3d_api import Model3DAPI
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 from hlavo.composed.writer import JsonlModel3DWriter, NullModel3DWriter, ZarrModel3DWriter
@@ -98,7 +99,7 @@ class Model3D:
         common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
             common_cfg['backend_class_name'],
-            (Model3DBackendMock, Model3DDelay, Model3DBackend),
+            (Model3DBackendMock, Model3DDelay, Model3DAPI, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
         writer_class = resolve_named_class(
@@ -185,6 +186,8 @@ class Model3D:
 
                 time = target_time
         finally:
+            if hasattr(self.backend, "finalize"):
+                self.backend.finalize()
             self.writer.close()
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")

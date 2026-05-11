@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import yaml
 import zarr_fuse
@@ -312,6 +313,51 @@ def _build_runtime_config(
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
 
+def _build_runtime_config_api(
+    *,
+    config_path: Path,
+    wells_schema_path: Path,
+    writer_class_name: str,
+    writer_config: dict,
+) -> None:
+    config = {
+        "seed": 123456,
+        "start_datetime": "2025-03-01T00:00:00",
+        "end_datetime": "2025-03-04T00:00:00",
+        "model_3d": {
+            "common": {
+                "backend_class_name": "Model3DAPI",
+                "time_step_hours": 24.0,
+                "writer_class_name": writer_class_name,
+                "writer": {
+                    "wells_schema_path": str(wells_schema_path),
+                    **writer_config,
+                },
+                "builder_class_name": "SimpleCubeModelBuilder",
+                "builder": {
+                    "sim_name": "cube",
+                    "top": 0.0,
+                    "bottom": -10.0,
+                    "initial_head": 0.0,
+                    "hydraulic_conductivity": 1.0,
+                    "specific_storage": 1.0e-5,
+                    "specific_yield": 0.1,
+                },
+            }
+        },
+        "model_1d": {
+            "kalman_class_name": "KalmanMock",
+            "mock_velocity": 0.2,
+            "moisture_sigma": 0.05,
+            "sites": [
+                {"longitude": 14.88, "latitude": 50.86},
+                {"longitude": 14.90, "latitude": 50.88},
+            ],
+        },
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+
 def _run_setup_models(config_path: Path, work_dir: Path):
     cluster = LocalCluster(n_workers=2, threads_per_worker=1, processes=False)
     client = Client(cluster)
@@ -415,3 +461,36 @@ def test_composed_delay_writes_zarr(tmp_path):
     assert well_dataset.sizes["date_time"] == 31
     assert well_dataset.sizes["well_id"] == 2
     assert well_dataset.sizes["calibration"] == 1
+
+
+def test_composed_modflowapi_backend_writes_jsonl(tmp_path):
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir()
+    wells_schema_path = tmp_path / "wells_schema.yaml"
+    wells_store_path = tmp_path / "wells.zarr"
+    output_path = work_dir / "modflowapi_output.jsonl"
+    config_path = tmp_path / "composed_modflowapi_writer.yaml"
+
+    _build_wells_store(wells_schema_path, wells_store_path)
+    _build_runtime_config_api(
+        config_path=config_path,
+        wells_schema_path=wells_schema_path,
+        writer_class_name="JsonlModel3DWriter",
+        writer_config={"jsonl_path": output_path.name},
+    )
+
+    final_state = _run_setup_models(config_path, work_dir)
+    assert set(final_state) == {0, 1}
+    assert all(np.isfinite(list(final_state.values())))
+
+    site_rows = 0
+    well_rows = 0
+    for line in output_path.read_text(encoding="utf-8").splitlines():
+        payload = json.loads(line)
+        if payload["kind"] == "site_prediction":
+            site_rows += 1
+        if payload["kind"] == "well_prediction":
+            well_rows += 1
+
+    assert site_rows == 3 * 2
+    assert well_rows == 3 * 2

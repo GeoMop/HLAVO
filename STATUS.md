@@ -1,5 +1,27 @@
 # Status summary
 
+`2026-05-07`: `e0a56f6` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 3 of `plan.md`: add a `modflowapi`-driven composed 3D backend and verify it through the existing composed runtime and writer path.
+
+## Changes summary
+- Unstaged, relevant: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now resolves `Model3DAPI` as a composed backend option and finalizes API-backed backends before closing the writer.
+- Untracked, relevant: [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py) introduces `Model3DAPI`, a transient `SimpleCubeModelBuilder`, MODFLOW API time-step scheduling, recharge/head pointer wiring, and robust `libmf6.so` lookup through explicit config, `LIBMF6_PATH`, the active Python environment, or the `mf6` executable path.
+- Unstaged, relevant: [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) now adds a milestone-3 composed test that runs `KalmanMock` against `Model3DAPI` and verifies JSONL output counts for both site and well predictions.
+- Environment, relevant: `modflowapi` was installed into the active project environment so the new composed backend test can import and initialize the API binding.
+
+## Verified
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python -m py_compile hlavo/composed/model_3d_api.py hlavo/composed/model_3d.py tests/composed/test_composed.py`
+  compile checks passed.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='composed/test_composed.py' bash ./run`
+  result: `4 passed, 70 warnings in 10.07s`.
+- Direct smoke scripts in this session confirmed `modflowapi.ModflowApi` can initialize a tiny Flopy-built transient model, write recharge through `RECHARGE`, and read heads through `X` against the local `libmf6.so`.
+
+## Open items
+- The milestone-3 test currently uses the synthetic one-layer `SimpleCubeModelBuilder` in [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py); it validates the API coupling path, not the production Uhelna grid build.
+- `modflowapi` is now an environment prerequisite for this test slice; if the dependency should be reproducible for other users or CI, capture it in the project environment definition rather than relying on ad hoc local installation.
+
 `2026-05-07`: `ec7d588` @ `codex/m1-composed-mock-test` by `Codex`
 
 ## Goal
