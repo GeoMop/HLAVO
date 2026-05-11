@@ -84,6 +84,28 @@ jobs:
       - name: Decode kubeconfig
         run: echo "${{ secrets.kubeconfig }}" | base64 -d > kubeconfig.yaml && chmod 600 kubeconfig.yaml
 
+      - name: Ensure namespace exists (check permissions first)
+        run: |
+          set -euo pipefail
+          NS="${{ inputs.namespace }}"
+          echo "Checking namespace '$NS'..."
+          if kubectl get namespace "$NS" >/dev/null 2>&1; then
+            echo "Namespace '$NS' already exists."
+          else
+            echo "Namespace '$NS' does not exist. Checking permission to create namespaces..."
+            if kubectl auth can-i create namespace >/dev/null 2>&1; then
+              echo "Permission granted: creating namespace '$NS'..."
+              kubectl create namespace "$NS"
+            else
+              echo "Permission denied: this kubeconfig user cannot create namespaces."
+              echo "Please create the namespace '$NS' manually or provide a kubeconfig with namespace-create rights."
+              exit 1
+            fi
+          fi
+
+      - name: Set context to namespace
+        run: kubectl config set-context --current --namespace="${{ inputs.namespace }}"
+
       - name: Validate source files
         run: |
           echo "Checking endpoints and schemas in source repo: ${{ inputs.source_repo }}@$${{ inputs.source_ref }}"
@@ -92,11 +114,25 @@ jobs:
 
       - name: Create ConfigMap from source files
         run: |
-          kubectl create configmap hlavo-dashboard-config \
-            --namespace "${{ inputs.namespace }}" \
-            --from-file=endpoints.yaml=source-repo/${{ inputs.endpoints_path }} \
-            --from-file=source-repo/${{ inputs.schemas_dir }} \
-            --dry-run=client -o yaml | kubectl apply -f -
+          set -o pipefail
+          echo "Creating ConfigMap hlavo-dashboard-config in namespace '${{ inputs.namespace }}' from:"
+          echo " - endpoints: source-repo/${{ inputs.endpoints_path }}"
+          echo " - schemas dir: source-repo/${{ inputs.schemas_dir }}"
+
+          if kubectl create configmap hlavo-dashboard-config \
+              --namespace "${{ inputs.namespace }}" \
+              --from-file=endpoints.yaml=source-repo/${{ inputs.endpoints_path }} \
+              --from-file=source-repo/${{ inputs.schemas_dir }} \
+              --dry-run=client -o yaml | kubectl apply -f -; then
+            echo "ConfigMap applied successfully."
+          else
+            echo "Failed to create ConfigMap. Checking permissions and namespace..."
+            kubectl auth can-i create configmaps --namespace="${{ inputs.namespace }}" || true
+            kubectl get namespace "${{ inputs.namespace }}" -o yaml || true
+            kubectl get configmap --namespace="${{ inputs.namespace }}" -o name || true
+            echo "If this runner's kubeconfig user lacks permissions, update the KUBECONFIG secret or grant the user create/apply rights in the namespace."
+            exit 1
+          fi
 
       - name: Deploy Helm chart from main-repo
         run: |
