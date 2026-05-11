@@ -62,6 +62,8 @@ jobs:
   deploy:
     name: Deploy HLAVO (reusable)
     runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ./kubeconfig.yaml
     steps:
       - name: Checkout zarr_fuse (main-repo)
         uses: actions/checkout@v4
@@ -97,8 +99,6 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy Helm chart from main-repo
-        env:
-          KUBECONFIG: ./kubeconfig.yaml
         run: |
           helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
             --install --atomic --timeout 10m --namespace "${{ inputs.namespace }}" \
