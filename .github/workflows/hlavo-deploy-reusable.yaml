@@ -82,9 +82,6 @@ jobs:
       - name: Decode kubeconfig
         run: echo "${{ secrets.kubeconfig }}" | base64 -d > kubeconfig.yaml && chmod 600 kubeconfig.yaml
 
-      - name: Ensure namespace exists
-        run: kubectl create namespace "${{ inputs.namespace }}" --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Validate source files
         run: |
           echo "Checking endpoints and schemas in source repo: ${{ inputs.source_repo }}@$${{ inputs.source_ref }}"
