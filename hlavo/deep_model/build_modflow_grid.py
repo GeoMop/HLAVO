@@ -13,8 +13,9 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconf
 
 import flopy
 from . import model_3d_cfg as cfg3d
-from .add_material_parameters import write_material_model_files
+from .add_material_parameters import material_dataset_from_config, write_material_model_files
 from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelGeometry, ModelInputs, RasterLayer
+from .simulation_builder import build_modflow_simulation
 
 LOG = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def build_model(
     build_config = BuildConfig.from_source(config_source, workspace=workspace)
     build_modflow_grid(config_source, build_config.output_path)
     write_material_model_files(config_source, workspace=workspace)
-    write_modflow_inputs(build_config)
+    write_modflow_inputs(build_config, config_source=config_source, workspace=workspace)
     return build_config
 
 
@@ -310,114 +311,23 @@ def _append_grid_lonlat_to_nam(nam_path: Path, grid_corners_lonlat: np.ndarray, 
     nam_path.write_text("\n".join(updated) + ending, encoding="utf-8")
 
 
-def write_modflow_inputs(build_config: BuildConfig) -> None:
-    # grid_data is the direct geometry export from build_modflow_grid():
-    # grid extents, node coordinates, CRS metadata and the initial layer assignment.
-    grid_data = _grid_arrays_from_npz(build_config.output_path)
-    # model_data is the post-processed material model written by
-    # write_material_model_files(). It keeps some geometry arrays duplicated on
-    # purpose, but adds the MODFLOW-ready fields derived from materials
-    # calibration/defaults such as idomain, hk and k33. When a field exists in
-    # both files, prefer model_data here because it is the final source used for
-    # the MODFLOW input packages.
-    model_data = _grid_arrays_from_npz(build_config.resolved_material_parameters_path)
-    el_dims = np.asarray(grid_data["el_dims"], dtype=int)
-    assert el_dims.size == 3, "el_dims must contain 3 values"
-    nx = int(el_dims[0])
-    ny = int(el_dims[1])
-    nz = int(el_dims[2])
-    step = np.asarray(grid_data["step"], dtype=float)
-    assert step.size == 3, "step must contain 3 values"
-
-    active_mask = np.asarray(model_data["active_mask"], dtype=bool)
-    assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
-    top = np.asarray(model_data["top"], dtype=float)
-    botm = np.asarray(model_data["botm"], dtype=float)
-    materials = np.asarray(model_data["materials"], dtype=int)
-    assert top.shape == (ny, nx), "top shape mismatch"
-    assert botm.shape == (nz, ny, nx), "botm shape mismatch"
-    assert materials.shape == (nz, ny, nx), "materials shape mismatch"
-
-    idomain = np.asarray(model_data["idomain"], dtype=int)
-    hk = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
-    k33 = np.asarray(model_data["kv"] if "kv" in model_data else model_data["k33"], dtype=float)
-    assert idomain.shape == (nz, ny, nx), "idomain shape mismatch"
-    assert hk.shape == (nz, ny, nx), "hk shape mismatch"
-    assert k33.shape == (nz, ny, nx), "k33 shape mismatch"
-
-    workdir = build_config.workspace
-    workdir.mkdir(parents=True, exist_ok=True)
-
-    sim = flopy.mf6.MFSimulation(
-        sim_name=build_config.sim_name,
+def write_modflow_inputs(
+    build_config: BuildConfig,
+    *,
+    config_source: Path | dict,
+    workspace: Path | None = None,
+) -> None:
+    _ = _grid_arrays_from_npz(build_config.output_path)
+    _ = _grid_arrays_from_npz(build_config.resolved_material_parameters_path)
+    geometry = ModelGeometry.from_npz(build_config.output_path)
+    material_dataset = material_dataset_from_config(config_source, workspace=workspace)
+    build_modflow_simulation(
+        common=build_config.common,
+        geometry=geometry,
+        material_dataset=material_dataset,
+        workspace=build_config.workspace,
         exe_name=build_config.exe_name,
-        sim_ws=str(workdir),
     )
-    perioddata = [(float(days), 1, 1.0) for days in build_config.stress_periods_days]
-    flopy.mf6.ModflowTdis(
-        sim,
-        time_units="DAYS",
-        nper=len(perioddata),
-        perioddata=perioddata,
-    )
-    flopy.mf6.ModflowIms(sim, complexity="SIMPLE")
-
-    gwf = flopy.mf6.ModflowGwf(sim, modelname=build_config.sim_name, save_flows=True)
-    flopy.mf6.ModflowGwfdis(
-        gwf,
-        nlay=nz,
-        nrow=ny,
-        ncol=nx,
-        delr=float(step[0]),
-        delc=float(step[1]),
-        top=top,
-        botm=botm,
-        idomain=idomain,
-    )
-
-    layer_tops = np.empty_like(botm)
-    layer_tops[0] = top
-    if nz > 1:
-        layer_tops[1:] = botm[:-1]
-    flopy.mf6.ModflowGwfic(gwf, strt=layer_tops)
-
-    icelltype = np.zeros(nz, dtype=int)
-    icelltype[0] = 1
-    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=hk, k33=k33, save_specific_discharge=True)
-
-    recharge_rate = (
-        float(model_data["recharge_rate"]) if "recharge_rate" in model_data else build_config.recharge_rate
-    )
-    recharge = np.where(active_mask, recharge_rate, 0.0)
-    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge)
-
-    top_active = active_mask & (idomain[0] > 0)
-    top_rows, top_cols = np.where(top_active)
-    drain_cells = []
-    for row, col in zip(top_rows.tolist(), top_cols.tolist()):
-        drain_cells.append((0, int(row), int(col), float(top[row, col]), build_config.drain_conductance))
-    flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
-
-    flopy.mf6.ModflowGwfoc(
-        gwf,
-        head_filerecord=f"{build_config.sim_name}.hds",
-        budget_filerecord=f"{build_config.sim_name}.cbc",
-        saverecord=[("HEAD", "ALL"), ("BUDGET", "ALL")],
-        printrecord=[("HEAD", "LAST"), ("BUDGET", "LAST")],
-    )
-
-    sim.write_simulation()
-
-    grid_corners_lonlat = grid_data.get("grid_corners_lonlat")
-    if grid_corners_lonlat is not None:
-        lonlat_epsg = int(grid_data.get("lonlat_epsg", 4326))
-        _append_grid_lonlat_to_nam(workdir / "mfsim.nam", np.asarray(grid_corners_lonlat, dtype=float), lonlat_epsg)
-        _append_grid_lonlat_to_nam(
-            workdir / f"{build_config.sim_name}.nam",
-            np.asarray(grid_corners_lonlat, dtype=float),
-            lonlat_epsg,
-        )
-    LOG.info("Saved MODFLOW input files to %s", workdir)
 
 
 def main() -> None:

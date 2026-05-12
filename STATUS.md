@@ -1,5 +1,29 @@
 # Status summary
 
+`2026-05-12`: `b05cf7a` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 5 of `plan.md`: parse material properties into an xarray dataset with calibration bounds and move MODFLOW simulation setup onto a shared builder used by both the build path and the older deep-model runner.
+
+## Changes summary
+- Unstaged, relevant: [hlavo/deep_model/add_material_parameters.py](/home/hlavo/workspace/hlavo/deep_model/add_material_parameters.py) now parses materials into an xarray dataset with `material` and `bound` coords, supports scalar or `[lo, init, hi]` values for numeric material properties, keeps the virtual `all` material as the default source, and still writes the resolved `material_parameters.npz` artifact for downstream compatibility.
+- Untracked, relevant: [hlavo/deep_model/simulation_builder.py](/home/hlavo/workspace/hlavo/deep_model/simulation_builder.py) now provides the shared milestone-5 backbone: it resolves `ModelGeometry` plus the material xarray dataset into per-cell material fields and builds the Flopy/MODFLOW 6 simulation setup from `Model3DCommonConfig`.
+- Unstaged, relevant: [hlavo/deep_model/build_modflow_grid.py](/home/hlavo/workspace/hlavo/deep_model/build_modflow_grid.py) now delegates MODFLOW input creation to the shared simulation builder instead of carrying a second hand-written Flopy setup path.
+- Unstaged, relevant: [hlavo/deep_model/run_model.py](/home/hlavo/workspace/hlavo/deep_model/run_model.py) now reuses the same shared simulation builder and material-field resolution path before running MF6, instead of duplicating package construction locally.
+- Untracked, relevant: [tests/deep_model/test_simulation_builder.py](/home/hlavo/workspace/tests/deep_model/test_simulation_builder.py) adds a synthetic milestone-5 test covering bounded material parsing and shared simulation building without requiring the GIS project.
+
+## Verified
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python -m py_compile hlavo/deep_model/add_material_parameters.py hlavo/deep_model/simulation_builder.py hlavo/deep_model/build_modflow_grid.py hlavo/deep_model/run_model.py tests/deep_model/test_simulation_builder.py`
+  compile checks passed.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='deep_model/test_simulation_builder.py' bash ./run`
+  result: `2 passed in 1.92s`.
+- `bash runs/run_0.sh build_model runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  completed successfully after the refactor and rebuilt the MODFLOW input files under [runs/composed_3D_only/model_with_mine](/home/hlavo/workspace/runs/composed_3D_only/model_with_mine).
+
+## Open items
+- The current material-to-layer mapping still follows the earlier heuristic from raster interface names (`Q*_top -> clay`, `Q*_base -> sand`, otherwise `all`). The xarray-backed structure is now in place, but milestone 6+ may still want a more explicit config-driven layer/material mapping.
+- `run_model.py` now reuses the shared simulation builder, but this turn only re-verified the synthetic builder test and the `build_model` integration path, not a full end-to-end `run_model.py` groundwater simulation on a real GIS-derived configuration.
+
 `2026-05-11`: `067c32f` @ `codex/m1-composed-mock-test` by `Codex`
 
 ## Goal

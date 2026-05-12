@@ -12,6 +12,9 @@ from pathlib import Path
 import attrs
 import numpy as np
 import flopy
+from hlavo.deep_model.add_material_parameters import material_dataset_from_config
+from hlavo.deep_model.qgis_reader import ModelGeometry
+from hlavo.deep_model.simulation_builder import build_material_fields, build_modflow_simulation
 
 
 # Matplotlib needs a writable config/cache directory in the container runtime.
@@ -690,6 +693,9 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
 
     grid_data = _grid_arrays_from_npz(run_config.grid_output_path)
     model_data = _grid_arrays_from_npz(run_config.material_parameters_path)
+    geometry = ModelGeometry.from_npz(run_config.grid_output_path)
+    material_dataset = material_dataset_from_config(config_path, workspace=workspace)
+    fields = build_material_fields(geometry=geometry, material_dataset=material_dataset)
 
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     assert el_dims.size == 3, "el_dims must contain 3 values"
@@ -699,15 +705,15 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     step = np.asarray(grid_data["step"], dtype=float)
     assert step.size == 3, "step must contain 3 values"
 
-    active_mask = grid_data["active_mask"].astype(bool)
+    active_mask = fields.active_mask
     assert active_mask.shape == (ny, nx), "active_mask shape mismatch"
 
-    top = np.asarray(model_data["top"], dtype=float)
-    botm = np.asarray(model_data["botm"], dtype=float)
-    materials = np.asarray(model_data["materials"], dtype=int)
-    idomain = np.asarray(model_data["idomain"], dtype=int)
-    kh = np.asarray(model_data["kh"] if "kh" in model_data else model_data["hk"], dtype=float)
-    kv = np.asarray(model_data["kv"] if "kv" in model_data else model_data.get("k33", kh), dtype=float)
+    top = fields.top
+    botm = fields.botm
+    materials = fields.materials
+    idomain = fields.idomain
+    kh = fields.kh
+    kv = fields.kv
     assert top.shape == (ny, nx), "top shape mismatch"
     assert botm.shape == (nz, ny, nx), "botm shape mismatch"
     assert materials.shape == (nz, ny, nx), "materials shape mismatch"
@@ -720,88 +726,14 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     lonlat_epsg = int(grid_data.get("lonlat_epsg", 4326))
 
     workdir = run_config.workspace
-    workdir.mkdir(parents=True, exist_ok=True)
-
-    sim = flopy.mf6.MFSimulation(
-        sim_name=run_config.sim_name,
-        exe_name=str(exe_path),
-        sim_ws=str(workdir),
+    build_result = build_modflow_simulation(
+        common=run_config.common,
+        geometry=geometry,
+        material_dataset=material_dataset,
+        workspace=workdir,
+        exe_name=exe_path,
     )
-
-    perioddata = [(float(days), 1, 1.0) for days in run_config.stress_periods_days]
-    flopy.mf6.ModflowTdis(
-        sim,
-        time_units="DAYS",
-        nper=len(perioddata),
-        perioddata=perioddata,
-    )
-    flopy.mf6.ModflowIms(sim, complexity="SIMPLE")
-
-    gwf = flopy.mf6.ModflowGwf(sim, modelname=run_config.sim_name, save_flows=True)
-
-    flopy.mf6.ModflowGwfdis(
-        gwf,
-        nlay=nz,
-        nrow=ny,
-        ncol=nx,
-        delr=float(step[0]),
-        delc=float(step[1]),
-        top=top,
-        botm=botm,
-        idomain=idomain,
-    )
-
-    # MF6 expects starting heads per layer; use layer tops for a consistent 3D array.
-    layer_tops = np.empty_like(botm)
-    layer_tops[0] = top
-    if nz > 1:
-        layer_tops[1:] = botm[:-1]
-    flopy.mf6.ModflowGwfic(gwf, strt=layer_tops)
-
-    icelltype = np.zeros(nz, dtype=int)
-    icelltype[0] = 1
-    specific_yield = float(model_data["specific_yield"]) if "specific_yield" in model_data else 0.1
-    specific_storage = float(model_data["specific_storage"]) if "specific_storage" in model_data else 1.0e-5
-    flopy.mf6.ModflowGwfsto(
-        gwf,
-        iconvert=icelltype,
-        ss=specific_storage,
-        sy=specific_yield,
-        transient={iper: True for iper in range(len(run_config.stress_periods_days))},
-    )
-    flopy.mf6.ModflowGwfnpf(gwf, icelltype=icelltype, k=kh, k33=kv, save_specific_discharge=True)
-
-    if run_config.recharge_series_m_per_day is not None:
-        recharge_rates = run_config.recharge_series_m_per_day
-    else:
-        recharge_rate = float(model_data["recharge_rate"]) if "recharge_rate" in model_data else run_config.recharge_rate
-        recharge_rates = tuple([recharge_rate] * len(run_config.stress_periods_days))
-    recharge_spd = {
-        iper: np.where(active_mask, float(rate), 0.0) for iper, rate in enumerate(recharge_rates)
-    }
-    flopy.mf6.ModflowGwfrcha(gwf, recharge=recharge_spd)
-
-    top_active = active_mask & (idomain[0] > 0)
-    top_rows, top_cols = np.where(top_active)
-    drain_cells = []
-    for row, col in zip(top_rows.tolist(), top_cols.tolist()):
-        drain_cells.append((0, int(row), int(col), float(top[row, col]), run_config.drain_conductance))
-
-    flopy.mf6.ModflowGwfdrn(gwf, stress_period_data=drain_cells)
-
-    flopy.mf6.ModflowGwfoc(
-        gwf,
-        head_filerecord=f"{run_config.sim_name}.hds",
-        budget_filerecord=f"{run_config.sim_name}.cbc",
-        saverecord=[("HEAD", "ALL"), ("BUDGET", "ALL")],
-        printrecord=[("HEAD", "LAST"), ("BUDGET", "LAST")],
-    )
-
-    sim.write_simulation()
-    _append_grid_lonlat_to_nam(workdir / "mfsim.nam", grid_corners_lonlat, lonlat_epsg)
-    _append_grid_lonlat_to_nam(
-        workdir / f"{run_config.sim_name}.nam", grid_corners_lonlat, lonlat_epsg
-    )
+    sim = build_result.sim
     success, buffer = sim.run_simulation()
     assert success, "Modflow6 did not terminate successfully"
     LOG.info("Modflow6 run complete")
