@@ -81,13 +81,13 @@ class Model3DCommonConfig:
     sim_name: str
     exe_name: str
     backend_class_name: str
-    #recharge_rate: float
-    #recharge_series_m_per_day: tuple[float, ...] | None
+    recharge_rate: float
+    recharge_series_m_per_day: tuple[float, ...] | None
     drain_conductance: float
     max_time_step: np.timedelta64['D']
     n_steps: int | None
-    #simulation_days: float
-    #stress_periods_days: tuple[float, ...]
+    total_time_days: float | None
+    stress_periods_days: tuple[float, ...]
 
     @classmethod
     def from_mapping(cls, raw: dict) -> "Model3DCommonConfig":
@@ -112,39 +112,60 @@ class Model3DCommonConfig:
 
         drain_conductance = to_float(raw, "drain_conductance", 1.0)
         n_steps = to_optional_int(raw, "n_steps")
+        total_time_days = to_optional_float(raw, "total_time_days")
+        simulation_days = to_optional_float(raw, "simulation_days")
+        if total_time_days is None:
+            total_time_days = simulation_days
 
+        stress_periods_raw = raw.get("stress_periods_days")
+        if stress_periods_raw is None:
+            if total_time_days is not None:
+                stress_periods_days = (total_time_days,)
+            elif n_steps is not None:
+                stress_periods_days = tuple(float(MODEL_3D_STEP_DAYS) for _ in range(n_steps))
+            else:
+                stress_periods_days = (float(MODEL_3D_STEP_DAYS),)
+        else:
+            assert isinstance(stress_periods_raw, (list, tuple)), "stress_periods_days must be a list"
+            stress_periods_days = tuple(float(value) for value in stress_periods_raw)
+            assert all(value > 0.0 for value in stress_periods_days), (
+                "stress_periods_days values must be > 0"
+            )
 
-        # stress_periods_raw = raw.get("stress_periods_days")
-        # if stress_periods_raw is None:
-        #     stress_periods_days = (simulation_days,)
-        # else:
-        #     assert isinstance(stress_periods_raw, (list, tuple)), "stress_periods_days must be a list"
-        #     stress_periods_days = tuple(float(value) for value in stress_periods_raw)
-        #     assert all(value > 0.0 for value in stress_periods_days), (
-        #         "stress_periods_days values must be > 0"
-        #     )
-        #
-        # total_period_days = float(sum(stress_periods_days))
-        # assert np.isclose(total_period_days, simulation_days, rtol=1.0e-6, atol=1.0e-6), (
-        #     "Sum of stress_periods_days must equal simulation_days"
-        # )
-        # if recharge_series_m_per_day is not None:
-        #     assert len(recharge_series_m_per_day) == len(stress_periods_days), (
-        #         "recharge_series_m_per_day length must match stress periods"
-        #     )
+        if total_time_days is None:
+            total_time_days = float(sum(stress_periods_days))
+        else:
+            total_period_days = float(sum(stress_periods_days))
+            assert np.isclose(total_period_days, total_time_days, rtol=1.0e-6, atol=1.0e-6), (
+                "Sum of stress_periods_days must equal total_time_days/simulation_days"
+            )
+        if recharge_series_m_per_day is not None:
+            assert len(recharge_series_m_per_day) == len(stress_periods_days), (
+                "recharge_series_m_per_day length must match stress periods"
+            )
+
+        max_time_step_days = to_optional_float(raw, "max_time_step_days")
+        if max_time_step_days is None:
+            if n_steps is not None and total_time_days is not None:
+                max_time_step_days = float(total_time_days) / float(n_steps)
+            elif total_time_days is not None:
+                max_time_step_days = float(total_time_days)
+            else:
+                max_time_step_days = float(MODEL_3D_STEP_DAYS)
+        assert max_time_step_days > 0.0, "max_time_step_days must be > 0"
 
         return cls(
             model_name=model_name,
             sim_name=sim_name,
             exe_name=exe_name,
             backend_class_name=backend_class_name,
-            #recharge_rate=recharge_rate,
-            #recharge_series_m_per_day=recharge_series_m_per_day,
+            recharge_rate=recharge_rate,
+            recharge_series_m_per_day=recharge_series_m_per_day,
             drain_conductance=drain_conductance,
-            max_time_step = raw["max_time_step_days"] * np.timedelta64(1, "D"),
+            max_time_step=np.timedelta64(int(round(max_time_step_days * 86400.0)), "s"),
             n_steps=n_steps,
-            #simulation_days=simulation_days,
-            #stress_periods_days=stress_periods_days,
+            total_time_days=total_time_days,
+            stress_periods_days=stress_periods_days,
         )
 
     @classmethod
@@ -162,3 +183,7 @@ class Model3DCommonConfig:
             t_end = MODEL_3D_STEP_DAYS
         assert t_end > 0.0, "model_3d total simulation time must be > 0"
         return float(t_end)
+
+    @property
+    def time_step_days(self) -> np.timedelta64:
+        return self.max_time_step

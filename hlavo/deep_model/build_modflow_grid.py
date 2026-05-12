@@ -14,7 +14,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconf
 import flopy
 from . import model_3d_cfg as cfg3d
 from .add_material_parameters import write_material_model_files
-from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelInputs, RasterLayer
+from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelGeometry, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
 
@@ -279,67 +279,10 @@ def materials_from_rasters_per_column(
 
 
 def build_modflow_grid(config_source: Path | dict, output_path: Path) -> Path:
-    model_inputs = ModelInputs.from_source(config_source)
-    grid = model_inputs.grid
-    boundary_origin = np.asarray(model_inputs.boundary.origin, dtype=float)
-
-    grid_xy_min = grid.origin[:2].astype(float)
-    grid_xy_max = grid_xy_min + grid.step[:2].astype(float) * grid.el_dims[:2].astype(float)
-    grid_corners_local = np.asarray([grid_xy_min, grid_xy_max], dtype=float)
-    grid_corners_global = grid_corners_local + boundary_origin[None, :]
-    origin_global = np.asarray(
-        [grid.origin[0] + boundary_origin[0], grid.origin[1] + boundary_origin[1], grid.origin[2]],
-        dtype=float,
-    )
-    from pyproj import Transformer
-
-    transformer = Transformer.from_crs(5514, 4326, always_xy=True)
-    lon, lat = transformer.transform(grid_corners_global[:, 0], grid_corners_global[:, 1])
-    grid_corners_lonlat = np.column_stack([lon, lat]).astype(float)
-
-    active_mask = active_mask_from_boundary(model_inputs.boundary, grid)
-    z_nodes = grid.z_nodes.astype(float)
-    nz = int(grid.el_dims[2])
-    assert z_nodes.size == nz + 1, "z_nodes size mismatch"
-    top_raster = model_inputs.rasters[0]
-    top_full = raster_to_full_grid(top_raster, grid)
-    top = np.ma.filled(top_full, z_nodes[-1]).astype(float)
-    z_step = float(grid.step[2])
-    botm = top[None, :, :] - z_step * (np.arange(1, nz + 1, dtype=float)[:, None, None])
-
-    materials = materials_from_rasters_per_column(
-        model_inputs.rasters,
-        grid,
-        active_mask,
-        top,
-    )
-    rasters_bottom_up = tuple(reversed(model_inputs.rasters))
-
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        output_path,
-        origin=grid.origin,
-        step=grid.step,
-        el_dims=grid.el_dims,
-        x_nodes=grid.x_nodes,
-        y_nodes=grid.y_nodes,
-        z_nodes=grid.z_nodes,
-        top=top,
-        botm=botm,
-        boundary_origin=boundary_origin,
-        origin_global=origin_global,
-        grid_corners_local=grid_corners_local,
-        grid_corners_global=grid_corners_global,
-        grid_corners_lonlat=grid_corners_lonlat,
-        lonlat_epsg=4326,
-        active_mask=active_mask,
-        materials=materials,
-        layer_names=np.asarray([r.name for r in rasters_bottom_up], dtype=object),
-    )
-    assert output_path.exists(), f"Grid output not created: {output_path}"
-    LOG.info("Saved grid materials to %s", output_path)
-    return output_path
+    geometry = ModelGeometry.from_source(config_source)
+    geometry_path = geometry.write_npz(output_path)
+    LOG.info("Saved geometry grid data to %s", geometry_path)
+    return geometry_path
 
 
 def _grid_arrays_from_npz(npz_path: Path) -> dict[str, np.ndarray]:

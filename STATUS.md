@@ -1,5 +1,28 @@
 # Status summary
 
+`2026-05-11`: `067c32f` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 4 of `plan.md`: restore the `build_model` path, separate persisted geometry from GIS reading, and make `runs/composed_3D_only/run_build_model.sh` work again.
+
+## Changes summary
+- Unstaged, relevant: [hlavo/deep_model/model_3d_cfg.py](/home/hlavo/workspace/hlavo/deep_model/model_3d_cfg.py) now restores a coherent common 3D config contract for both build-time and composed runtime use, including `recharge_rate`, `recharge_series_m_per_day`, `total_time_days`, `stress_periods_days`, and compatible fallback handling for `max_time_step_days`.
+- Unstaged, relevant: [hlavo/deep_model/qgis_reader.py](/home/hlavo/workspace/hlavo/deep_model/qgis_reader.py) now adds `ModelGeometry`, a persisted geometry artifact that can be created from GIS/config, serialized into the workdir, recreated later from `grid_materials.npz` without the GIS project, exported to VTK, and used for local/JTSK/lon-lat coordinate conversions.
+- Unstaged, relevant: [hlavo/deep_model/build_modflow_grid.py](/home/hlavo/workspace/hlavo/deep_model/build_modflow_grid.py) now builds and writes `ModelGeometry` instead of manually assembling the geometry payload inline, while keeping the existing `grid_materials.npz` output path and downstream material/MODFLOW build flow intact.
+- Unstaged, relevant: [hlavo/deep_model/__init__.py](/home/hlavo/workspace/hlavo/deep_model/__init__.py) now exports `ModelGeometry`.
+
+## Verified
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python -m py_compile hlavo/deep_model/model_3d_cfg.py hlavo/deep_model/qgis_reader.py hlavo/deep_model/build_modflow_grid.py hlavo/deep_model/__init__.py hlavo/main.py`
+  compile checks passed.
+- `bash runs/run_0.sh build_model runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  completed successfully and rebuilt [runs/composed_3D_only/model_with_mine](/home/hlavo/workspace/runs/composed_3D_only/model_with_mine).
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python - <<'PY' ...`
+  loaded `ModelGeometry` back from [runs/composed_3D_only/model_with_mine/grid_materials.npz](/home/hlavo/workspace/runs/composed_3D_only/model_with_mine/grid_materials.npz), exercised lon/lat round-trip conversion, and wrote [runs/composed_3D_only/model_with_mine/geometry_surfaces.vtm](/home/hlavo/workspace/runs/composed_3D_only/model_with_mine/geometry_surfaces.vtm).
+
+## Open items
+- `ModelGeometry.from_model_inputs()` currently imports geometry helper functions from [hlavo/deep_model/build_modflow_grid.py](/home/hlavo/workspace/hlavo/deep_model/build_modflow_grid.py) to avoid a larger helper move in this milestone; if the geometry API expands further, those shared mesh/material-shape helpers should probably move into a dedicated module.
+- The geometry artifact now persists cropped raster surfaces inside `grid_materials.npz`; this keeps the workdir self-contained for VTK regeneration, but it increases the size of that file compared with the earlier geometry-only payload.
+
 `2026-05-07`: `e0a56f6` @ `codex/m1-composed-mock-test` by `Codex`
 
 ## Goal

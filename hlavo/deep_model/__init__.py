@@ -12,6 +12,7 @@ from .qgis_reader import (
     BoundaryPolygon,
     Grid,
     GeometryConfig,
+    ModelGeometry,
     ModelInputs,
     QgisProjectReader,
     RasterLayer,
@@ -20,6 +21,7 @@ from .qgis_reader import (
 
 __all__ = [
     "GeometryConfig",
+    "ModelGeometry",
     "Model3DCommonConfig",
     "RasterLayer",
     "BoundaryPolygon",

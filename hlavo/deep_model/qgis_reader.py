@@ -178,7 +178,203 @@ class ModelInputs:
         grid = Grid.from_xy_and_z_extent(grid_xy, z_min, z_max)
         return ModelInputs(boundary=boundary, rasters=rasters, grid=grid)
 
-def write_vtk_surfaces(model_inputs: ModelInputs, output_path: Path) -> Path:
+
+@attrs.define(frozen=True)
+class ModelGeometry:
+    """Persisted geometry artifact independent of the original GIS project."""
+
+    boundary_origin: "np.ndarray"
+    grid: Grid
+    rasters: tuple[RasterLayer, ...]
+    active_mask: "np.ndarray"
+    top: "np.ndarray"
+    botm: "np.ndarray"
+    materials: "np.ndarray"
+    layer_names: tuple[str, ...]
+    grid_corners_local: "np.ndarray"
+    grid_corners_global: "np.ndarray"
+    grid_corners_lonlat: "np.ndarray"
+    lonlat_epsg: int = 4326
+
+    @classmethod
+    def from_source(cls, config_source: Path | dict) -> "ModelGeometry":
+        model_inputs = ModelInputs.from_source(config_source)
+        return cls.from_model_inputs(model_inputs)
+
+    @classmethod
+    def from_model_inputs(cls, model_inputs: ModelInputs) -> "ModelGeometry":
+        from .build_modflow_grid import (
+            active_mask_from_boundary,
+            materials_from_rasters_per_column,
+            raster_to_full_grid,
+        )
+
+        grid = model_inputs.grid
+        boundary_origin = np.asarray(model_inputs.boundary.origin, dtype=float)
+        grid_xy_min = grid.origin[:2].astype(float)
+        grid_xy_max = grid_xy_min + grid.step[:2].astype(float) * grid.el_dims[:2].astype(float)
+        grid_corners_local = np.asarray([grid_xy_min, grid_xy_max], dtype=float)
+        grid_corners_global = grid_corners_local + boundary_origin[None, :]
+
+        from pyproj import Transformer
+
+        transformer = Transformer.from_crs(5514, 4326, always_xy=True)
+        lon, lat = transformer.transform(grid_corners_global[:, 0], grid_corners_global[:, 1])
+        grid_corners_lonlat = np.column_stack([lon, lat]).astype(float)
+
+        active_mask = active_mask_from_boundary(model_inputs.boundary, grid)
+        z_nodes = grid.z_nodes.astype(float)
+        nz = int(grid.el_dims[2])
+        assert z_nodes.size == nz + 1, "z_nodes size mismatch"
+        top_raster = model_inputs.rasters[0]
+        top_full = raster_to_full_grid(top_raster, grid)
+        top = np.ma.filled(top_full, z_nodes[-1]).astype(float)
+        z_step = float(grid.step[2])
+        botm = top[None, :, :] - z_step * (np.arange(1, nz + 1, dtype=float)[:, None, None])
+        materials = materials_from_rasters_per_column(
+            model_inputs.rasters,
+            grid,
+            active_mask,
+            top,
+        )
+        layer_names = tuple(raster.name for raster in reversed(model_inputs.rasters))
+        return cls(
+            boundary_origin=boundary_origin,
+            grid=grid,
+            rasters=model_inputs.rasters,
+            active_mask=active_mask,
+            top=top,
+            botm=botm,
+            materials=materials,
+            layer_names=layer_names,
+            grid_corners_local=grid_corners_local,
+            grid_corners_global=grid_corners_global,
+            grid_corners_lonlat=grid_corners_lonlat,
+        )
+
+    @classmethod
+    def from_npz(cls, geometry_path: Path) -> "ModelGeometry":
+        geometry_path = Path(geometry_path)
+        assert geometry_path.exists(), f"Geometry NPZ not found: {geometry_path}"
+        with np.load(geometry_path, allow_pickle=True) as data:
+            payload = {key: data[key] for key in data.files}
+
+        grid = Grid(
+            origin=np.asarray(payload["origin"], dtype=float),
+            step=np.asarray(payload["step"], dtype=float),
+            el_dims=np.asarray(payload["el_dims"], dtype=int),
+        )
+        raster_names = [str(name) for name in payload["raster_names"].tolist()]
+        raster_sources = [str(source) for source in payload["raster_sources"].tolist()]
+        raster_crs_wkts = [str(wkt) for wkt in payload["raster_crs_wkts"].tolist()]
+        raster_extents = payload["raster_extent_local"]
+        raster_pixel_sizes = payload["raster_pixel_sizes"]
+        raster_sizes = payload["raster_sizes"]
+        raster_z_values = payload["raster_z_values"].tolist()
+        raster_masks = payload["raster_masks"].tolist()
+
+        rasters: list[RasterLayer] = []
+        for idx, name in enumerate(raster_names):
+            z_values = np.asarray(raster_z_values[idx], dtype=float)
+            mask = np.asarray(raster_masks[idx], dtype=bool)
+            rasters.append(
+                RasterLayer(
+                    name=name,
+                    source=raster_sources[idx],
+                    crs_wkt=raster_crs_wkts[idx],
+                    extent_local=np.asarray(raster_extents[idx], dtype=float),
+                    pixel_size=np.asarray(raster_pixel_sizes[idx], dtype=float),
+                    size=np.asarray(raster_sizes[idx], dtype=int),
+                    z_field=np.ma.array(z_values, mask=mask),
+                )
+            )
+
+        return cls(
+            boundary_origin=np.asarray(payload["boundary_origin"], dtype=float),
+            grid=grid,
+            rasters=tuple(rasters),
+            active_mask=np.asarray(payload["active_mask"], dtype=bool),
+            top=np.asarray(payload["top"], dtype=float),
+            botm=np.asarray(payload["botm"], dtype=float),
+            materials=np.asarray(payload["materials"], dtype=int),
+            layer_names=tuple(str(name) for name in payload["layer_names"].tolist()),
+            grid_corners_local=np.asarray(payload["grid_corners_local"], dtype=float),
+            grid_corners_global=np.asarray(payload["grid_corners_global"], dtype=float),
+            grid_corners_lonlat=np.asarray(payload["grid_corners_lonlat"], dtype=float),
+            lonlat_epsg=int(payload["lonlat_epsg"]),
+        )
+
+    def to_npz_payload(self) -> dict[str, np.ndarray]:
+        raster_z_values = np.asarray(
+            [np.asarray(np.ma.filled(raster.z_field, np.nan), dtype=float) for raster in self.rasters],
+            dtype=object,
+        )
+        raster_masks = np.asarray(
+            [np.asarray(np.ma.getmaskarray(raster.z_field), dtype=bool) for raster in self.rasters],
+            dtype=object,
+        )
+        return {
+            "origin": self.grid.origin,
+            "step": self.grid.step,
+            "el_dims": self.grid.el_dims,
+            "x_nodes": self.grid.x_nodes,
+            "y_nodes": self.grid.y_nodes,
+            "z_nodes": self.grid.z_nodes,
+            "top": self.top,
+            "botm": self.botm,
+            "boundary_origin": self.boundary_origin,
+            "grid_corners_local": self.grid_corners_local,
+            "grid_corners_global": self.grid_corners_global,
+            "grid_corners_lonlat": self.grid_corners_lonlat,
+            "lonlat_epsg": np.asarray(self.lonlat_epsg, dtype=int),
+            "active_mask": self.active_mask,
+            "materials": self.materials,
+            "layer_names": np.asarray(self.layer_names, dtype=object),
+            "raster_names": np.asarray([raster.name for raster in self.rasters], dtype=object),
+            "raster_sources": np.asarray([raster.source for raster in self.rasters], dtype=object),
+            "raster_crs_wkts": np.asarray([raster.crs_wkt for raster in self.rasters], dtype=object),
+            "raster_extent_local": np.asarray([raster.extent_local for raster in self.rasters], dtype=float),
+            "raster_pixel_sizes": np.asarray([raster.pixel_size for raster in self.rasters], dtype=float),
+            "raster_sizes": np.asarray([raster.size for raster in self.rasters], dtype=int),
+            "raster_z_values": raster_z_values,
+            "raster_masks": raster_masks,
+        }
+
+    def write_npz(self, geometry_path: Path) -> Path:
+        geometry_path = Path(geometry_path)
+        geometry_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(geometry_path, **self.to_npz_payload())
+        assert geometry_path.exists(), f"Geometry output not created: {geometry_path}"
+        return geometry_path
+
+    def xy_local_to_jtsk(self, coords_local: "np.ndarray") -> "np.ndarray":
+        coords_arr = np.asarray(coords_local, dtype=float)
+        assert coords_arr.shape[-1] == 2, "coords_local must be Nx2"
+        return coords_arr + self.boundary_origin
+
+    def jtsk_to_xy_local(self, coords_jtsk: "np.ndarray") -> "np.ndarray":
+        coords_arr = np.asarray(coords_jtsk, dtype=float)
+        assert coords_arr.shape[-1] == 2, "coords_jtsk must be Nx2"
+        return coords_arr - self.boundary_origin
+
+    def xy_local_to_lonlat(self, coords_local: "np.ndarray") -> "np.ndarray":
+        from pyproj import Transformer
+
+        coords_jtsk = self.xy_local_to_jtsk(coords_local)
+        transformer = Transformer.from_crs(5514, self.lonlat_epsg, always_xy=True)
+        lon, lat = transformer.transform(coords_jtsk[..., 0], coords_jtsk[..., 1])
+        return np.column_stack([lon, lat]).astype(float)
+
+    def lonlat_to_xy_local(self, coords_lonlat: "np.ndarray") -> "np.ndarray":
+        from pyproj import Transformer
+
+        coords_arr = np.asarray(coords_lonlat, dtype=float)
+        assert coords_arr.shape[-1] == 2, "coords_lonlat must be Nx2"
+        transformer = Transformer.from_crs(self.lonlat_epsg, 5514, always_xy=True)
+        x, y = transformer.transform(coords_arr[..., 0], coords_arr[..., 1])
+        return self.jtsk_to_xy_local(np.column_stack([x, y]).astype(float))
+
+def write_vtk_surfaces(model_inputs: ModelInputs | ModelGeometry, output_path: Path) -> Path:
     """Write each raster layer as a deformed surface into a VTK multiblock file."""
     import pyvista as pv
 
