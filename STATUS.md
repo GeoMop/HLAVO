@@ -1,5 +1,32 @@
 # Status summary
 
+`2026-04-29`: `cfad588` @ `main` by `Codex`
+
+## Goal
+Add reusable Paraview exports for built deep-model workspaces, including QGIS input surfaces and a terrain-conforming geometry grid, and verify them on `runs/composed_test/workdir`.
+
+## Changes summary
+- Unstaged: [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py) `export_geometry` now writes both the intermediate QGIS surfaces multiblock and the terrain-conforming geometry export when `model_3d.geometry` is present in the config.
+- Unstaged: [hlavo/deep_model/build_modflow_grid.py](/home/hlavo/workspace/hlavo/deep_model/build_modflow_grid.py) now writes [surfaces.vtm](/home/hlavo/workspace/runs/composed_test/workdir/model_with_mine/surfaces.vtm) alongside `grid_materials.npz` during model build by reusing `qgis_reader.write_vtk_surfaces(...)`.
+- Unstaged: [hlavo/deep_model/grid_to_paraview.py](/home/hlavo/workspace/hlavo/deep_model/grid_to_paraview.py) now computes curved node Z only from active columns and exports active cells only, so the final geometry is an active-only `UnstructuredGrid` `.vtu` without the distorted inactive shell at the outer boundary.
+- Unstaged: [runs/composed_test/run_export_geometry.sh](/home/hlavo/workspace/runs/composed_test/run_export_geometry.sh) now uses `runs/run_0.sh` and targets `grid_materials.vtu`.
+- Untracked: [tests/test_main_export_geometry.py](/home/hlavo/workspace/tests/test_main_export_geometry.py) covers the revised CLI export and verifies the curved grid contents through `pyvista`.
+- Relevant generated artifacts: [surfaces.vtm](/home/hlavo/workspace/runs/composed_test/workdir/model_with_mine/surfaces.vtm) and [grid_materials.vtu](/home/hlavo/workspace/runs/composed_test/workdir/model_with_mine/grid_materials.vtu) were written from the existing testcase geometry.
+
+## Verified
+- `python3 -m py_compile hlavo/main.py hlavo/deep_model/build_modflow_grid.py hlavo/deep_model/grid_to_paraview.py tests/test_main_export_geometry.py`
+  result: compile checks passed.
+- `cd tests && PYTEST_ADDOPTS="test_main_export_geometry.py" bash ./run`
+  result: `1 passed in 2.73s`.
+- `python3 -m hlavo.main export_geometry runs/composed_test/config.yaml -w runs/composed_test/workdir -o runs/composed_test/workdir/model_with_mine/grid_materials.vtu`
+  result: wrote [surfaces.vtm](/home/hlavo/workspace/runs/composed_test/workdir/model_with_mine/surfaces.vtm) and [grid_materials.vtu](/home/hlavo/workspace/runs/composed_test/workdir/model_with_mine/grid_materials.vtu).
+- `python` + `pyvista.read(...)` on both outputs
+  result: `surfaces.vtm` is readable as `MultiBlock` with 20 blocks; `grid_materials.vtu` is readable as active-only `UnstructuredGrid` with `1242182` cells and `cell_data=['materials', 'active', 'vtkOriginalCellIds']`.
+
+## Open items
+- Only the focused export test was run through `tests/run`; no broader project test pass is claimed.
+- [runs/composed_test/run_export_geometry.sh](/home/hlavo/workspace/runs/composed_test/run_export_geometry.sh) now follows the repo rule and uses `runs/run_0.sh`, but local verification in this session had to call `python3 -m hlavo.main ...` directly because `run_0.sh` failed here with `docker not found on PATH`.
+
 `2026-04-25`: `7e8010` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
 
 ## Goal
