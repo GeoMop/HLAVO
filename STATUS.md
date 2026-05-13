@@ -1,5 +1,28 @@
 # Status summary
 
+`2026-05-12`: `7d11161` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 6 of `plan.md`: add a basic pumping-well representation that reads draw time series from `wells.zarr` and applies it through the shared MODFLOW simulation builder.
+
+## Changes summary
+- Untracked, relevant: [hlavo/deep_model/pumping_well.py](/home/hlavo/workspace/hlavo/deep_model/pumping_well.py) introduces `PumpingWell`, reads `Uhelna/water_draw` from the wells zarr store, maps well lon/lat to model cells through `ModelGeometry`, and converts cumulative draw values into negative MF6 WEL stress-period rates.
+- Untracked, relevant: [hlavo/deep_model/simulation_builder.py](/home/hlavo/workspace/hlavo/deep_model/simulation_builder.py) now accepts optional pumping wells and writes a standard `ModflowGwfwel` package when they are provided.
+- Unstaged, relevant: [hlavo/deep_model/build_modflow_grid.py](/home/hlavo/workspace/hlavo/deep_model/build_modflow_grid.py) and [hlavo/deep_model/run_model.py](/home/hlavo/workspace/hlavo/deep_model/run_model.py) now load pumping wells from an optional `model_3d.pumping_wells` config section and pass them into the shared builder.
+- Untracked, relevant: [tests/deep_model/test_pumping_well.py](/home/hlavo/workspace/tests/deep_model/test_pumping_well.py) adds a synthetic local zarr-fuse store test that verifies pumping wells load correctly and generate a `.wel` file with the expected negative rates.
+
+## Verified
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python -m py_compile hlavo/deep_model/pumping_well.py hlavo/deep_model/simulation_builder.py hlavo/deep_model/build_modflow_grid.py hlavo/deep_model/run_model.py tests/deep_model/test_pumping_well.py tests/deep_model/test_simulation_builder.py`
+  compile checks passed.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='deep_model/test_simulation_builder.py deep_model/test_pumping_well.py' bash ./run`
+  result: `3 passed, 1 warning in 1.54s`.
+- `bash runs/run_0.sh build_model runs/composed_3D_only/config.yaml -w runs/composed_3D_only`
+  completed successfully after the pumping-well integration and rebuilt the MODFLOW input files under [runs/composed_3D_only/model_with_mine](/home/hlavo/workspace/runs/composed_3D_only/model_with_mine).
+
+## Open items
+- The current milestone-6 implementation uses the basic scheduling mode described in the thread: it requires one `cum_draw` value per configured stress period and converts each value to a constant `m^3/day` WEL rate over that period. It does not yet align arbitrary calendar timestamps against model periods.
+- Pumping wells are currently placed into the top active layer of the nearest XY cell. If screened-interval-aware placement is required, that should build on the `interval_min` / `interval_max` metadata in a follow-up change.
+
 `2026-05-12`: `b05cf7a` @ `codex/m1-composed-mock-test` by `Codex`
 
 ## Goal

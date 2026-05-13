@@ -13,6 +13,7 @@ import attrs
 import numpy as np
 import flopy
 from hlavo.deep_model.add_material_parameters import material_dataset_from_config
+from hlavo.deep_model.pumping_well import load_pumping_wells
 from hlavo.deep_model.qgis_reader import ModelGeometry
 from hlavo.deep_model.simulation_builder import build_material_fields, build_modflow_simulation
 
@@ -696,6 +697,11 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     geometry = ModelGeometry.from_npz(run_config.grid_output_path)
     material_dataset = material_dataset_from_config(config_path, workspace=workspace)
     fields = build_material_fields(geometry=geometry, material_dataset=material_dataset)
+    pumping_wells = load_pumping_wells(
+        config_source=config_path,
+        common=run_config.common,
+        geometry=geometry,
+    )
 
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     assert el_dims.size == 3, "el_dims must contain 3 values"
@@ -731,6 +737,7 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         geometry=geometry,
         material_dataset=material_dataset,
         workspace=workdir,
+        pumping_wells=pumping_wells,
         exe_name=exe_path,
     )
     sim = build_result.sim

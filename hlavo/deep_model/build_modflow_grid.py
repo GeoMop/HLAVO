@@ -14,6 +14,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconf
 import flopy
 from . import model_3d_cfg as cfg3d
 from .add_material_parameters import material_dataset_from_config, write_material_model_files
+from .pumping_well import load_pumping_wells
 from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelGeometry, ModelInputs, RasterLayer
 from .simulation_builder import build_modflow_simulation
 
@@ -321,11 +322,17 @@ def write_modflow_inputs(
     _ = _grid_arrays_from_npz(build_config.resolved_material_parameters_path)
     geometry = ModelGeometry.from_npz(build_config.output_path)
     material_dataset = material_dataset_from_config(config_source, workspace=workspace)
+    pumping_wells = load_pumping_wells(
+        config_source=config_source,
+        common=build_config.common,
+        geometry=geometry,
+    )
     build_modflow_simulation(
         common=build_config.common,
         geometry=geometry,
         material_dataset=material_dataset,
         workspace=build_config.workspace,
+        pumping_wells=pumping_wells,
         exe_name=build_config.exe_name,
     )
 
