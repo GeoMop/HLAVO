@@ -1,0 +1,12 @@
+{
+  "attributes": {
+    "__structure__": "ATTRS:\n  description: \"Longterm waterlevel measurements and water draw around water source\\\n    \\ Uheln\\xE1.\"\n  STORE_URL: s3://hlavo-release/well_data.zarr\n  S3_ENDPOINT_URL: https://s3.cl4.du.cesnet.cz\n  VERSION: 0.0.0\nCOORDS: {}\nVARS: {}\n",
+    "__empty__": true,
+    "description": "Longterm waterlevel measurements and water draw around water source Uheln\u00e1.",
+    "STORE_URL": "s3://hlavo-release/well_data.zarr",
+    "S3_ENDPOINT_URL": "https://s3.cl4.du.cesnet.cz",
+    "VERSION": "0.0.0"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

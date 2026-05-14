@@ -1,5 +1,28 @@
 # Status summary
 
+`2026-05-14`: `f499c84` @ `codex/m1-composed-mock-test` by `Codex`
+
+## Goal
+Implement milestone 7 of `plan.md`: add a monitoring-well abstraction on top of the milestone-6 deep-model path, map wells from `wells.zarr` into the model grid, and export simulated well predictions from MODFLOW head outputs into the simulation zarr store.
+
+## Changes summary
+- Committed baseline: `HEAD` remains `f499c84` (`Milestone 6`).
+- Untracked, relevant: [hlavo/deep_model/monitoring_well.py](/home/hlavo/workspace/hlavo/deep_model/monitoring_well.py) introduces `MonitoringWell`, loads `Uhelna/water_levels` metadata from `wells.zarr`, maps well lon/lat plus screened intervals to model row/col/layer selections, derives per-period output datetimes from `start_datetime`, and writes `well_prediction` rows into the simulation zarr store.
+- Unstaged, relevant: [hlavo/deep_model/run_model.py](/home/hlavo/workspace/hlavo/deep_model/run_model.py) now loads optional `model_3d.monitoring_wells` config, reads one head snapshot per stress period from the `.hds` file after a successful MODFLOW run, and exports monitoring-well predictions through the new zarr writer path.
+- Untracked, relevant: [tests/deep_model/test_monitoring_well.py](/home/hlavo/workspace/tests/deep_model/test_monitoring_well.py) adds a synthetic local zarr-fuse store test that verifies screened-layer mapping and `well_prediction` output values in a local simulation store.
+- Untracked, still relevant from milestone 6: [hlavo/deep_model/pumping_well.py](/home/hlavo/workspace/hlavo/deep_model/pumping_well.py), [hlavo/deep_model/simulation_builder.py](/home/hlavo/workspace/hlavo/deep_model/simulation_builder.py), [tests/deep_model/test_pumping_well.py](/home/hlavo/workspace/tests/deep_model/test_pumping_well.py), and [tests/deep_model/test_simulation_builder.py](/home/hlavo/workspace/tests/deep_model/test_simulation_builder.py) remain present and were reverified together with the milestone-7 additions.
+
+## Verified
+- `PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH python -m py_compile hlavo/deep_model/monitoring_well.py hlavo/deep_model/run_model.py tests/deep_model/test_monitoring_well.py`
+  compile checks passed.
+- `cd tests && PATH=/home/hlavo/workspace/dev/venv-docker/bin:$PATH PYTEST_ADDOPTS='deep_model/test_monitoring_well.py deep_model/test_pumping_well.py deep_model/test_simulation_builder.py' bash ./run`
+  result: `4 passed, 3 warnings in 1.77s`.
+
+## Open items
+- The new monitoring-well export path currently runs after `sim.run_simulation()` by reading one head snapshot per stress period from the `.hds` file. It does not yet hook into an interrupted `modflowapi` loop after each `modflow.update()`.
+- Monitoring-well export currently requires `start_datetime` in the root config or in `model_3d.common` to generate simulation-store timestamps. Configs without a calendar start time will assert if `model_3d.monitoring_wells` is enabled.
+- This turn reverified the synthetic unit path only; it did not run a real end-to-end `run_model.py` case that writes `well_prediction` rows into a production-like zarr store.
+
 `2026-05-12`: `7d11161` @ `codex/m1-composed-mock-test` by `Codex`
 
 ## Goal

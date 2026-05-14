@@ -10,9 +10,15 @@ import tempfile
 from pathlib import Path
 
 import attrs
-import numpy as np
 import flopy
+import numpy as np
+from flopy.utils.binaryfile import HeadFile
 from hlavo.deep_model.add_material_parameters import material_dataset_from_config
+from hlavo.deep_model.monitoring_well import (
+    load_monitoring_wells,
+    monitoring_output_times,
+    write_monitoring_well_predictions,
+)
 from hlavo.deep_model.pumping_well import load_pumping_wells
 from hlavo.deep_model.qgis_reader import ModelGeometry
 from hlavo.deep_model.simulation_builder import build_material_fields, build_modflow_simulation
@@ -702,6 +708,10 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
         common=run_config.common,
         geometry=geometry,
     )
+    monitoring_wells = load_monitoring_wells(
+        config_source=config_path,
+        geometry=geometry,
+    )
 
     el_dims = np.asarray(grid_data["el_dims"], dtype=int)
     assert el_dims.size == 3, "el_dims must contain 3 values"
@@ -746,6 +756,27 @@ def build_and_run(config_path: Path, workspace: Path | None = None) -> None:
     LOG.info("Modflow6 run complete")
     if buffer:
         LOG.debug("Modflow6 output: %s", "\n".join(buffer))
+    if monitoring_wells:
+        hds = HeadFile(str(workdir / f"{run_config.sim_name}.hds"))
+        head_times = tuple(float(value) for value in hds.get_times())
+        expected_periods = len(run_config.stress_periods_days)
+        assert len(head_times) == expected_periods, (
+            f"Expected {expected_periods} monitoring outputs, got {len(head_times)} head times"
+        )
+        heads_by_period = tuple(
+            np.asarray(hds.get_data(totim=totim), dtype=float)
+            for totim in head_times
+        )
+        date_times = monitoring_output_times(
+            config_source=config_path,
+            stress_periods_days=run_config.stress_periods_days,
+        )
+        write_monitoring_well_predictions(
+            config_source=config_path,
+            monitoring_wells=monitoring_wells,
+            date_times=date_times,
+            heads_by_period=heads_by_period,
+        )
 
 
 def main() -> None:

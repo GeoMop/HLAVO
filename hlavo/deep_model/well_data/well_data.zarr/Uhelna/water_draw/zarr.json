@@ -1,0 +1,9 @@
+{
+  "attributes": {
+    "description": "Water draws on Uheln\u00e1 locality",
+    "VERSION": "0.0.0",
+    "__structure__": "ATTRS:\n  description: \"Water draws on Uheln\\xE1 locality\"\n  VERSION: 0.0.0\nCOORDS:\n  date:\n    name: date\n    coords:\n    - date\n    unit:\n      tick: h\n      tz: UTC\n      dayfirst: false\n      yearfirst: true\n    type: datetime64[h]\n    na_value: null\n    description: Time coordinate\n    df_col: date\n    source_unit:\n      tick: h\n      tz: CET\n      dayfirst: false\n      yearfirst: true\n    range: null\n    composed:\n    - date\n    chunk_size: 1024\n    step_limits:\n    - 1\n    - 1\n    - molar\n    sorted: true\n  well_id:\n    name: well_id\n    coords:\n    - well_id\n    unit: null\n    type: str[16]\n    na_value: \"\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\uFFFF\\\n      \\uFFFF\\uFFFF\\uFFFF\\uFFFF\"\n    description: \"Draw well id. (just single well for Uheln\\xE1 locality)\"\n    df_col: well_id\n    source_unit: null\n    range: null\n    composed:\n    - well_id\n    chunk_size: 1\n    step_limits: any_new\n    sorted: []\nVARS:\n  cum_draw:\n    name: cum_draw\n    coords:\n    - date\n    - well_id\n    unit: meter ** 3\n    type: float64\n    na_value: .nan\n    description: Total water draw per month.\n    df_col: cum_draw\n    source_unit: meter ** 3\n    range: null\n"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}
