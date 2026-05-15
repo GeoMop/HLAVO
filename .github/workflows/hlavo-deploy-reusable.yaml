@@ -108,7 +108,7 @@ jobs:
 
       - name: Deploy Helm chart from main-repo
         run: |
-          helm upgrade hlavo-dashboard main-repo/dashboard/charts/holoviz \
+          helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
             --install --atomic --timeout 10m --namespace "${{ inputs.namespace }}" \
             --set frontend.image.name="${{ inputs.frontend_image }}" \
             --set frontend.image.tag="${{ inputs.version_tag }}" \
