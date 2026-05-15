@@ -35,7 +35,37 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_mock_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DData":
+    def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
+        schemas = config["schema_files"]
+        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
+        profiles = select(load_measurments_data(scheme_file=
+                                         composed.relative_resolve(schemas['profiles'])))
+        LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)
+        start_profiles =  profiles.isel(date_time=0)
+        long_lat = (start_profiles["longitude"].item(), start_profiles["latitude"].item())
+        surface = select(load_meteo_data(scheme_file=
+                                  composed.relative_resolve(schemas['surface'])))
+        LOG.debug("Loaded 1D surface dataset for site_id=%s: %s", site_id, surface)
+
+        return cls(
+            long_lat,
+            profiles,
+            surface,
+        )
+
+    @property
+    def longitude(self):
+        return self.long_lat[0]
+
+    @property
+    def latitude(self):
+        return self.long_lat[1]
+
+
+@attrs.define
+class Model1DDataMock(Model1DData):
+    @classmethod
+    def from_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DDataMock":
         sites = config["sites"]
         assert isinstance(sites, list), "model_1d.sites must be a list"
         assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
@@ -72,32 +102,6 @@ class Model1DData:
             },
         )
         return cls((longitude, latitude), profiles, surface)
-
-    @classmethod
-    def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
-        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
-        profiles = select(load_measurments_data(scheme_file=
-                                         composed.relative_resolve(schemas['profiles'])))
-        LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)
-        start_profiles =  profiles.isel(date_time=0)
-        long_lat = (start_profiles["longitude"].item(), start_profiles["latitude"].item())
-        surface = select(load_meteo_data(scheme_file=
-                                  composed.relative_resolve(schemas['surface'])))
-        LOG.debug("Loaded 1D surface dataset for site_id=%s: %s", site_id, surface)
-
-        return cls(
-            long_lat,
-            profiles,
-            surface,
-        )
-
-    @property
-    def longitude(self):
-        return self.long_lat[0]
-
-    @property
-    def latitude(self):
-        return self.long_lat[1]
 
 
 @attrs.define
@@ -140,10 +144,11 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
-        if kalman_class is KalmanMock:
-            data = Model1DData.from_mock_config(site_id, composed, config)
-        else:
-            data = Model1DData.from_config(site_id, composed, config['schema_files'])
+        data_class = resolve_named_class(
+            config.get("data_class_name", "Model1DData"),
+            (Model1DData, Model1DDataMock),
+        )
+        data = data_class.from_config(site_id, composed, config)
 
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})
