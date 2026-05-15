@@ -33,10 +33,6 @@ on:
         description: 'Image tag / version to deploy'
         required: true
         type: string
-      backend_image:
-        description: 'Backend image name'
-        required: true
-        type: string
       frontend_image:
         description: 'Frontend image name'
         required: true
@@ -138,23 +134,14 @@ jobs:
         run: |
           helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
             --install --atomic --timeout 10m --namespace "${{ inputs.namespace }}" \
-            --set backend.image.name="${{ inputs.backend_image }}" \
             --set frontend.image.name="${{ inputs.frontend_image }}" \
-            --set backend.image.tag="${{ inputs.version_tag }}" \
             --set frontend.image.tag="${{ inputs.version_tag }}" \
-            --set backend.s3.secrets.accessKey="${{ secrets.s3_access_key }}" \
-            --set backend.s3.secrets.secretKey="${{ secrets.s3_secret_key }}" \
-            --set backend.extraEnv[0].name="ENDPOINTS_PATH" \
-            --set backend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
-            --set backend.extraVolumes[0].name="hlavo-config" \
-            --set backend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
-            --set backend.extraVolumeMounts[0].name="hlavo-config" \
-            --set backend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard/config/endpoints.yaml" \
-            --set backend.extraVolumeMounts[0].subPath="endpoints.yaml" \
-            --set backend.extraVolumeMounts[1].name="hlavo-config" \
-            --set backend.extraVolumeMounts[1].mountPath="/opt/hlavo/dashboard/schemas" \
             --set frontend.extraEnv[0].name="ENDPOINTS_PATH" \
             --set frontend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set frontend.extraEnv[1].name="AWS_ACCESS_KEY_ID" \
+            --set frontend.extraEnv[1].value="${{ secrets.s3_access_key }}" \
+            --set frontend.extraEnv[2].name="AWS_SECRET_ACCESS_KEY" \
+            --set frontend.extraEnv[2].value="${{ secrets.s3_secret_key }}" \
             --set frontend.extraVolumes[0].name="hlavo-config" \
             --set frontend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
             --set frontend.extraVolumeMounts[0].name="hlavo-config" \
