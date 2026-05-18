@@ -63,48 +63,6 @@ class Model1DData:
 
 
 @attrs.define
-class Model1DDataMock(Model1DData):
-    @classmethod
-    def from_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DDataMock":
-        sites = config["sites"]
-        assert isinstance(sites, list), "model_1d.sites must be a list"
-        assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
-        site_cfg = sites[site_id]
-        longitude = float(site_cfg["longitude"])
-        latitude = float(site_cfg["latitude"])
-
-        date_time = np.array([composed.start, composed.end], dtype="datetime64[s]")
-        site_ids = np.array([site_id], dtype=np.int32)
-        depth_level = np.array([0], dtype=np.int32)
-        moisture = np.full((date_time.size, site_ids.size, depth_level.size), 0.2, dtype=float)
-        meteo_shape = (date_time.size, site_ids.size)
-
-        profiles = xarray.Dataset(
-            data_vars={
-                "moisture": (("date_time", "site_id", "depth_level"), moisture),
-                "longitude": (("date_time", "site_id"), np.full(meteo_shape, longitude)),
-                "latitude": (("date_time", "site_id"), np.full(meteo_shape, latitude)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-                "depth_level": depth_level,
-            },
-        )
-        surface = xarray.Dataset(
-            data_vars={
-                "precipitation": (("date_time", "site_id"), np.ones(meteo_shape, dtype=float)),
-                "temperature": (("date_time", "site_id"), np.full(meteo_shape, 273.15, dtype=float)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-            },
-        )
-        return cls((longitude, latitude), profiles, surface)
-
-
-@attrs.define
 class KalmanMock:
     fixed_velocity: float = 0.1
     longitude: float = 14.889853
@@ -144,11 +102,7 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
-        data_class = resolve_named_class(
-            config.get("data_class_name", "Model1DData"),
-            (Model1DData, Model1DDataMock),
-        )
-        data = data_class.from_config(site_id, composed, config)
+        data = Model1DData.from_config(site_id, composed, config)
 
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})

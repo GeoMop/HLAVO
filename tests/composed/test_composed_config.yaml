@@ -9,12 +9,10 @@ model_3d:
     time_step_hours: 12.0
 
 model_1d:
-  site_ids: [0, 1]
+  site_ids: [1]
   kalman_class_name: "KalmanMock"
   mock_velocity: 3.0e-4
   moisture_sigma: 0.05
-  sites:
-    - longitude: 14.88
-      latitude: 50.86
-    - longitude: 14.90
-      latitude: 50.88
+  schema_files:
+    profiles: profile_schema.yaml
+    surface: chmi_stations_schema.yaml
