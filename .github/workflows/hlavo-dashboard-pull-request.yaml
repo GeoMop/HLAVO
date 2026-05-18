@@ -16,54 +16,16 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}-get-version-tag
       cancel-in-progress: true
     steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@v4
-
-      - name: Checkout main repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: GeoMop/zarr_fuse
           ref: feature/hlavo-integration
-          path: main-repo
 
       - name: Get version tag
         id: get_version_tag
-        working-directory: main-repo
         run: |
           echo "version-tag=ci-$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
-
-  containerize-backend:
-    name: Containerize HLAVO backend
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/buildah/stable:v1.35.4
-      options: --privileged
-    needs:
-      - get-version-tag
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.ref }}-containerize-backend"
-      cancel-in-progress: true
-    steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@v4
-
-      - name: Checkout main repo
-        uses: actions/checkout@v4
-        with:
-          repository: GeoMop/zarr_fuse
-          ref: feature/hlavo-integration
-          path: main-repo
-
-      - name: Containerize
-        uses: ./main-repo/.github/actions/containerize
-        with:
-          repository: jbrezmorf/hlavo-dashboard-ui-backend
-          tag: ${{ needs.get-version-tag.outputs.version-tag }}
-          containerfile-path: dashboard/oci/backend.Containerfile
-          push: true
-          registry-username: ${{ vars.DOCKER_USERNAME }}
-          registry-password: ${{ secrets.DOCKER_PASSWORD }}
-          working-directory: main-repo
 
   containerize-frontend:
     name: Containerize HLAVO frontend
@@ -77,18 +39,14 @@ jobs:
       group: "${{ github.workflow }}-${{ github.ref }}-containerize-frontend"
       cancel-in-progress: true
     steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@v4
-
-      - name: Checkout main repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: GeoMop/zarr_fuse
           ref: feature/hlavo-integration
-          path: main-repo
 
       - name: Containerize
-        uses: ./main-repo/.github/actions/containerize
+        uses: ./.github/actions/containerize
         with:
           repository: jbrezmorf/hlavo-dashboard-ui-frontend
           tag: ${{ needs.get-version-tag.outputs.version-tag }}
@@ -96,7 +54,7 @@ jobs:
           push: true
           registry-username: ${{ vars.DOCKER_USERNAME }}
           registry-password: ${{ secrets.DOCKER_PASSWORD }}
-          working-directory: main-repo
+          working-directory: .
 
   lint-helm-chart:
     name: Lint HoloViz Helm chart
@@ -107,27 +65,22 @@ jobs:
       group: "${{ github.workflow }}-${{ github.ref }}-lint-helm-chart"
       cancel-in-progress: true
     steps:
-      - name: Checkout workflow repo
-        uses: actions/checkout@v4
-
-      - name: Checkout main repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: GeoMop/zarr_fuse
           ref: feature/hlavo-integration
-          path: main-repo
 
       - name: Lint helm chart
-        uses: ./main-repo/.github/actions/helm-lint
+        uses: ./.github/actions/helm-lint
         with:
-          working-directory: main-repo/dashboard/charts/holoviz
+          working-directory: dashboard/charts/holoviz
 
   deploy:
-    uses: ./.github/workflows/hlavo-deploy-reusable.yaml
+    uses: ./HLAVO/.github/workflows/hlavo-deploy-reusable.yaml
     needs:
       - lint-helm-chart
       - get-version-tag
-      - containerize-backend
       - containerize-frontend
     with:
       zarr_repo: GeoMop/zarr_fuse
@@ -137,7 +90,6 @@ jobs:
       endpoints_path: dashboard/config/endpoints.yaml
       schemas_dir: dashboard/schemas
       version_tag: ${{ needs.get-version-tag.outputs.version-tag }}
-      backend_image: jbrezmorf/hlavo-dashboard-ui-backend
       frontend_image: jbrezmorf/hlavo-dashboard-ui-frontend
     secrets:
       kubeconfig: ${{ secrets.KUBECONFIG }}
