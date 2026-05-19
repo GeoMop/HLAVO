@@ -22,11 +22,7 @@ on:
         required: true
         type: string
       endpoints_path:
-        description: 'Path to endpoints.yaml inside source repo'
-        required: true
-        type: string
-      schemas_dir:
-        description: 'Path to schemas directory inside source repo'
+        description: 'Path to config directory containing endpoints.yaml and schemas/'
         required: true
         type: string
       version_tag:
@@ -104,21 +100,21 @@ jobs:
 
       - name: Validate source files
         run: |
-          echo "Checking endpoints and schemas in source repo: ${{ inputs.source_repo }}@$${{ inputs.source_ref }}"
-          ls -l "source-repo/${{ inputs.endpoints_path }}" || (echo "MISSING endpoints.yaml" && exit 1)
-          ls -l "source-repo/${{ inputs.schemas_dir }}" || (echo "MISSING schemas dir" && exit 1)
+          echo "Checking config directory in source repo: ${{ inputs.source_repo }}@${{ inputs.source_ref }}"
+          ls -l "source-repo/${{ inputs.endpoints_path }}/endpoints.yaml" || (echo "MISSING endpoints.yaml" && exit 1)
+          ls -l "source-repo/${{ inputs.endpoints_path }}/schemas" || (echo "MISSING schemas dir" && exit 1)
 
       - name: Create ConfigMap from source files
         run: |
           set -o pipefail
           echo "Creating ConfigMap hlavo-dashboard-config in namespace '${{ inputs.namespace }}' from:"
-          echo " - endpoints: source-repo/${{ inputs.endpoints_path }}"
-          echo " - schemas dir: source-repo/${{ inputs.schemas_dir }}"
+          echo " - endpoints: source-repo/${{ inputs.endpoints_path }}/endpoints.yaml"
+          echo " - schemas dir: source-repo/${{ inputs.endpoints_path }}/schemas"
 
           if kubectl create configmap hlavo-dashboard-config \
               --namespace "${{ inputs.namespace }}" \
-              --from-file=endpoints.yaml=source-repo/${{ inputs.endpoints_path }} \
-              --from-file=source-repo/${{ inputs.schemas_dir }} \
+              --from-file=endpoints.yaml=source-repo/${{ inputs.endpoints_path }}/endpoints.yaml \
+              --from-file=source-repo/${{ inputs.endpoints_path }}/schemas \
               --dry-run=client -o yaml | kubectl apply -f -; then
             echo "ConfigMap applied successfully."
           else

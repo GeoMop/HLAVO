@@ -87,8 +87,7 @@ jobs:
       zarr_ref: feature/hlavo-integration
       source_repo: ${{ github.repository }}
       source_ref: ${{ github.ref }}
-      endpoints_path: dashboard/config/endpoints.yaml
-      schemas_dir: dashboard/schemas
+      endpoints_path: dashboard/config
       version_tag: ${{ needs.get-version-tag.outputs.version-tag }}
       frontend_image: jbrezmorf/hlavo-dashboard-ui-frontend
     secrets:
