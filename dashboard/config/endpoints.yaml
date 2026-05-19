@@ -39,7 +39,8 @@ profiles:
       title: "Uhelná site overview."
       point_size: 6
       alpha: 0.8
-      <<: *cluster_defaults
+      cluster:
+        <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -110,7 +111,8 @@ wells:
       title: "Geographic Data View"
       point_size: 10
       alpha: 0.8
-      <<: *cluster_defaults
+      cluster:
+        <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -183,7 +185,8 @@ chmi_stations:
       title: "CHMI station and Open-Meteo forcing data"
       point_size: 8
       alpha: 0.8
-      <<: *cluster_defaults
+      cluster:
+        <<: *cluster_defaults
     timeseries:
       middle_window_days: 30
       right_window_hours: 24
@@ -246,7 +249,8 @@ surface_forecast:
       title: "Surface meteorology forecasts"
       point_size: 6
       alpha: 0.8
-      <<: *cluster_defaults
+      cluster:
+        <<: *cluster_defaults
     timeseries:
       middle_window_days: 7
       right_window_hours: 24
