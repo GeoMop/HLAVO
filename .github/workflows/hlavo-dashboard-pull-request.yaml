@@ -27,35 +27,6 @@ jobs:
         run: |
           echo "version-tag=ci-$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
-  containerize-frontend:
-    name: Containerize HLAVO frontend
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/buildah/stable:v1.35.4
-      options: --privileged
-    needs:
-      - get-version-tag
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.ref }}-containerize-frontend"
-      cancel-in-progress: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          repository: GeoMop/zarr_fuse
-          ref: feature/hlavo-integration
-
-      - name: Containerize
-        uses: ./.github/actions/containerize
-        with:
-          repository: jbrezmorf/hlavo-dashboard-ui-frontend
-          tag: ${{ needs.get-version-tag.outputs.version-tag }}
-          containerfile-path: dashboard/oci/frontend.Containerfile
-          push: true
-          registry-username: ${{ vars.DOCKER_USERNAME }}
-          registry-password: ${{ secrets.DOCKER_PASSWORD }}
-          working-directory: .
-
   lint-helm-chart:
     name: Lint HoloViz Helm chart
     runs-on: ubuntu-latest
@@ -81,7 +52,6 @@ jobs:
     needs:
       - lint-helm-chart
       - get-version-tag
-      - containerize-frontend
     with:
       zarr_repo: GeoMop/zarr_fuse
       zarr_ref: feature/hlavo-integration
