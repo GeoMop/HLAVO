@@ -1,0 +1,145 @@
+name: HLAVO reusable deploy
+
+on:
+  workflow_call:
+    inputs:
+      zarr_repo:
+        description: 'zarr_fuse repository (owner/repo)'
+        required: false
+        type: string
+        default: 'GeoMop/zarr_fuse'
+      zarr_ref:
+        description: 'ref for zarr_fuse (branch or commit)'
+        required: false
+        type: string
+        default: 'feature/hlavo-integration'
+      source_repo:
+        description: 'Repository containing endpoints and schemas (owner/repo)'
+        required: true
+        type: string
+      source_ref:
+        description: 'Git ref in source repo (branch or commit)'
+        required: true
+        type: string
+      endpoints_path:
+        description: 'Path to config directory containing endpoints.yaml and schemas/'
+        required: true
+        type: string
+      version_tag:
+        description: 'Image tag / version to deploy'
+        required: true
+        type: string
+      frontend_image:
+        description: 'Frontend image name'
+        required: true
+        type: string
+      namespace:
+        description: 'Kubernetes namespace to deploy into'
+        required: false
+        type: string
+        default: 'hlavo-dashboard-ui'
+    secrets:
+      kubeconfig:
+        required: true
+      source_repo_token:
+        required: true
+      zarr_repo_token:
+        required: false
+      s3_access_key:
+        required: true
+      s3_secret_key:
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy HLAVO (reusable)
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFIG: ./kubeconfig.yaml
+    steps:
+      - name: Checkout zarr_fuse (main-repo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.zarr_repo }}
+          ref: ${{ inputs.zarr_ref }}
+          path: main-repo
+          token: ${{ secrets.zarr_repo_token }}
+
+      - name: Checkout source repo (HLAVO or caller)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_ref }}
+          path: source-repo
+          token: ${{ secrets.source_repo_token }}
+
+      - name: Decode kubeconfig
+        run: echo "${{ secrets.kubeconfig }}" | base64 -d > kubeconfig.yaml && chmod 600 kubeconfig.yaml
+
+      - name: Ensure namespace exists (check permissions first)
+        run: |
+          set -euo pipefail
+          NS="${{ inputs.namespace }}"
+          echo "Checking namespace '$NS'..."
+          if kubectl get namespace "$NS" >/dev/null 2>&1; then
+            echo "Namespace '$NS' already exists."
+          else
+            echo "Namespace '$NS' does not exist. Checking permission to create namespaces..."
+            if kubectl auth can-i create namespace >/dev/null 2>&1; then
+              echo "Permission granted: creating namespace '$NS'..."
+              kubectl create namespace "$NS"
+            else
+              echo "Permission denied: this kubeconfig user cannot create namespaces."
+              echo "Please create the namespace '$NS' manually or provide a kubeconfig with namespace-create rights."
+              exit 1
+            fi
+          fi
+
+      - name: Set context to namespace
+        run: kubectl config set-context --current --namespace="${{ inputs.namespace }}"
+
+      - name: Validate source files
+        run: |
+          echo "Checking config directory in source repo: ${{ inputs.source_repo }}@${{ inputs.source_ref }}"
+          ls -l "source-repo/${{ inputs.endpoints_path }}/endpoints.yaml" || (echo "MISSING endpoints.yaml" && exit 1)
+          ls -l "source-repo/${{ inputs.endpoints_path }}/schemas" || (echo "MISSING schemas dir" && exit 1)
+
+      - name: Create ConfigMap from source files
+        run: |
+          set -o pipefail
+          echo "Creating ConfigMap hlavo-dashboard-config in namespace '${{ inputs.namespace }}' from:"
+          echo " - endpoints: source-repo/${{ inputs.endpoints_path }}/endpoints.yaml"
+          echo " - schemas dir: source-repo/${{ inputs.endpoints_path }}/schemas"
+
+          if kubectl create configmap hlavo-dashboard-config \
+              --namespace "${{ inputs.namespace }}" \
+              --from-file=endpoints.yaml=source-repo/${{ inputs.endpoints_path }}/endpoints.yaml \
+              --from-file=source-repo/${{ inputs.endpoints_path }}/schemas \
+              --dry-run=client -o yaml | kubectl apply -f -; then
+            echo "ConfigMap applied successfully."
+          else
+            echo "Failed to create ConfigMap. Checking permissions and namespace..."
+            kubectl auth can-i create configmaps --namespace="${{ inputs.namespace }}" || true
+            kubectl get namespace "${{ inputs.namespace }}" -o yaml || true
+            kubectl get configmap --namespace="${{ inputs.namespace }}" -o name || true
+            echo "If this runner's kubeconfig user lacks permissions, update the KUBECONFIG secret or grant the user create/apply rights in the namespace."
+            exit 1
+          fi
+
+      - name: Deploy Helm chart from main-repo
+        run: |
+          helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
+            --install --atomic --timeout 10m --namespace "${{ inputs.namespace }}" \
+            --set frontend.image.name="${{ inputs.frontend_image }}" \
+            --set frontend.image.tag="${{ inputs.version_tag }}" \
+            --set frontend.s3.secrets.accessKey="${{ secrets.s3_access_key }}" \
+            --set frontend.s3.secrets.secretKey="${{ secrets.s3_secret_key }}" \
+            --set frontend.extraEnv[0].name="ENDPOINTS_PATH" \
+            --set frontend.extraEnv[0].value="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set frontend.extraVolumes[0].name="hlavo-config" \
+            --set frontend.extraVolumes[0].configMap.name="hlavo-dashboard-config" \
+            --set frontend.extraVolumeMounts[0].name="hlavo-config" \
+            --set frontend.extraVolumeMounts[0].mountPath="/opt/hlavo/dashboard/config/endpoints.yaml" \
+            --set frontend.extraVolumeMounts[0].subPath="endpoints.yaml" \
+            --set frontend.extraVolumeMounts[1].name="hlavo-config" \
+            --set frontend.extraVolumeMounts[1].mountPath="/opt/hlavo/dashboard/schemas"
