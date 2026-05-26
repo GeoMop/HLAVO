@@ -18,6 +18,7 @@ jobs:
       frontend_image: jbrezmorf/hlavo-dashboard-ui-frontend
       namespace: hlavo-dashboard-ui
       deploy: true
+      push_container: false
     secrets:
       kubeconfig: ${{ secrets.KUBECONFIG }}
       source_repo_token: ${{ secrets.GITHUB_TOKEN }}
