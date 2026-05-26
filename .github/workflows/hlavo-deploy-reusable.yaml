@@ -35,10 +35,6 @@ on:
         description: 'Path to config directory containing endpoints.yaml and schemas/'
         required: true
         type: string
-      version_tag:
-        description: 'Image tag / version to deploy'
-        required: true
-        type: string
       frontend_image:
         description: 'Frontend image name'
         required: true
