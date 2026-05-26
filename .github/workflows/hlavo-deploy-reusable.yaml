@@ -13,6 +13,16 @@ on:
         required: false
         type: string
         default: 'feature/hlavo-integration'
+      deploy:
+        description: 'Whether to deploy the Helm chart'
+        required: false
+        type: boolean
+        default: true
+      push_container:
+        description: 'Whether to push the frontend image'
+        required: false
+        type: boolean
+        default: true
       source_repo:
         description: 'Repository containing endpoints and schemas (owner/repo)'
         required: true
@@ -38,6 +48,11 @@ on:
         required: false
         type: string
         default: 'hlavo-dashboard-ui'
+      version_tag:
+        description: 'Image tag / version to deploy'
+        required: false
+        type: string
+        default: 'generate'
     secrets:
       kubeconfig:
         required: true
@@ -51,9 +66,86 @@ on:
         required: true
 
 jobs:
+  get-version-tag:
+    name: Get version tag
+    runs-on: ubuntu-latest
+    outputs:
+      version-tag: ${{ steps.get_version_tag.outputs.version-tag }}
+    steps:
+      - name: Checkout zarr_fuse
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.zarr_repo }}
+          ref: ${{ inputs.zarr_ref }}
+          path: main-repo
+          token: ${{ secrets.zarr_repo_token }}
+
+      - name: Get version tag
+        id: get_version_tag
+        run: |
+          if [[ ${{ inputs.version_tag }} == "generate" ]]; then
+            echo "version-tag=ci-$(git -C main-repo rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+          else
+            echo "version-tag=${{ inputs.version_tag }}" >> $GITHUB_OUTPUT
+          fi
+
+  containerize-frontend:
+    name: Containerize HLAVO frontend
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/buildah/stable:v1.35.4
+      options: --privileged
+    needs:
+      - get-version-tag
+    steps:
+      - name: Checkout zarr_fuse
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.zarr_repo }}
+          ref: ${{ inputs.zarr_ref }}
+          path: main-repo
+          token: ${{ secrets.zarr_repo_token }}
+
+      - name: Containerize
+        uses: ./main-repo/.github/actions/containerize
+        with:
+          repository: ${{ inputs.frontend_image }}
+          tag: ${{ needs.get-version-tag.outputs.version-tag }}
+          containerfile-path: dashboard/oci/frontend.Containerfile
+          push: ${{ inputs.push_container }}
+          registry-username: ${{ vars.DOCKER_USERNAME }}
+          registry-password: ${{ secrets.DOCKER_PASSWORD }}
+          working-directory: main-repo
+
+  lint-helm-chart:
+    name: Lint HoloViz Helm chart
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/alpine/k8s:1.29.14
+    needs:
+      - get-version-tag
+    steps:
+      - name: Checkout zarr_fuse
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.zarr_repo }}
+          ref: ${{ inputs.zarr_ref }}
+          path: main-repo
+          token: ${{ secrets.zarr_repo_token }}
+
+      - name: Lint helm chart
+        uses: ./main-repo/.github/actions/helm-lint
+        with:
+          working-directory: dashboard/charts/holoviz
+
   deploy:
     name: Deploy HLAVO (reusable)
     runs-on: ubuntu-latest
+    if: ${{ inputs.deploy }}
+    needs:
+      - get-version-tag
+      - containerize-frontend
+      - lint-helm-chart
     env:
       KUBECONFIG: ./kubeconfig.yaml
     steps:
@@ -131,7 +223,7 @@ jobs:
           helm upgrade hlavo-dashboard-ui main-repo/dashboard/charts/holoviz \
             --install --atomic --timeout 10m --namespace "${{ inputs.namespace }}" \
             --set frontend.image.name="${{ inputs.frontend_image }}" \
-            --set frontend.image.tag="${{ inputs.version_tag }}" \
+            --set frontend.image.tag="${{ needs.get-version-tag.outputs.version-tag }}" \
             --set frontend.s3.secrets.accessKey="${{ secrets.s3_access_key }}" \
             --set frontend.s3.secrets.secretKey="${{ secrets.s3_secret_key }}" \
             --set frontend.extraEnv[0].name="ENDPOINTS_PATH" \
