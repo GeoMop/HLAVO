@@ -48,7 +48,7 @@ jobs:
           working-directory: dashboard/charts/holoviz
 
   deploy:
-    uses: ./.github/workflows/hlavo-deploy-reusable.yaml
+    uses: GeoMop/zarr_fuse/.github/workflows/hlavo-deploy-reusable.yaml@feature/hlavo-integration
     needs:
       - lint-helm-chart
       - get-version-tag
