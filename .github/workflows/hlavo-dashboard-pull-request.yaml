@@ -66,3 +66,4 @@ jobs:
       zarr_repo_token: ${{ secrets.GITHUB_TOKEN }}
       s3_access_key: ${{ secrets.S3_ACCESS_KEY }}
       s3_secret_key: ${{ secrets.S3_SECRET_KEY }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
