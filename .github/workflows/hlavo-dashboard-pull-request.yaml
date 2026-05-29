@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    uses: GeoMop/zarr_fuse/.github/workflows/hlavo-deploy-reusable.yaml@feature/hlavo-integration
+    uses: GeoMop/zarr_fuse/.github/workflows/dashboard-reusable-workflow.yaml@feature/hlavo-integration
     with:
       zarr_repo: GeoMop/zarr_fuse
       zarr_ref: feature/hlavo-integration
