@@ -20,6 +20,11 @@ jobs:
       deploy: true
       push_container: true
       version_tag: generate
+      workflow_name: HLAVO reusable deploy
+      containerize_job_name: Containerize HLAVO frontend
+      deploy_job_name: Deploy HLAVO (reusable)
+      release_name: hlavo-dashboard-ui
+      configmap_name: hlavo-dashboard-config
     secrets:
       kubeconfig: ${{ secrets.KUBECONFIG }}
       source_repo_token: ${{ secrets.GITHUB_TOKEN }}
