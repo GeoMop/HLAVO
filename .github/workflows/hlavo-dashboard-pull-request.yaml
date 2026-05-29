@@ -11,19 +11,19 @@ jobs:
     uses: GeoMop/zarr_fuse/.github/workflows/dashboard-reusable-workflow.yaml@feature/hlavo-integration
     with:
       zarr_repo: GeoMop/zarr_fuse
-      zarr_ref: feature/hlavo-integration
+      zarr-fuse-ref: feature/hlavo-integration
       source_repo: ${{ github.repository }}
       source_ref: ${{ github.ref }}
-      endpoints_path: dashboard/config
+      configuration-dir-path: dashboard/config
       frontend_image: jbrezmorf/hlavo-dashboard-ui-frontend
       namespace: hlavo-dashboard-ui
       deploy: true
-      push_container: true
-      version_tag: generate
+      push-container: true
+      tag: generate
       workflow_name: HLAVO reusable deploy
       containerize_job_name: Containerize HLAVO frontend
       deploy_job_name: Deploy HLAVO (reusable)
-      release_name: hlavo-dashboard-ui
+      release-name: hlavo-dashboard-ui
       configmap_name: hlavo-dashboard-config
     secrets:
       kubeconfig: ${{ secrets.KUBECONFIG }}
