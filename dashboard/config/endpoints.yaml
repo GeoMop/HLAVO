@@ -16,7 +16,7 @@ profiles:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/profiles.zarr"
-    schema_path: "profile_schema.yaml"
+    schema_path: "schemas/profile_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -74,7 +74,7 @@ wells:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/wells.zarr"
-    schema_path: "wells_schema.yaml"
+    schema_path: "schemas/wells_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -146,7 +146,7 @@ chmi_stations:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/chmi_stations.zarr"
-    schema_path: "chmi_stations_schema.yaml"
+    schema_path: "schemas/chmi_stations_schema.yaml"
 
   variable_map:
     Uhelna:
@@ -220,7 +220,7 @@ surface_forecast:
     type: "s3"
     store_type: "zarr"
     uri: "s3://hlavo-release/hlavo-release.zarr"
-    schema_path: "hlavo_surface_schema.yaml"
+    schema_path: "schemas/hlavo_surface_schema.yaml"
 
   variable_map:
     yr.no:
