@@ -35,46 +35,8 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_mock_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DData":
-        sites = config["sites"]
-        assert isinstance(sites, list), "model_1d.sites must be a list"
-        assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
-        site_cfg = sites[site_id]
-        longitude = float(site_cfg["longitude"])
-        latitude = float(site_cfg["latitude"])
-
-        date_time = np.array([composed.start, composed.end], dtype="datetime64[s]")
-        site_ids = np.array([site_id], dtype=np.int32)
-        depth_level = np.array([0], dtype=np.int32)
-        moisture = np.full((date_time.size, site_ids.size, depth_level.size), 0.2, dtype=float)
-        meteo_shape = (date_time.size, site_ids.size)
-
-        profiles = xarray.Dataset(
-            data_vars={
-                "moisture": (("date_time", "site_id", "depth_level"), moisture),
-                "longitude": (("date_time", "site_id"), np.full(meteo_shape, longitude)),
-                "latitude": (("date_time", "site_id"), np.full(meteo_shape, latitude)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-                "depth_level": depth_level,
-            },
-        )
-        surface = xarray.Dataset(
-            data_vars={
-                "precipitation": (("date_time", "site_id"), np.ones(meteo_shape, dtype=float)),
-                "temperature": (("date_time", "site_id"), np.full(meteo_shape, 273.15, dtype=float)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-            },
-        )
-        return cls((longitude, latitude), profiles, surface)
-
-    @classmethod
-    def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
+    def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
+        schemas = config["schema_files"]
         select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
         profiles = select(load_measurments_data(scheme_file=
                                          composed.relative_resolve(schemas['profiles'])))
@@ -180,10 +142,7 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock, KalmanScalingMock))
-        if kalman_class in (KalmanMock, KalmanScalingMock) and "schema_files" not in config:
-            data = Model1DData.from_mock_config(site_id, composed, config)
-        else:
-            data = Model1DData.from_config(site_id, composed, config['schema_files'])
+        data = Model1DData.from_config(site_id, composed, config)
 
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})

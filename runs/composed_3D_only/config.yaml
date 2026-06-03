@@ -2,9 +2,9 @@ seed: 123456
 start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
+  backend_class_name: "Model3DBackend"
   common:
     name: "uhelna"
-    backend_class_name: "Model3DBackend"
     total_time_days: 15.0
     # Total simulated time in days. If omitted, a single step is run.
     executable: "mf6"

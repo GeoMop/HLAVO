@@ -24,7 +24,7 @@ def setup_models(work_dir, config_path, client):
     config_data, _ = load_config(config_path)
     composed = ComposedData.from_config(work_dir, config_data, config_path)
     model_1d_cfg = config_data["model_1d"]
-    locations_1d = _model_1d_site_ids(model_1d_cfg)
+    locations_1d = [int(site_id) for site_id in model_1d_cfg["site_ids"]]
 
     queue_names_3d_to_1d = []
     futures_1d = []
@@ -63,14 +63,6 @@ def setup_models(work_dir, config_path, client):
     LOG.info("[SETUP] 1D model results: %s", results_1d)
 
     return final_state_3d
-
-
-def _model_1d_site_ids(model_1d_cfg: dict) -> list[int]:
-    if "site_ids" in model_1d_cfg:
-        return [int(site_id) for site_id in model_1d_cfg["site_ids"]]
-    sites = model_1d_cfg["sites"]
-    assert isinstance(sites, list), "model_1d.sites must be a list"
-    return list(range(len(sites)))
 
 
 def run_simulation(work_dir: Path, config_path: Path) -> float:
