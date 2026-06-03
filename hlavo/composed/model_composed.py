@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from pathlib import Path
 
 import yaml
@@ -28,7 +29,8 @@ def setup_models(work_dir, config_path, client):
     queue_names_3d_to_1d = []
     futures_1d = []
 
-    queue_name_1d_to_3d = "q-1d-to-3d"
+    queue_prefix = f"q-{uuid.uuid4().hex}"
+    queue_name_1d_to_3d = f"{queue_prefix}-1d-to-3d"
     Queue(queue_name_1d_to_3d, client=client)
 
 
@@ -36,7 +38,7 @@ def setup_models(work_dir, config_path, client):
     #t_end = model_3d.resolve_t_end()
 
     for site_id in locations_1d:
-        q_name_3d_to_1d = f"q-3d-to-1d-{site_id}"
+        q_name_3d_to_1d = f"{queue_prefix}-3d-to-1d-{site_id}"
         Queue(q_name_3d_to_1d, client=client)
         queue_names_3d_to_1d.append(q_name_3d_to_1d)
 

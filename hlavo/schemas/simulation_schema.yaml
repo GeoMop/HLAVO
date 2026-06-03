@@ -132,7 +132,7 @@ Uhelna:
                 description: "Infiltration, Darcy velocity of water on the surface and deep model interface."
                 coords: ["date_time", "site_id", "calibration"]
 
-            preasure_head:
+            pressure_head:
                 unit: "m"
                 type: float
                 na_value: 'nan' # default
