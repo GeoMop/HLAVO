@@ -152,8 +152,21 @@ class Model1D:
 
 
     def step(self, start_time, target_time, pressure_at_bottom):
+        LOG.debug(
+            "[1D %s] Kalman input window: %s -> %s, pressure_at_bottom=%s",
+            self.site_id,
+            start_time,
+            target_time,
+            pressure_at_bottom,
+        )
         measurements = dataset_time_slice(self.data.profiles_dataset, start_time, target_time)
         meteo = dataset_time_slice(self.data.surface_dataset, start_time, target_time)
+        LOG.debug(
+            "[1D %s] measurement sizes=%s meteo sizes=%s",
+            self.site_id,
+            measurements.sizes,
+            meteo.sizes,
+        )
 
         darcy_velocity = None
         if len(measurements) > 0:
@@ -187,4 +200,3 @@ class Model1D:
             }
         }
         return config
-

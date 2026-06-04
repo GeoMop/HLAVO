@@ -83,6 +83,7 @@ class Model3D:
             assert  dt > np.timedelta64(0, 's'), f"Non-positive time step: {dt}"
 
             target_time = time + dt
+            assert target_time > time, f"Non-advancing 3D target time: time={time}, target_time={target_time}, dt={dt}"
             LOG.info("[3D] === Step: t=%s -> t=%s ===", time, target_time)
 
             for i, site_id in enumerate(self.locations_1d):

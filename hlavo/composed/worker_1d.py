@@ -37,6 +37,17 @@ class Worker1D:
             data_to_1d = self._receive(q_in)
             target_time = np.datetime64(data_to_1d.date_time)
             assert self.site_id == data_to_1d.site_id
+            assert target_time > current_time, (
+                f"Non-advancing 1D target time for site_id={self.site_id}: "
+                f"current_time={current_time}, target_time={target_time}"
+            )
+            LOG.info(
+                "[1D %s] step: %s -> %s, bottom_head=%s",
+                self.site_id,
+                current_time,
+                target_time,
+                data_to_1d.pressure_head,
+            )
 
             velocity = self.model.step(
                 current_time,
@@ -99,4 +110,4 @@ if __name__ == "__main__":
         queue_name_in=queue_name_in,
         queue_name_out=queue_name_out,
     )
-    print(result)
+    LOG.info("%s", result)
