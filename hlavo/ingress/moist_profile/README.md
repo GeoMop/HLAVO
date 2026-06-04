@@ -4,9 +4,8 @@ This package updates storage of `profile_schema.yaml`.
 
 ## Data Acquisition
 
-- `dataflow_grab.py` - logs into DataFlow/xpert.nz and downloads Odyssey Xtreem
+- `profile_scraper.py` - logs into DataFlow/xpert.nz and downloads Odyssey Xtreem
   CSV reports into <HLAVO root>/hlavo_data/*_dataflow_grab.csv.
-  TODO: add credentials vars into .secrets_env.
   TODO: use more specific output dir 
 - `process_data.py` - reads moisture profile network data (meteo CSV, PR2, Oddysey), filter, cut and plot data.
 - `process_data_lab.py` - reads laboratory data (atm, flow, PR2, Oddysey), filter, cut and plot data.
@@ -18,15 +17,16 @@ The exploratory scripts expect this local data layout:
 
 ## Schema Update Procedure
 
-1. Refresh raw DataFlow CSV exports with `dataflow_grab.py`, or pull existing
+1. Run `hlavo.ingress.profiles_scrape` to scrape new DataFlow CSV exports, or pull existing
    DVC-managed export directories.
-2. Update `extract/site_coords.csv` and `extract/site_status.csv` from the
+   Manual selection of date interval, probes groups and scraper configuration is required inplace.
+2. If changed, update `extract/site_coords.csv` and `extract/site_status.csv` from the
    project spreadsheet.
 3. Run `extract/gpx2csv.py` only when `extract/export.gpx` was refreshed and
    waypoint support data must be regenerated.
 4. Run `hlavo.ingress.profiles_process` to process the raw data and update the zarr-fuse nodes in
    `profile_schema.yaml`.
-   TODO: describe if this includes configured filtering or manual processing through process_data.py is necesary first. 
+   TODO: describe if this includes configured filtering or manual processing through process_data.py is necessary first. 
    document data update procedure.
 
 
@@ -46,7 +46,7 @@ Implementation notes:
 
 - `extract/profile_extract.py` contains `extract_df()`, which processes one
   DataFlow CSV file into the schema-shaped dataframe.
-- `extract/main.py` loads site coordinates/status, assigns probes to sites,
+- `extract/profile_process.py` loads site coordinates/status, assigns probes to sites,
   splits lab/profile rows, opens the zarr-fuse store, and updates the nodes.
 
 Auxiliary files:

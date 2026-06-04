@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -12,8 +11,22 @@ from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 from hlavo.kalman.model_1d import Model1D
 from hlavo.misc.aux_zarr_fuse import load_dotenv
+from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 
 LOG = logging.getLogger(__name__)
+
+
+def configure_worker_logging(workdir: Path, site_id: int) -> Path:
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    log_name = f"worker_1d_site_{site_id}.log"
+    # Do not append worker DEBUG logs to the main HLAVO log; parallel workers would interleave.
+    log_path = (workdir / log_name).resolve()
+
+    set_hlavo_loggers()
+    ensure_debug_file_handler(log_path, "_hlavo_worker_log_handler")
+    ensure_stdout_handler("_hlavo_worker_stdout_handler")
+    return log_path
 
 
 class Worker1D:
@@ -37,6 +50,17 @@ class Worker1D:
             data_to_1d = self._receive(q_in)
             target_time = np.datetime64(data_to_1d.date_time)
             assert self.site_id == data_to_1d.site_id
+            assert target_time > current_time, (
+                f"Non-advancing 1D target time for site_id={self.site_id}: "
+                f"current_time={current_time}, target_time={target_time}"
+            )
+            LOG.info(
+                "[1D %s] step: %s -> %s, bottom_head=%s",
+                self.site_id,
+                current_time,
+                target_time,
+                data_to_1d.pressure_head,
+            )
 
             velocity = self.model.step(
                 current_time,
@@ -70,6 +94,8 @@ class Worker1D:
 
 def model1d_worker_entry(composed: ComposedData, site_idx, config, queue_name_in, queue_name_out):
     load_dotenv()
+    site_id = int(site_idx)
+    configure_worker_logging(composed.workdir, site_id)
     model = Worker1D(
         composed=composed,
         site_id=site_idx,
@@ -99,4 +125,4 @@ if __name__ == "__main__":
         queue_name_in=queue_name_in,
         queue_name_out=queue_name_out,
     )
-    print(result)
+    LOG.info("%s", result)

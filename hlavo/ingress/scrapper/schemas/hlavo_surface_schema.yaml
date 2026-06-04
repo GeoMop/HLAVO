@@ -1,6 +1,8 @@
 ATTRS:
   S3_ENDPOINT_URL: "https://s3.cl4.du.cesnet.cz"
   STORE_URL: "s3://hlavo-release/hlavo-release.zarr"
+  #STORE_URL: "s3://hlavo-release/rancher-meteo.zarr"
+  
   grid_min: [50.840000, 14.850000] # unit deg
   grid_max: [50.8900000, 14.9600000] # unit deg
   grid_step: [1e-2, 1e-2] # unit deg; about 1000m; approximately resolution of the yr.no service
@@ -294,6 +296,13 @@ chmi_aladin_10m:
       df_col: "PRECIP_TYPE"
       coords: ["date_time", latitude, longitude]
 
+    forcast_step:
+        unit: ""
+        type: int
+        description: "Step of the forcast model the date_time snapshot is taken. Large step indicate an outdated timeframe, and possible bug in scrapper processing.
+                      One step should correspond to one hour, but that must be verified yet."
+        coords: ["data_time"]
+    
     # precip_type_severe_1h:
     #   unit: ""
     #   description: "Most dangerous precipitation type during the past/next 1h (as encoded by source)"

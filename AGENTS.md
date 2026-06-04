@@ -46,14 +46,36 @@ GIS sources.
   inspect the custom script and mimic its call using `run_0.sh`.
 
 
-## CODEX Guidelines
-- treat keyword 'AGENT:' in comments as a source context dependent message for your further development
-- any comment containing `AGENT:` is an active developer instruction
-- NEVER remove, rewrite, or move an `AGENT:` comment unless you implement that instruction in the same change
-- if you make only a local fix around an `AGENT:` comment, leave the comment untouched
-- if an `AGENT:` instruction looks outdated or wrong, ask before removing it
-- never stage or commit changes yourself
-- Always review your changes before finishing for human review.
+## Workflow
+- The user uses `git-cola` to review changes. Before writing files, check the repository state. 
+  If files are already modified, stage the user edits and only then write the changes.
+- Do not ask for confirmation before making requested changes; the user will review them in `git-cola`.
+- Do not commit changes yourself, unless you are explicitely asked to do so.
+- At the beginning of work, check the request against `AGENTS.md`, `PLAN.md`, and relevant repository docs.
+- For any changes involving more than single function:
+  1. Immediately estimate size of changes and report if you are planing for larger edits. Just to let operator to know he should wait for your plan. 
+  2. For up to 3 item planes report them directly in console and ask for the feedback in the prompt.
+  3. For more items, write them into PLAN.md last questions section. And ask user to replay to them there.
+- Before finishing, review changes against the documentation and put open project-specific questions or inconsistencies/remarks (QaR) in the last section of `PLAN.md`.
+- Use the `AGENT log` section in `PLAN.md` for completed work records. Use QaR only for unresolved inconsistencies, questions, or remarks that need user attention.
+- Regularly review the QaR section, incorporate my answers into the plan above, and move resolved work records to `AGENT log`.
+
+- Treat `AGENT` notes in source comments or documentation as direct instructions or answers. Once resolved, add one short line after the note summarizing the resolution.
+- Let user remove AGENT instructions and resolution notes. Do not remove them yourself unless ask for that explicitely.
+- When reviewing `PLAN.md` or source comments, prefer the newest relevant `AGENT` note over older surrounding context. Do not summarize or act on stale requests if a later note narrows, replaces, or corrects them.
+- For code changes, implement and run appropriate unit tests or the configured run script before finishing. For documentation-only changes, no tests are required.
+- Do not touch code when the user asks to work on the plan only.
+- Once you finish a step described in the PLAN.md, mark it as resolved and put there short description where I can find a test proving the completion.
+
+### Mandatory Finish Checklist
+
+Before the final response, always verify these workflow items explicitly:
+- Every active `AGENT` note touched by the work has a following `Resolved:` line.
+- `PLAN.md` has been reviewed, and any new open QaR or inconsistency from the work is recorded in its last section.
+- Required verification commands have been run, or the final response states why they were not run.
+- The final response mentions any missed requirement, open QaR, or failed verification.
+
+
 
 ## Status tracking
 - `STATUS.md` is the handoff log for interrupted or multi-turn work. Update it when a session ends with unfinished relevant work, when the user asks for a status review, or when a fresh checkpoint would help the next session continue without re-discovery.
@@ -77,32 +99,15 @@ GIS sources.
 - Before finishing a task that changed the practical project state, review whether `STATUS.md` still matches the actual branch/worktree state and update it if needed.
 
 ## Coding rules
-- Best code, is no code!
-- prefere functional style with poor functions;
-  idealy do not change objects after construction, all methods do calculations 
-  only reading the data in the class
-- prefere high level code: numpy, pandas, xarray instead loops and native python sturctures (lists, dicts)
-- use logging
-- Use logging for debug outputs.
-- use pathlib
-- use attrs for dataclasses
-- use attrs staticmethod/classmethod technique to construct from other data then is stored in the dataclass  
-- Be defensive, with strong checks, but only for the user input data.
-  That means error inputs must raise early. Therefore only check for existing keys in input dicts
-  if these will be required down in a long calculation. Otherwise just let KeyError do the job.
-- do not use "guess" default values, only obvious defaults
-- Do not use other config keys in the case of a KeyError, just throw early.
-- Do just basic asserts for consistency for function inputs.
-- Can add more asserts if needed during debugging.
-- NEVER resolve test errors by try blocks
-- NEVER add runtime fallbacks or import shims to compensate for a broken or incomplete environment.
-  If a declared dependency or tool is missing, report the environment problem plainly and fix the environment or tests around it, but do not implement code workarounds.
-- NEVER write "self explanatory" into comments
+Include: `python_coding.md`
+
 - in comments indicate by ?? if you are not certain about intent of particular variable, function, parameter ...
-- HLAVO is computational SW, basically input -> output function, input and output names are part of the function definition == code
-  all input filenames are relative to the main config yaml file, mostly fixed names or derived from the model_name
+- HLAVO is production software, but with internall use only for now and just single deplyment. 
+  It also has the simple input -> output structure. We want basic checks of the input, good logging for inspection of long computations.
+  Good documentation since it is rather complex.
+- all input filenames are relative to the main config yaml file, mostly fixed names or derived from the model_name
   all output files are under workdir (passed to the hlavo script) and have fixed (or code given) names.
-  Exceptions only with explicitly documented reason.
+- Exceptions only with reason explicitly documented in the code.
 
 ## How to verify your changes
 

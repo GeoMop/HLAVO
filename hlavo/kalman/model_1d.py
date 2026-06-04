@@ -116,11 +116,12 @@ class KalmanMock:
         _ = seed
         return cls(fixed_velocity=float(model_1d_cfg.get("mock_velocity", 0.0)))
 
-    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom, site_id=None) -> float:
         _ = ukf
         _ = measurements
         _ = meteo
         _ = pressure_at_bottom
+        _ = site_id
         return self.fixed_velocity
 
     def set_kalman_filter(self, kalman_R_matrix):
@@ -144,6 +145,12 @@ class Model1D:
             data = Model1DData.from_mock_config(site_id, composed, config)
         else:
             data = Model1DData.from_config(site_id, composed, config['schema_files'])
+        config = Model1D.create_kalman_measurements_config(data, config)
+        moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
+        # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
+        # measuerement source classes.
+        # That would allow to 1. construct the Model1D measurement class and pass it to Kalman with the remaining config.
 
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})
@@ -157,7 +164,7 @@ class Model1D:
         return Model1D(
                 composed=composed,
                 site_id=site_id,
-                moisture_sigma=float(config["moisture_sigma"]),
+                moisture_sigma=float(moisture_sigma),
                 data=data,
                 kalman=kalman)
 
@@ -187,8 +194,21 @@ class Model1D:
 
 
     def step(self, start_time, target_time, pressure_at_bottom):
+        LOG.debug(
+            "[1D %s] Kalman input window: %s -> %s, pressure_at_bottom=%s",
+            self.site_id,
+            start_time,
+            target_time,
+            pressure_at_bottom,
+        )
         measurements = dataset_time_slice(self.data.profiles_dataset, start_time, target_time)
         meteo = dataset_time_slice(self.data.surface_dataset, start_time, target_time)
+        LOG.debug(
+            "[1D %s] measurement sizes=%s meteo sizes=%s",
+            self.site_id,
+            measurements.sizes,
+            meteo.sizes,
+        )
 
         darcy_velocity = None
         if len(measurements) > 0:
@@ -197,6 +217,7 @@ class Model1D:
                 measurements,
                 meteo,
                 pressure_at_bottom,
+                site_id=self.site_id,
             )
         # TODO: more detailed output and either send through Queue to 3D worker and
         # save to ZARR from there, or excersize zarr parallel write (preallocation and suitable chunking necessary)
@@ -204,3 +225,20 @@ class Model1D:
 
     def save_results(self):
         self.kalman.save_results()
+    @staticmethod
+    def create_kalman_measurements_config(data, config):
+        sensor_depth = np.squeeze(data.profiles_dataset["sensor_depth"].values)
+
+        # Configure Kalman filter measurement settings for training
+        # "moisture" is treated as the observed variable
+        config["kalman_config"]["train_measurements"] = {
+            "moisture": {
+                # Convert sensor depth to centimeters and invert sign
+                "z_pos": sensor_depth * -100,
+                # Measurement noise level (e.g., standard deviation)
+                "noise_level": config["kalman_config"]["measurements_noise_level"],
+                # Type of noise distribution (e.g., Gaussian, uniform)
+                "noise_distr_type": config["kalman_config"]["measurements_noise_distr_type"]
+            }
+        }
+        return config

@@ -146,10 +146,8 @@ def download_open_meteo_data(
     return json_path
 
 
-def main():
+def main(start_date: str, end_date: str):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    start_date = "2020-01-01T00:00:00"
-    end_date = "2025-12-31T23:59:59"
     start_year = datetime.fromisoformat(start_date).year
     end_year = datetime.fromisoformat(end_date).year
     hourly_years = [str(year) for year in range(start_year, end_year + 1)]
@@ -172,10 +170,4 @@ def main():
         end_date=end_date,
         site_id=site_id,
     )
-
-
     print(f"Cached Open-Meteo JSON to {open_meteo_json_path}")
-
-
-if __name__ == "__main__":
-    main()
