@@ -6,6 +6,11 @@
 System for numerical prediction of water table using continuously collected meteorological and 
 soil mosture profile data.
 
+## Running pilot deplyment for *Uhelná* location
+
+[Dashboard](https://zarr-fuse-hlavo-dashboard-ui.dyn.cloud.e-infra.cz/)
+
+
 ## Get started
 The HLAVO system deployment needs to setup three kind of access:
 

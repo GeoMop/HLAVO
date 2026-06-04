@@ -10,7 +10,7 @@ model_1d:
   # site_ids: [ 1 ]
   # Processed directly by Worker, site IDs supplied by the test source
      
-  moisture_sigma: 0.05
+  #moisture_sigma: 0.05
   # Standard deviation of mositure profile measurements. Assuming independent sensors.
   
   model_config:
@@ -37,6 +37,12 @@ model_1d:
     surface: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
   kalman_config:
     model_time_step: 2.5e-2
+    
+    measurements_noise_level: 0.05
+    # moisture noise level
+    measurements_noise_distr_type: "Gaussian"
+    noise_distr_type: "Gaussian"
+    
     state_params:
       pressure_field:
         mean_linear:

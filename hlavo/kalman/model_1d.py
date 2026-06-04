@@ -103,6 +103,11 @@ class Model1D:
         data = Model1DData.from_config(site_id, composed, config['schema_files'])
 
         config = Model1D.create_kalman_measurements_config(data, config)
+        moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
+        # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
+        # measuerement source classes.
+        # That would allow to 1. construct the Model1D measurement class and pass it to Kalman with the remaining config.
 
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
         mcfg = config.get('model_config', {})
@@ -117,7 +122,7 @@ class Model1D:
         return Model1D(
                 composed=composed,
                 site_id=site_id,
-                moisture_sigma=float(config["moisture_sigma"]),
+                moisture_sigma=float(moisture_sigma),
                 data=data,
                 kalman=kalman)
 

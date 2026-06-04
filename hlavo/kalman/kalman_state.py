@@ -514,10 +514,12 @@ class MeasurementsStructure(dict):
         :param noisy: Whether to add noise
         :return: 1D numpy array
         """
+        assert value_dict, ""
         components = [var.encode(value_dict[key], state, noisy) for key, var in self.items()]
 
-        if not components:
-            return np.array([])
+
+        # if not components:
+        #     return np.array([])
 
         return np.concatenate(components)
 

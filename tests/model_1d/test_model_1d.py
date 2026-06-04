@@ -73,6 +73,10 @@ def build_model():
     load_dotenv()   # load zarr secrets
     cfg, cfg_path = load_config(script_dir / "composed_config.yaml")
     workdir = script_dir / "sandbox"
+
+    parflow_dir = os.environ.get('PARFLOW_DIR', None)
+    if parflow_dir is None:
+        os.environ['PARFLOW_DIR'] = str(script_dir.parent.parent / "dev/parflow_install")
     composed = ComposedData.from_config(workdir, cfg, cfg_path)
 
     site_id = 1
