@@ -4,7 +4,7 @@ import yaml
 import argparse
 import numpy as np
 from hlavo.soil_parflow.parflow_model import ToyProblem
-from hlavo.kalman.visualization.plots import RichardsSolverOutput, plot_richards_output
+from hlavo.kalman.plots import RichardsSolverOutput, plot_richards_output
 
 
 def run_parflow_model(tmp_path: Path):

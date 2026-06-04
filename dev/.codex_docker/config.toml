@@ -26,4 +26,8 @@ CONDA_DEFAULT_ENV = "hlavo"
 enabled = true
 
 [tui.model_availability_nux]
-"gpt-5.5" = 1
+"gpt-5.5" = 3
+
+[notice.model_migrations]
+"gpt-5.3-codex" = "gpt-5.4"
+"gpt-5.4" = "gpt-5.5"

@@ -13,6 +13,7 @@ dependencies:
   - matplotlib
 
   # Data / parallel
+  - joblib
   - xarray
   - dask
   - distributed

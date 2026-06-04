@@ -1,8 +1,10 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
 
+import contextlib
+import logging
 import shutil
-import os
+import sys
 import xarray as xr
 from parflow import Run
 from parflow.tools import settings
@@ -16,10 +18,80 @@ from hlavo.misc.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 
+LOG = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def redirect_process_output(log_path):
+    log_path = pathlib.Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    stdout_fd = os.dup(1)
+    stderr_fd = os.dup(2)
+    try:
+        with log_path.open("w", buffering=1) as log_file:
+            with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                os.dup2(log_file.fileno(), 1)
+                os.dup2(log_file.fileno(), 2)
+                try:
+                    yield
+                finally:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    os.dup2(stdout_fd, 1)
+                    os.dup2(stderr_fd, 2)
+    finally:
+        os.close(stdout_fd)
+        os.close(stderr_fd)
+
+
 class ToyProblem(AbstractModel):
+    """
+    One-dimensional ParFlow Richards model used as the surface forward model.
+
+    `ToyProblem` wraps a single ParFlow `Run` named `toy_richards`. The x and y
+    grid dimensions are fixed to one cell; the vertical grid, bottom boundary,
+    optional piecewise permeability, dynamic parameter mapping, and optional CLM
+    input files are supplied through `config`.
+
+    Config keys:
+    - `init_pressure`: two values used by `make_linear_pressure()` to build the
+      initial pressure profile. The current implementation interprets them as
+      top and bottom pressure and returns a bottom-to-top vector.
+    - `static_params.ComputationalGrid`: required `Lower.Z`, `DZ`, and `NZ`
+      values for the vertical grid.
+    - `static_params.BCPressure_bottom`: optional bottom pressure boundary
+      value. If absent, `-50` is used.
+    - `static_params.Perm`: optional mapping from upper z coordinates to
+      permeability values for piecewise-constant vertical regions. Without it,
+      the whole domain uses one constant permeability.
+    - `params`: mapping from model/state parameter names to ParFlow attribute
+      paths. `run(..., state_params=...)` applies matching values to these
+      paths before launching ParFlow. Values can target one path or a list of
+      paths.
+    - `use_clm`: optional boolean. When true, the run uses CLM forcing and
+      `clm_files` is required.
+    - `clm_files`: required with `use_clm`; contains `drv_vegm_file` and
+      `drv_vegp_file` paths copied into the run working directory.
+
+    File policy:
+    - `workdir` is the default base working directory for model runs.
+    - Each `run()` uses `working_dir` if provided, otherwise `workdir`.
+    - The selected run directory is removed and recreated at the start of every
+      `run()`.
+    - Runtime input/output filenames are fixed by the wrapper and ParFlow:
+      `toy_richards.init_pressure.pfb`, `toy_richards.*`, `parflow.log`, and,
+      for CLM runs, `drv_vegm.dat`, `drv_vegp.dat`, `drv_clmin.dat`,
+      `narr_1hr.txt`, and CLM diagnostic subdirectories/files.
+    """
     def __init__(self, config, workdir=None):
         # Define a toy problem for PARFLOW simulator
-        self._run = Run("toy_richards", __file__)
+        original_argv = sys.argv
+        try:
+            sys.argv = [original_argv[0]]
+            self._run = Run("toy_richards", __file__)
+        finally:
+            sys.argv = original_argv
+
         if workdir is not None:
             self._workdir = pathlib.Path(workdir)
             pathlib.Path.mkdir(self._workdir, exist_ok=True, parents=True)
@@ -34,6 +106,18 @@ class ToyProblem(AbstractModel):
         parflow_path = pathlib.Path(parflow_dir)
         # Check if the directory exists
         assert parflow_path.is_dir(), f"The PARFLOW_DIR environment variable is set, but the directory does not exist: {parflow_path}"
+
+        if config.get("use_clm", False):
+            assert "clm_files" in config
+            self._clm_files = config["clm_files"]
+            self.configure_clm()
+
+
+    def configure_clm(self):
+        # Setup CLM
+        self._run.Solver.LSM = "CLM"
+        self._run.Solver.CLM.MetForcing = "1D"
+        self._run.Solver.CLM.MetFileName = "narr_1hr.txt"
 
     def get_nodes_z(self):
         """
@@ -374,8 +458,8 @@ class ToyProblem(AbstractModel):
     def prepare_clm(self, working_dir, input_dir, ds):
         # We assume these files exist in current dir.
         # They should be either generated runtime or stored somewhere globally.
-        shutil.copy(input_dir / "drv_vegm.dat", working_dir / "drv_vegm.dat")
-        shutil.copy(input_dir / "drv_vegp.dat", working_dir / "drv_vegp.dat")
+        shutil.copy(self._clm_files["drv_vegm_file"], working_dir / pathlib.Path("drv_vegm.dat"))
+        shutil.copy(self._clm_files["drv_vegp_file"], working_dir / pathlib.Path("drv_vegp.dat"))
 
         # Create subdirectories necessary for Parflow/CLM coupling.
         for dir in [
@@ -395,11 +479,14 @@ class ToyProblem(AbstractModel):
             "qflx_evap_veg",
             "qflx_top_soil",
         ]:
-            os.makedirs(working_dir / dir)
+            os.makedirs(working_dir / pathlib.Path(dir))
 
         # Create main CLM parameter file drv_clmin.dat
-        start=ds.time[0].dt
-        end=ds.time[-1].dt
+        start=ds.date_time[0].dt
+        end=ds.date_time[-1].dt
+
+        print("ds ", ds)
+
         drv_clmin_params = dict(
             # CLM Domain (Read into 1D drv_module variables) :
             maxt=       1,      # Maximum tiles per grid (originally 3; changed it, because we have one type per cell)
@@ -434,13 +521,12 @@ class ToyProblem(AbstractModel):
             clm_ic=     2,               # 1=restart file,2=defined CLM Initial Condition Source
 
             # CLM initial conditions (1-D) : used in drv_clmini.f90_
-            t_ini=      ds.air_temperature_2m[0,0].values.item(), # Initial temperature [K]
+            t_ini=      ds.Temp[0].values.item(), # Initial temperature [K]
             #h2osno_ini= 0.,                                       # Initial snow cover, water equivalent [mm]
         )
-        with open(working_dir / "drv_clmin.dat", "w") as f:
+
+        with open(working_dir / pathlib.Path("drv_clmin.dat"), "w") as f:
             f.write("\n".join(f"{name:20} {value}" for name,value in drv_clmin_params.items()))
-
-
 
         # Prepare file with meteorological data for CLM.
         stop_time = ds.time_interval / np.timedelta64(1, 's')
@@ -450,58 +536,44 @@ class ToyProblem(AbstractModel):
         clm_met_data = {
             # Downward Visible or Short-Wave radiation [W/m2].
             # surface_solar_radiation_downwards [J/m2] / time_step [s]
-            "DSWR": ds.surface_solar_radiation_downwards / time_step,
+            "DSWR": ds.DSWR, #ds.surface_solar_radiation_downwards / time_step,
 
             # Downward Infa-Red or Long-Wave radiation [W/m2].
             # surface_thermal_radiation_downwards [J/m2] / time_step [s]
-            "DLWR": ds.surface_thermal_radiation_downwards / time_step,
+            "DLWR": ds.DLWR, #ds.surface_thermal_radiation_downwards / time_step,
 
             # Precipitation rate [mm/s].
             # precipitation_amount_accum [kg/m2] / water_density [kg/m3] / total_time [s] * 1000 [mm/m]
             # Note: Here we probably need some else field than the total amount since forecast start.
-            "APCP": ds.precipitation_amount_accum / 1000 / stop_time * 1000,
+            "APCP": ds.APCP, #ds.precipitation_amount_accum / 1000 / stop_time * 1000,
 
             # Air temperature [K].
             # air_temperature_2m
-            "Temp": ds.air_temperature_2m,
+            "Temp": ds.Temp, #ds.air_temperature_2m,
 
             # West-to-East or U-component of wind [m/s].
             # -wind_speed_10m * cos(wind_from_direction_10m * pi/180)
-            "UGRD": -ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
+            "UGRD": ds.UGRD, #-ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
 
             # South-to-North or V-component of wind [m/s].
             # -wind_speed_10m * sin(wind_from_direction_10m * pi/180)
-            "VGRD": -ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
+            "VGRD": ds.VGRD, #-ds.wind_speed_10m * np.cos(ds.wind_from_direction_10m * np.pi/180),
 
             # Atmospheric pressure [Pa].
             # air_pressure_at_sea_level
             # Note: Can we get the pressure at current terrain level?
-            "Press": ds.air_pressure_at_sea_level,
+            "Press": ds.Press, #ds.air_pressure_at_sea_level,
 
             # Water-vapor specific humidity [kg/kg].
             # relative_humidity_2m
-            "SPFH": ds.relative_humidity_2m,
+            "SPFH": ds.SPFH, #ds.relative_humidity_2m,
         }
-        with open(working_dir / self._run.Solver.CLM.MetFileName, "w") as f:
-            for i,time in enumerate(ds.time.values):
-                f.write( " ".join(str(v[0,i].item()) for v in clm_met_data.values()) + "\n")
 
-        # with open(working_dir / "lai.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 2.00 6.00 6.00 5.00 6.00 0.00 6.00 0.00 0.00\n" )
-        #
-        # with open(working_dir / "sai.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 4.00 2.00 0.50 2.00 2.00 2.00 2.00 2.00 0.00\n" )
-        #
-        # with open(working_dir / "z0m.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "1.00 2.20  1.00 0.80 0.80 0.10 0.10 0.70 0.10 0.03 0.03 0.06 0.50 0.06 0.01 0.05 0.002 0.01\n" )
-        #
-        # with open(working_dir / "displa.dat", "w") as f:
-        #     for time in ds.time.values:
-        #         f.write( "11.0 23.00 11.0 13.0 13.0 0.30 0.30 6.50 0.70 0.30 0.30 0.30 3.00 0.30 0.00 0.10 0.00  0.00\n" )
+        ds_loaded = ds.compute()
 
+        with open(working_dir / pathlib.Path(self._run.Solver.CLM.MetFileName), "w") as f:
+            for i,time in enumerate(ds_loaded.date_time.values):
+                f.write( " ".join(str(v[i].item()) for v in ds_loaded.data_vars.values()) + "\n")
 
 
     def run(self,
@@ -512,32 +584,71 @@ class ToyProblem(AbstractModel):
             met_data:xr.Dataset=None,
             working_dir=None,
             input_dir=None):
+        """
+        Run one ParFlow simulation interval from an explicit pressure state.
+
+        `run()` is the main entry point used by the Kalman filter. It converts
+        `working_dir` to a `Path`, removes and recreates that directory, writes
+        fixed-name ParFlow input files, redirects ParFlow stdout/stderr to
+        `parflow.log`, launches ParFlow, and leaves the ParFlow data accessor
+        pointed at the completed run directory.
+
+        Parameters:
+        - `init_pressure`: one-dimensional pressure array with length `NZ`.
+          It is written to `toy_richards.init_pressure.pfb` and configured as
+          the ParFlow initial pressure file.
+        - `precipitation_value`: top boundary flux used for non-CLM runs.
+        - `state_params`: optional parameter dictionary. Keys present in
+          `config["params"]` are applied to the mapped ParFlow attributes before
+          launching the run; other keys are ignored.
+        - `start_time`, `stop_time`, `time_step`: timing values for non-CLM
+          runs. Kalman calls pass a fresh interval with `start_time=0`.
+        - `met_data`: CLM forcing dataset. Required when CLM is enabled. It
+          must provide `date_time`, attrs `time_step` and `time_interval`, and
+          variables `DSWR`, `DLWR`, `APCP`, `Temp`, `UGRD`, `VGRD`, `Press`,
+          and `SPFH`.
+        - `working_dir`: optional per-run directory. Kalman passes a unique
+          directory for each state-transition call; otherwise `self._workdir`
+          is used.
+        - `input_dir`: accepted for compatibility with callers; CLM file paths
+          are currently taken from `config["clm_files"]`.
+
+        Outputs:
+        - `parflow.log` contains ParFlow stdout/stderr.
+        - ParFlow writes fixed-name pressure, saturation, velocity, metadata,
+          and YAML files under `working_dir`.
+        - Use `get_data(current_time_step, "pressure" | "moisture" |
+          "velocity")` after the run to read arrays used by the Kalman filter.
+        """
         if working_dir is None:
             working_dir = self._workdir
+        working_dir = pathlib.Path(working_dir)
         shutil.rmtree(working_dir)
         os.makedirs(working_dir)
 
-        if self._run.Solver.LSM == "CLM":
-            # set time interval and step from meteorological dataset
-            start_time = 0
-            stop_time = met_data.time_interval / np.timedelta64(1, 'h')
-            time_step = met_data.time_step / np.timedelta64(1, 'h')
-            precipitation_value = 0 # precipitation is computed by CLM
-            self.prepare_clm(working_dir, input_dir, met_data)
+        log_path = working_dir / "parflow.log"
+        with redirect_process_output(log_path):
+            if self._run.Solver.LSM == "CLM":
+                # set time interval and step from meteorological dataset
+                start_time = 0
+                stop_time = met_data.time_interval / np.timedelta64(1, 'h')
+                time_step = met_data.time_step / np.timedelta64(1, 'h')
+                precipitation_value = 0 # precipitation is computed by CLM
+                self.prepare_clm(working_dir, input_dir, met_data)
 
-        if state_params is not None:
-            self.set_dynamic_params(state_params)
-        self._run.Patch.top.BCPressure.alltime.Value = precipitation_value
-        self.set_init_pressure(init_pressure, working_dir=working_dir)
-        self._run.TimingInfo.StartTime = start_time
-        self._run.TimingInfo.StopTime = stop_time
-        self._run.TimeStep.Value = time_step
-        self._run.TimingInfo.DumpInterval = -1
+            if state_params is not None:
+                self.set_dynamic_params(state_params)
+            self._run.Patch.top.BCPressure.alltime.Value = precipitation_value
+            self.set_init_pressure(init_pressure, working_dir=working_dir)
+            self._run.TimingInfo.StartTime = start_time
+            self._run.TimingInfo.StopTime = stop_time
+            self._run.TimeStep.Value = time_step
+            self._run.TimingInfo.DumpInterval = -1
 
-        print("start: {} stop: {} step: {}".format(start_time, stop_time, time_step))
+            LOG.debug("ParFlow run timing: start=%s stop=%s step=%s", start_time, stop_time, time_step)
 
-        self._run.run(working_directory=str(working_dir))
-        self._run.write(file_format='yaml')
+            self._run.run(working_directory=str(working_dir))
+            self._run.write(file_format='yaml')
 
         settings.set_working_directory(working_dir)
 
@@ -634,6 +745,9 @@ class ToyProblem(AbstractModel):
             #model_params_new_values.append(mean)
 
         #return model_params_new_values
+
+    def set_pressure_at_bottom(self, pressure_at_bottom):
+        self._run.Patch.bottom.BCPressure.alltime.Value = pressure_at_bottom
 
     def save_pressure(self, image_file):
         cwd = settings.get_working_directory()

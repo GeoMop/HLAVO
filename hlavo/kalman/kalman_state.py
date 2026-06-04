@@ -514,8 +514,13 @@ class MeasurementsStructure(dict):
         :param noisy: Whether to add noise
         :return: 1D numpy array
         """
-        components = [var.encode(value_dict[key], state, noisy) for key, var in self.items()]
-        return np.concatenate(components)
+        components = [
+            var.encode(value_dict[key], state, noisy)
+            for key, var in self.items()
+            if key in value_dict
+        ]
+        assert len(components) == len(self), "Measurement values are required for a non-empty measurement structure"
+        return np.concatenate(components) if components else np.array([])
 
     def mult_calibration_coef(self, measurements_struct, measurements, calibration_coefs, calibration_coeffs_z_positions):
         """
