@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import logging
-import sys
 from pathlib import Path
 
 from hlavo.composed.model_composed import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
+from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 from hlavo.tools import zf
 
 LOG = logging.getLogger(__name__)
-LOG_FORMAT = "%(asctime)s %(levelname)s %(process)d %(name)s: %(message)s"
 
 
 def _resolve_workdir(config_path: Path, workdir: str | Path | None) -> Path:
@@ -60,54 +60,17 @@ def _configure_logging() -> None:
     )
 
 
-def configure_calculation_logging(workdir: Path, log_name: str = "calculation.log", reset: bool = False) -> Path:
-    """
-    Configure main-process calculation logging.
-
-    The file handler is intended for the process that owns the calculation.
-    Dask workers are not attached to this log file because concurrent worker
-    writes would need explicit synchronization.
-    """
+def configure_calculation_logging(workdir: Path, log_name: str = "hlavo_main.log", reset: bool = False) -> Path:
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     log_path = workdir / log_name
     if reset:
         log_path.unlink(missing_ok=True)
 
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(LOG_FORMAT)
-    resolved_log_path = log_path.resolve()
-
-    has_file_handler = any(
-        isinstance(handler, logging.FileHandler)
-        and Path(handler.baseFilename).resolve() == resolved_log_path
-        for handler in root.handlers
-    )
-    if not has_file_handler:
-        file_handler = logging.FileHandler(log_path)
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(formatter)
-        file_handler._hlavo_calculation_handler = True
-        root.addHandler(file_handler)
-
-    for handler in list(root.handlers):
-        if (
-            isinstance(handler, logging.StreamHandler)
-            and not isinstance(handler, logging.FileHandler)
-            and not getattr(handler, "_hlavo_stdout_handler", False)
-        ):
-            root.removeHandler(handler)
-
-    has_stream_handler = any(getattr(handler, "_hlavo_stdout_handler", False) for handler in root.handlers)
-    if not has_stream_handler:
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.INFO)
-        stream_handler.setFormatter(formatter)
-        stream_handler._hlavo_stdout_handler = True
-        root.addHandler(stream_handler)
-
-    return log_path
+    set_hlavo_loggers()
+    resolved_log_path = ensure_debug_file_handler(log_path, "_hlavo_main_log_handler")
+    ensure_stdout_handler("_hlavo_stdout_handler")
+    return resolved_log_path
 
 
 def _run_build_model(*, config_path: Path, workdir: Path) -> int:
@@ -118,7 +81,7 @@ def _run_build_model(*, config_path: Path, workdir: Path) -> int:
 
 def _run_simulate(*, config_path: Path, workdir: Path) -> int:
     log_path = configure_calculation_logging(workdir, reset=True)
-    LOG.info("Calculation log: %s", log_path)
+    LOG.info("Calculation started at %s; log: %s", datetime.now().isoformat(timespec="seconds"), log_path)
     run_simulation(work_dir=workdir, config_path=config_path)
     return 0
 
