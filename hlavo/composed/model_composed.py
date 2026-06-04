@@ -90,14 +90,12 @@ def setup_models(work_dir, config_path, client):
 #     return locations
 
 
-def run_simulation(work_dir: Path, config_path: Path) -> float:
+def run_simulation(work_dir: Path, config_path: Path) -> None:
     cluster = LocalCluster(n_workers=4, threads_per_worker=1)
     client = Client(cluster)
 
     try:
-        final_state = setup_models(work_dir, config_path, client)
-        LOG.info("[MAIN] Final 3D time: %s", final_state)
-        return float(final_state)
+        setup_models(work_dir, config_path, client)
     finally:
         client.close()
         cluster.close()

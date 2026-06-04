@@ -77,11 +77,12 @@ class KalmanMock:
         _ = seed
         return cls(fixed_velocity=float(model_1d_cfg.get("mock_velocity", 0.0)))
 
-    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom, site_id=None) -> float:
         _ = ukf
         _ = measurements
         _ = meteo
         _ = pressure_at_bottom
+        _ = site_id
         return self.fixed_velocity
 
     def set_kalman_filter(self, kalman_R_matrix):
@@ -101,7 +102,6 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         data = Model1DData.from_config(site_id, composed, config['schema_files'])
-
         config = Model1D.create_kalman_measurements_config(data, config)
         moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
@@ -175,6 +175,7 @@ class Model1D:
                 measurements,
                 meteo,
                 pressure_at_bottom,
+                site_id=self.site_id,
             )
         # TODO: more detailed output and either send through Queue to 3D worker and
         # save to ZARR from there, or excersize zarr parallel write (preallocation and suitable chunking necessary)

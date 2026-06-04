@@ -35,6 +35,10 @@ class Model3DBackendMock:
         self.composed = composed
         self.locations_1d = locations_1d
         self._heads = np.zeros(len(locations_1d), dtype=float)
+        common_cfg = model_3d_cfg.get("common", {})
+        hours = float(common_cfg.get("time_step_hours", 24 * 5))
+        seconds = max(1, int(round(hours * 3600)))
+        self.time_step = np.timedelta64(seconds, "s")
 
     def build_cell_assignment(self) -> None:
         return None
@@ -44,13 +48,13 @@ class Model3DBackendMock:
 
     def choose_dt(self, current_time: float, t_end: float) -> float:
         remaining = t_end - current_time
-        max_step = np.timedelta64(24*3600, 's')  * 5
-        return max(min(max_step, remaining), np.timedelta64(1, 's'))
+        return max(min(self.time_step, remaining), np.timedelta64(1, 's'))
 
-    def model_step(self, dt: float, contributions) -> np.ndarray:
+    def model_step(self, dt: float, contributions) -> dict[int, float]:
         _ = dt
-        self._heads = np.asarray(contributions, dtype=float)
-        return self._heads.copy()
+        # Keep mock heads keyed by site_id because the next 3D loop reads them by site_id.
+        self._heads = np.asarray([contributions[site_id] for site_id in self.locations_1d], dtype=float)
+        return self.initial_heads_to_1d()
 
 class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
@@ -110,3 +114,4 @@ class Model3D:
             time = target_time
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        return time

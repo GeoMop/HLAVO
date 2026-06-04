@@ -2,6 +2,7 @@
 #(requires "pftools" Python package provided via pip)
 
 import contextlib
+import logging
 import shutil
 import sys
 import xarray as xr
@@ -15,6 +16,9 @@ from matplotlib import pyplot as plt
 from hlavo.soil_parflow.abstract_model import AbstractModel
 from hlavo.misc.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
+
+
+LOG = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
@@ -641,7 +645,7 @@ class ToyProblem(AbstractModel):
             self._run.TimeStep.Value = time_step
             self._run.TimingInfo.DumpInterval = -1
 
-            print("start: {} stop: {} step: {}".format(start_time, stop_time, time_step))
+            LOG.debug("ParFlow run timing: start=%s stop=%s step=%s", start_time, stop_time, time_step)
 
             self._run.run(working_directory=str(working_dir))
             self._run.write(file_format='yaml')

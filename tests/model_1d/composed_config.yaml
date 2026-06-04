@@ -1,6 +1,7 @@
 seed: 123456
 start_datetime: "2025-03-06T00:00:00"
-end_datetime: "2025-03-09T00:00:00"
+# Match the integrated testcase window so the unit test is comparable and fast.
+end_datetime: "2025-03-06T02:00:00"
 model_3d:
   backend_class_name: "Model3DBackendMock"
   common:

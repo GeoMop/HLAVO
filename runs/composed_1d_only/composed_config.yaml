@@ -1,10 +1,13 @@
 seed: 123456
 start_datetime: "2025-03-06T00:00:00"
-end_datetime: "2025-03-07T00:00:00"
+# Keep the integrated verification bounded to two one-hour coupling loops.
+end_datetime: "2025-03-06T02:00:00"
 model_3d:
   backend_class_name: "Model3DBackendMock"
   common:
     name: "uhelna"
+    # Force the mock 3D backend to send two one-hour Kalman windows.
+    time_step_hours: 1
 
 model_1d:
   kalman_class_name: "KalmanFilter"  
@@ -114,4 +117,3 @@ model_1d:
     parallel_sigmas: false
   postprocess:
     show: True
-

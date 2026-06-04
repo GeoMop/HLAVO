@@ -130,8 +130,9 @@ def test_get_long_lat(model):
 
 
 def test_step(model):
-    start = np.datetime64("2025-03-06T00:00:00")
-    target = np.datetime64("2025-03-06T02:00:00")
+    # PLAN requires this test to use the config-defined time window.
+    start = model.composed.start
+    target = model.composed.end
 
     from filterpy.kalman import UnscentedKalmanFilter
     from hlavo.kalman.parallel_ukf import ParallelUKF
@@ -139,6 +140,7 @@ def test_step(model):
     assert isinstance(model.data.profiles_dataset, xr.Dataset)
     assert isinstance(model.data.surface_dataset, xr.Dataset)
     assert isinstance(model.ukf, (UnscentedKalmanFilter, ParallelUKF))
+    assert target - start == np.timedelta64(2, "h")
     assert model.site_id in model.data.profiles_dataset["site_id"].values
     assert model.site_id in model.data.surface_dataset["site_id"].values
     assert np.isfinite(model.longitude)

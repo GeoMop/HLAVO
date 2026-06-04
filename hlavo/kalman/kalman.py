@@ -1,7 +1,7 @@
 import shutil
 import sys
 import os
-import time
+import random
 import logging
 from pathlib import Path
 import yaml
@@ -32,6 +32,30 @@ import pandas as pd
 ######
 
 LOG = logging.getLogger(__name__)
+
+
+def _array_summary(value) -> str:
+    arr = np.asarray(value)
+    if arr.size == 0:
+        return f"shape={arr.shape}, empty"
+    if np.issubdtype(arr.dtype, np.number):
+        return (
+            f"shape={arr.shape}, min={np.nanmin(arr):.6g}, "
+            f"max={np.nanmax(arr):.6g}, first={arr.flat[0]:.6g}, last={arr.flat[-1]:.6g}"
+        )
+    return f"shape={arr.shape}, dtype={arr.dtype}"
+
+
+def _dataset_summary(dataset: xr.Dataset) -> str:
+    times = dataset.date_time.values if "date_time" in dataset.coords else []
+    if len(times) == 0:
+        time_summary = "date_time=missing"
+    else:
+        time_summary = f"date_time={times[0]}..{times[-1]}"
+    return (
+        f"sizes={dict(dataset.sizes)}, {time_summary}, "
+        f"vars={list(dataset.data_vars)}, attrs={list(dataset.attrs)}"
+    )
 
 
 class KalmanFilter:
@@ -92,6 +116,7 @@ class KalmanFilter:
         # This is correct because each KalmanFilter lives entirely within one Dask worker.
         self.state_measurements = {}  # (train_meas_dict, test_meas_dict) keyed by encoded state
         self.state_model_velocity_moisture = {}  # (velocity, moisture) keyed by encoded state
+        self.parflow_evaluation_count = 0
         self.lock = threading.Lock()
 
         # Expand rainfall schedule into a per-timestep list
@@ -401,13 +426,11 @@ class KalmanFilter:
         :return: Encoded next state vector
         """
         pid = os.getpid()
-        timestamp = int(time.time())
+        # The suffix only prevents ParFlow scratch directory collisions; keep it short.
+        scratch_suffix = f"{pid}_{random.randrange(16**8):08x}"
 
-        if os.environ.get("SCRATCHDIR"):
-            scratch_dir = os.environ.get("SCRATCHDIR")
-            parflow_working_dir = os.path.join(scratch_dir, f"parflow_working_dir_{pid}_{timestamp}")
-        else:
-            parflow_working_dir = os.path.join(self.model._workdir, f"parflow_working_dir_{pid}_{timestamp}")
+        scratch_dir = os.environ.get("SCRATCHDIR", self.model._workdir)
+        parflow_working_dir = os.path.join(scratch_dir, f"pf_{scratch_suffix}")
         os.makedirs(parflow_working_dir)
         LOG.debug(
             "[UKF] ParFlow state transition start: dt=%s, model_num_iters=%s, pid=%s, thread=%s, working_dir=%s",
@@ -457,13 +480,14 @@ class KalmanFilter:
         if self.lock:
             self.state_measurements[tuple(new_state_vec)] = (measurements_train, measurements_test)
             self.state_model_velocity_moisture[tuple(new_state_vec)] = (velocity, moisture)
+            self.parflow_evaluation_count += 1
 
         LOG.debug(
             "[UKF] ParFlow state transition done: working_dir=%s, pressure=%s, velocity=%s, moisture=%s",
             parflow_working_dir,
-            state["pressure_field"],
-            velocity,
-            moisture,
+            _array_summary(state["pressure_field"]),
+            _array_summary(velocity),
+            _array_summary(moisture),
         )
         shutil.rmtree(parflow_working_dir)
         return new_state_vec
@@ -493,7 +517,7 @@ class KalmanFilter:
         m = self.train_measurements_struc.encode(
             measurement, state=self.state_struc.decode_state(state_vec)
         )
-        LOG.debug("[UKF] measurement function output=%s", m)
+        LOG.debug("[UKF] measurement function output=%s", _array_summary(m))
         return m
 
 
@@ -566,7 +590,7 @@ class KalmanFilter:
         Q_state = self.state_struc.compose_Q()
         ukf.Q = Q_state
         LOG.debug("[UKF] Q shape=%s", ukf.Q.shape)
-        LOG.debug("[UKF] Q=%s", ukf.Q)
+        LOG.debug("[UKF] Q=%s", _array_summary(ukf.Q))
         LOG.debug("[UKF] diag(Q)=%s", np.diag(ukf.Q))
         ukf.R = measurement_noise_covariance
         LOG.debug("[UKF] R measurement_noise_covariance=%s", measurement_noise_covariance)
@@ -574,7 +598,7 @@ class KalmanFilter:
         LOG.debug("[UKF] model=%s", self.model)
 
         data_pressure = self.model.make_linear_pressure(self.model_config)
-        LOG.debug("[UKF] initial pressure=%s", data_pressure)
+        LOG.debug("[UKF] initial pressure=%s", _array_summary(data_pressure))
 
         el_centers_z = self.model.get_el_centers_z()
         init_mean, init_cov = self.state_struc.compose_init_state(el_centers_z)
@@ -751,7 +775,7 @@ class KalmanFilter:
         # ------------------------------------------------------------------
         meteo_ds = meteo_ds.sortby("date_time")
 
-        LOG.debug("[UKF] meteo interval before resample=%s", meteo_ds)
+        LOG.debug("[UKF] meteo interval before resample: %s", _dataset_summary(meteo_ds))
 
         _, idx = np.unique(meteo_ds.date_time.values, return_index=True)
         meteo_ds = meteo_ds.isel(date_time=np.sort(idx))
@@ -844,7 +868,13 @@ class KalmanFilter:
 
         return ds_final
 
-    def kalman_step(self, ukf, measurements_dataset, meteo_data, pressure_at_bottom):
+    def kalman_step(
+            self,
+            ukf,
+            measurements_dataset,
+            meteo_data,
+            pressure_at_bottom,
+            site_id=None):
         """
         Execute one full UKF assimilation cycle over a meteo time window.
 
@@ -859,7 +889,7 @@ class KalmanFilter:
         :param float pressure_at_bottom: Boundary condition for the physical model
         :return: Final estimated velocity from the state model
         """
-        LOG.info("[UKF] Running Kalman step pid=%s", os.getpid())
+        LOG.info("[UKF] start site_id=%s pid=%s", site_id, os.getpid())
 
         # ------------------------------------------------------------------
         # Apply boundary condition to the physical model
@@ -873,6 +903,15 @@ class KalmanFilter:
         model_time_step = pd.Timedelta(hours=parflow_model_time_step)
 
         meteo_times = meteo_data.date_time.values
+        assert len(meteo_times) >= 2, (
+            f"Kalman step needs at least two meteo times, got {len(meteo_times)} "
+            f"for site_id={site_id}"
+        )
+        meteo_time_diffs = np.diff(meteo_times.astype("datetime64[ns]"))
+        assert np.all(meteo_time_diffs > np.timedelta64(0, "ns")), (
+            f"Non-increasing meteo times in Kalman step for site_id={site_id}: {meteo_times}"
+        )
+        n_steps = len(meteo_times) - 1
 
         collected_measurements = []
 
@@ -883,7 +922,7 @@ class KalmanFilter:
             t_start = meteo_times[i - 1]
             t_end = meteo_times[i]
 
-            LOG.info("[UKF] Step %s: %s -> %s", i, t_start, t_end)
+            LOG.info("[UKF] step %02d/%02d target=%s", i, n_steps, np.datetime_as_string(t_end, unit="s"))
 
             # --------------------------------------------------------------
             # 1. Extract measurement for current timestep
@@ -906,11 +945,10 @@ class KalmanFilter:
             met_resampled.attrs["time_step"] = model_time_step
             met_resampled.attrs["time_interval"] = t_end - t_start
             LOG.debug(
-                "[UKF] Step %s meteo interval sizes=%s resampled sizes=%s attrs=%s",
+                "[UKF] Step %s meteo interval=%s resampled=%s",
                 i,
-                met_interval.sizes,
-                met_resampled.sizes,
-                met_resampled.attrs,
+                _dataset_summary(met_interval),
+                _dataset_summary(met_resampled),
             )
 
             # --------------------------------------------------------------
@@ -922,7 +960,14 @@ class KalmanFilter:
             model_num_iters = int(dt_interval / dt_step)
 
             # Safety check
-            assert model_num_iters > 0, "Model iteration count must be positive"
+            assert dt_interval > 0, (
+                f"Non-positive Kalman interval for site_id={site_id}: "
+                f"t_start={t_start}, t_end={t_end}, dt_interval={dt_interval}"
+            )
+            assert model_num_iters > 0, (
+                f"Model iteration count must be positive for site_id={site_id}: "
+                f"dt_step={dt_step}, dt_interval={dt_interval}"
+            )
             LOG.debug(
                 "[UKF] Step %s model timing: dt_hours=%s, interval_hours=%s, model_num_iters=%s",
                 i,
@@ -934,10 +979,12 @@ class KalmanFilter:
             # --------------------------------------------------------------
             # 4. UKF prediction step
             # --------------------------------------------------------------
+            evals_before_predict = self.parflow_evaluation_count
             ukf.predict(
                 model_num_iters=model_num_iters,
                 met_data=met_resampled
             )
+            parflow_evals = self.parflow_evaluation_count - evals_before_predict
 
             # --------------------------------------------------------------
             # 5. UKF update step (if valid measurement)
@@ -946,9 +993,11 @@ class KalmanFilter:
 
             if not (10 <= status < 20):
                 LOG.debug("[UKF] Skipping update at step %s (invalid status=%s)", i, status)
+                update_state = "skipped-status"
 
             elif np.isnan(encoded_measurement).any():
                 LOG.debug("[UKF] Skipping update at step %s (NaN in measurement)", i)
+                update_state = "skipped-nan"
 
             else:
                 LOG.debug(
@@ -958,12 +1007,21 @@ class KalmanFilter:
                     encoded_measurement.shape,
                 )
                 ukf.update(encoded_measurement)
+                update_state = "applied"
 
             # --------------------------------------------------------------
             # Debug / diagnostics
             # --------------------------------------------------------------
             LOG.debug("[UKF] Step %s covariance sum=%s", i, np.sum(ukf.P))
-            LOG.debug("[UKF] Step %s state estimate=%s", i, ukf.x)
+            LOG.debug("[UKF] Step %s state estimate=%s", i, _array_summary(ukf.x))
+            LOG.info(
+                "[UKF] step %02d/%02d complete: parflow_evals=%s, model_iterations=%s",
+                i,
+                n_steps,
+                parflow_evals,
+                parflow_evals * model_num_iters,
+            )
+            LOG.debug("[UKF] Step %s update=%s", i, update_state)
 
             collected_measurements.append(measurement)
 
@@ -1013,7 +1071,7 @@ class KalmanFilter:
         for i, measurement in enumerate(noisy_measurements):
             ukf.predict(iter_duration=iter_durations[i], precipitation_flux=self.results.precipitation_flux_measurements[i])
             LOG.info("Kalman measurement step %s", i)
-            LOG.debug("measurement: %s", measurement)
+            LOG.debug("measurement: %s", _array_summary(measurement))
             # Skip bad measurements if flagged
             if i < len(measurement_state_flag) and measurement_state_flag[i] != 0:
                 LOG.info("[UKF] Skipping update at timestep %s (bad measurements)", i)
@@ -1024,7 +1082,7 @@ class KalmanFilter:
                 ukf.update(measurement)
 
             LOG.debug("sum ukf.P %s", np.sum(ukf.P))
-            LOG.debug("Estimated State: %s", ukf.x)
+            LOG.debug("Estimated State: %s", _array_summary(ukf.x))
 
             self.results.times.append(self.results.times_measurements[i])
             self.results.ukf_x.append(ukf.x)
