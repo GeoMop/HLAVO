@@ -37,6 +37,11 @@ model_1d:
     surface: ../../hlavo/ingress/meteo_playground/chmi_stations/chmi_stations_schema.yaml
   kalman_config:
     model_time_step: 2.5e-2
+    
+    measurements_noise_level: 0.05
+    # Moisture noise level
+    measurements_noise_distr_type: "Gaussian"
+    
     state_params:
       pressure_field:
         mean_linear:
