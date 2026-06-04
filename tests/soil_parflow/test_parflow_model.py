@@ -66,14 +66,19 @@ def assert_parflow_log(working_dir):
     log_path = working_dir / "parflow.log"
     assert log_path.is_file()
     log_text = log_path.read_text()
-    assert "start:" in log_text
+    assert "ParFlow ran successfully" in log_text
 
 
 def assert_kalman_model_outputs(toy, current_time_step):
     nz = toy._run.ComputationalGrid.NZ
-    for data_name in ["pressure", "moisture", "velocity"]:
+    expected_shapes = {
+        "pressure": (nz,),
+        "moisture": (nz,),
+        "velocity": (nz + 1,),
+    }
+    for data_name, expected_shape in expected_shapes.items():
         data = toy.get_data(current_time_step=current_time_step, data_name=data_name)
-        assert data.shape == (nz,)
+        assert data.shape == expected_shape
         assert np.all(np.isfinite(data))
 
 
