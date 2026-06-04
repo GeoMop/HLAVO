@@ -2,14 +2,16 @@ seed: 123456
 start_datetime: "2025-05-16T12:24:27"
 end_datetime: "2025-08-13T23:40:51"
 model_3d:
+  backend_class_name: "Model3DBackend"
   common:
     name: "uhelna"
-    backend_class_name: "Model3DBackend"
+    
     total_time_days: 15.0
     # Total simulated time in days. If omitted, a single step is run.
     executable: "mf6"
     # executable to run for the 3d model - some version of modflow
-
+    max_time_step_days: 1.0
+    
   geometry:
     qgis_project_path: ../../hlavo/deep_model/GIS/uhelna_all.qgs
     boundary_layer_name: domain_around_mine

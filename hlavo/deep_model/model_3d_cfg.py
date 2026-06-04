@@ -5,6 +5,7 @@ from pathlib import Path
 import attrs
 import numpy as np
 
+from hlavo.composed.common_data import ComposedData
 from hlavo.misc.config import (
     get_path,
     load_config,
@@ -76,17 +77,17 @@ def resolve_model_relative_path(workspace: Path, path: Path) -> Path:
 
 @attrs.define(frozen=True)
 class Model3DCommonConfig:
-    backend_class_name: str
     model_name: str
     sim_name: str
     exe_name: str
-    recharge_rate: float
-    recharge_series_m_per_day: tuple[float, ...] | None
+    backend_class_name: str
+    #recharge_rate: float
+    #recharge_series_m_per_day: tuple[float, ...] | None
     drain_conductance: float
-    total_time_days: float | None
+    max_time_step: np.timedelta64['D']
     n_steps: int | None
-    simulation_days: float
-    stress_periods_days: tuple[float, ...]
+    #simulation_days: float
+    #stress_periods_days: tuple[float, ...]
 
     @classmethod
     def from_mapping(cls, raw: dict) -> "Model3DCommonConfig":
@@ -94,7 +95,7 @@ class Model3DCommonConfig:
         model_name = MODEL_DIRNAME
         sim_name = str(raw.get("sim_name", raw.get("name", "uhelna")))
         exe_name = str(raw.get("exe_name", raw.get("executable", "mf6")))
-        backend_class_name = str(raw.get("backend_class_name", raw.get("class_name", "Model3DBackend")))
+        backend_class_name = str(raw.get("backend_class_name", "Model3DBackend"))
         recharge_rate = to_float(raw, "recharge_rate", 1.0e-4)
 
         recharge_series_raw = raw.get("recharge_series_m_per_day")
@@ -110,48 +111,40 @@ class Model3DCommonConfig:
             )
 
         drain_conductance = to_float(raw, "drain_conductance", 1.0)
-        total_time_days = to_optional_float(raw, "total_time_days")
         n_steps = to_optional_int(raw, "n_steps")
 
-        simulation_days_default = (
-            total_time_days
-            if total_time_days is not None
-            else MODEL_3D_STEP_DAYS * float(n_steps) if n_steps is not None else 1.0
-        )
-        simulation_days = to_float(raw, "simulation_days", simulation_days_default)
-        assert simulation_days > 0.0, "simulation_days must be > 0"
 
-        stress_periods_raw = raw.get("stress_periods_days")
-        if stress_periods_raw is None:
-            stress_periods_days = (simulation_days,)
-        else:
-            assert isinstance(stress_periods_raw, (list, tuple)), "stress_periods_days must be a list"
-            stress_periods_days = tuple(float(value) for value in stress_periods_raw)
-            assert all(value > 0.0 for value in stress_periods_days), (
-                "stress_periods_days values must be > 0"
-            )
-
-        total_period_days = float(sum(stress_periods_days))
-        assert np.isclose(total_period_days, simulation_days, rtol=1.0e-6, atol=1.0e-6), (
-            "Sum of stress_periods_days must equal simulation_days"
-        )
-        if recharge_series_m_per_day is not None:
-            assert len(recharge_series_m_per_day) == len(stress_periods_days), (
-                "recharge_series_m_per_day length must match stress periods"
-            )
+        # stress_periods_raw = raw.get("stress_periods_days")
+        # if stress_periods_raw is None:
+        #     stress_periods_days = (simulation_days,)
+        # else:
+        #     assert isinstance(stress_periods_raw, (list, tuple)), "stress_periods_days must be a list"
+        #     stress_periods_days = tuple(float(value) for value in stress_periods_raw)
+        #     assert all(value > 0.0 for value in stress_periods_days), (
+        #         "stress_periods_days values must be > 0"
+        #     )
+        #
+        # total_period_days = float(sum(stress_periods_days))
+        # assert np.isclose(total_period_days, simulation_days, rtol=1.0e-6, atol=1.0e-6), (
+        #     "Sum of stress_periods_days must equal simulation_days"
+        # )
+        # if recharge_series_m_per_day is not None:
+        #     assert len(recharge_series_m_per_day) == len(stress_periods_days), (
+        #         "recharge_series_m_per_day length must match stress periods"
+        #     )
 
         return cls(
-            backend_class_name=backend_class_name,
             model_name=model_name,
             sim_name=sim_name,
             exe_name=exe_name,
-            recharge_rate=recharge_rate,
-            recharge_series_m_per_day=recharge_series_m_per_day,
+            backend_class_name=backend_class_name,
+            #recharge_rate=recharge_rate,
+            #recharge_series_m_per_day=recharge_series_m_per_day,
             drain_conductance=drain_conductance,
-            total_time_days=total_time_days,
+            max_time_step = raw["max_time_step_days"] * np.timedelta64(1, "D"),
             n_steps=n_steps,
-            simulation_days=simulation_days,
-            stress_periods_days=stress_periods_days,
+            #simulation_days=simulation_days,
+            #stress_periods_days=stress_periods_days,
         )
 
     @classmethod

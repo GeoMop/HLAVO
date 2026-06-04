@@ -121,9 +121,9 @@ class RunConfig:
     def drain_conductance(self) -> float:
         return self.common.drain_conductance
 
-    @property
-    def simulation_days(self) -> float:
-        return self.common.simulation_days
+    # @property
+    # def simulation_days(self) -> float:
+    #     return self.common.simulation_days
 
     @property
     def stress_periods_days(self) -> tuple[float, ...]:

@@ -1,5 +1,76 @@
 # Status summary
 
+`2026-06-04`: `2a57707` @ `main` by `Codex <codex@openai.com>`
+
+## Goal
+Resolve the `STATUS.md` merge conflict by reconciling the local export-geometry handoff with the newer composed/logging handoff and keeping the status history consistent with the current worktree.
+
+## Changes summary
+- Resolved the conflict in [STATUS.md](/home/hlavo/workspace/STATUS.md) by keeping both branches' handoff entries, newest first, instead of dropping either the `2026-06-03` composed/logging work or the `2026-04-29` export-geometry work.
+- Cleaned the `2026-06-03` status entry so it reflects the final local state rather than an intermediate reverted ParFlow attempt: [tests/soil_parflow/test_parflow_model.py](/home/hlavo/workspace/tests/soil_parflow/test_parflow_model.py) carries the interface fix, while [hlavo/soil_parflow/parflow_model.py](/home/hlavo/workspace/hlavo/soil_parflow/parflow_model.py) keeps the original production behavior.
+- Removed merge-helper snapshots `STATUS_BACKUP_1616747.md`, `STATUS_BASE_1616747.md`, `STATUS_LOCAL_1616747.md`, and `STATUS_REMOTE_1616747.md` after folding their content into the main status history.
+
+## Verified
+- `grep -R -n '<<<<<<<\|=======\|>>>>>>>' STATUS*`
+  result: conflict markers were present only in `STATUS.md` and `STATUS_BACKUP_1616747.md` before the merge cleanup.
+- `git rev-parse --short HEAD`
+  result: current `HEAD` is `2a57707` on `main`, used for this reconciliation checkpoint.
+
+## Open items
+- This reconciliation pass did not rerun runtime or pytest commands; it only merged the two diverged status histories and corrected the top handoff entry to match the present files.
+
+`2026-06-03`: `4a5cf2e` @ `MS_distr` by `Codex`
+
+## Goal
+Fix `runs/composed_1d_only` visibility and noisy output problems while checking whether the apparent infinite loop is still non-advancing.
+
+## Changes summary
+- Tracked/uncommitted: [hlavo/misc/logging_utils.py](/home/hlavo/workspace/hlavo/misc/logging_utils.py) now owns the shared HLAVO logging setup, and [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py) plus [hlavo/composed/worker_1d.py](/home/hlavo/workspace/hlavo/composed/worker_1d.py) call that common implementation instead of carrying duplicated handler/root-level logic.
+- Tracked/uncommitted: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) no longer branches on `KalmanMock`; `Model1D` always loads datasets through `Model1DData.from_config(...)`.
+- Tracked/uncommitted: [tests/conftest.py](/home/hlavo/workspace/tests/conftest.py), [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py), and [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml) now create local zarr-backed mock profile/surface stores via a pytest fixture, inject the generated schema paths into a temporary runtime config, and keep the composed Dask test on a single mock 1D site.
+- Tracked/uncommitted: [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py), [hlavo/composed/worker_1d.py](/home/hlavo/workspace/hlavo/composed/worker_1d.py), and [hlavo/misc/logging_utils.py](/home/hlavo/workspace/hlavo/misc/logging_utils.py) now centralize HLAVO logging: root stdout stays `INFO`, the `hlavo` logger tree stays `DEBUG`, and per-site worker debug logs go to files such as `worker_1d_site_1.log` rather than the main `calculation.log`.
+- Tracked/uncommitted: [tests/soil_parflow/test_parflow_model.py](/home/hlavo/workspace/tests/soil_parflow/test_parflow_model.py) was corrected to the current ParFlow wrapper contract instead of changing production behavior: `parflow.log` is checked for ParFlow success text, and `velocity` is expected as a face-centered `NZ + 1` array while `pressure` and `moisture` remain cell-centered `NZ` arrays. [hlavo/soil_parflow/parflow_model.py](/home/hlavo/workspace/hlavo/soil_parflow/parflow_model.py) keeps its original interface.
+- Tracked/uncommitted: [runs/composed_1d_only/composed_config.yaml](/home/hlavo/workspace/runs/composed_1d_only/composed_config.yaml), [tests/model_1d/composed_config.yaml](/home/hlavo/workspace/tests/model_1d/composed_config.yaml), and [tests/model_1d/test_model_1d.py](/home/hlavo/workspace/tests/model_1d/test_model_1d.py) now use the config-defined two-hour simulation window `2025-03-06T00:00:00` to `2025-03-06T02:00:00`.
+- Tracked/uncommitted: [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml), [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py), and [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) update the composed mock test to the current config schema and provide in-memory mock datasets for `KalmanMock`.
+- Tracked/uncommitted: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) lets the mock 3D backend use `model_3d.common.time_step_hours`, and [hlavo/kalman/kalman_state.py](/home/hlavo/workspace/hlavo/kalman/kalman_state.py) allows empty measurement structures to encode as an empty vector.
+- Tracked/uncommitted: [hlavo/kalman/kalman.py](/home/hlavo/workspace/hlavo/kalman/kalman.py), [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py), [hlavo/misc/auxiliary_functions.py](/home/hlavo/workspace/hlavo/misc/auxiliary_functions.py), and [hlavo/soil_parflow/parflow_model.py](/home/hlavo/workspace/hlavo/soil_parflow/parflow_model.py) replace raw print diagnostics with logging, summarize array/dataset DEBUG diagnostics, make ParFlow scratch directory names unique by process/thread/time, and report Kalman local target/completion progress.
+- Tracked/uncommitted: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) preserves mock backend `site_id -> head` mappings and returns the final loop time; [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py) no longer converts that final time through `float()`.
+- Staged before this coding work: [PLAN.md](/home/hlavo/workspace/PLAN.md) and [dev/.codex_docker/config.toml](/home/hlavo/workspace/dev/.codex_docker/config.toml) had pre-existing tracked edits. [PLAN.md](/home/hlavo/workspace/PLAN.md) now also contains this session's AGENT log and QaR notes.
+
+## Verified
+- `python3 -m py_compile hlavo/kalman/kalman_state.py hlavo/misc/logging_utils.py hlavo/main.py hlavo/composed/worker_1d.py` passed.
+- `timeout 180s bash runs/run_0.sh simulate runs/composed_1d_only/composed_config.yaml -w runs/composed_1d_only` passed after the shared logging refactor and the minimal `MeasurementsStructure.encode()` regression fix.
+- `python3 -m py_compile hlavo/composed/model_composed.py hlavo/kalman/model_1d.py tests/conftest.py tests/composed/test_composed.py` passed.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 120s tests/run` passed after removing the `KalmanMock` branch and moving mock data setup into the fixture-backed local zarr store.
+- `python3 -m py_compile hlavo/composed/model_3d.py hlavo/kalman/model_1d.py hlavo/kalman/kalman_state.py tests/composed/test_composed.py tests/model_1d/test_model_1d.py` passed.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 120s tests/run` passed: `1 passed`.
+- `python3 -m py_compile hlavo/composed/worker_1d.py` passed after simplifying the worker-specific log routing.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 180s tests/run` passed after removing the worker `contextvars` filter: `1 passed`.
+- `python3 -m py_compile hlavo/misc/logging_utils.py hlavo/composed/worker_1d.py` passed after merging the worker file-handler helper into `logging_utils.py`.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 180s tests/run` passed after moving worker file-handler setup to the shared utility: `1 passed`.
+- `python3 -m py_compile hlavo/misc/logging_utils.py hlavo/composed/worker_1d.py hlavo/main.py` passed after switching the shared logging helpers to explicit logger parameters and `LevelFormatter()`.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 180s tests/run` passed after updating the logging call sites to `set_hlavo_loggers(...)`: `1 passed`.
+- `python3 -m py_compile hlavo/misc/logging_utils.py hlavo/main.py hlavo/composed/worker_1d.py` passed after collapsing the helper API back to fixed root/stdout and `hlavo`/debug destinations.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 180s tests/run` passed after switching call sites to `ensure_debug_file_handler(...)`: `1 passed`.
+- `python3 -m py_compile hlavo/soil_parflow/parflow_model.py tests/soil_parflow/test_parflow_model.py` passed after reverting the production-only ParFlow changes and moving the fix into the test.
+- `PYTEST_ADDOPTS='tests/soil_parflow/test_parflow_model.py -q tests/model_1d/test_model_1d.py -q' timeout 240s tests/run` passed, confirming the face-centered `velocity` shape is still compatible with the model_1d / Kalman path.
+- `PYTEST_ADDOPTS='tests/model_1d/test_model_1d.py -q' timeout 180s tests/run` passed: `1 passed, 3 skipped`.
+- `timeout 180s bash runs/run_0.sh simulate runs/composed_1d_only/composed_config.yaml -w runs/composed_1d_only` passed. Stdout showed exactly two 3D intervals (`00:00 -> 01:00`, `01:00 -> 02:00`), each with `[UKF] step 01/01 complete: parflow_evals=33, model_iterations=1320`, and final 3D time `2025-03-06T02:00:00`.
+- `grep -E "botocore|s3fs|aiohttp" -n runs/composed_1d_only/calculation.log | tail -20` produced no output after narrowing DEBUG to `hlavo.*`.
+- `grep -n "DEBUG.*hlavo.kalman" runs/composed_1d_only/calculation.log | tail -5` produced no output, while the same grep on `runs/composed_1d_only/worker_1d_site_1.log` showed Kalman DEBUG records.
+- `tail runs/composed_1d_only/worker_1d_site_1.log` confirmed worker Kalman DEBUG records are written to the per-site worker log after separating worker file logging from `calculation.log`.
+- `python3 -m py_compile hlavo/misc/auxiliary_functions.py hlavo/composed/worker_1d.py hlavo/kalman/model_1d.py hlavo/kalman/kalman.py hlavo/soil_parflow/parflow_model.py hlavo/composed/model_3d.py hlavo/composed/model_composed.py hlavo/main.py` passed.
+- `timeout 70s bash runs/run_0.sh simulate runs/composed_1d_only/composed_config.yaml -w runs/composed_1d_only` timed out while progressing, with stdout showing 1D worker start, `[UKF] Step 1/24`, step 1 completion, and step 2 start; no raw `value`, `data array`, or `sqrt func call` prints appeared.
+- `python3 -m py_compile hlavo/misc/logging_utils.py hlavo/main.py hlavo/composed/worker_1d.py hlavo/kalman/model_1d.py hlavo/kalman/kalman.py` passed after message-format changes.
+- `timeout 65s bash runs/run_0.sh simulate runs/composed_1d_only/composed_config.yaml -w runs/composed_1d_only` timed out while progressing, with stdout showing compact INFO lines such as `20:34:36 INFO  [UKF] step 01/24 target=2025-03-06T01:00:00` and `20:35:02 INFO  [UKF] step 01/24 complete: parflow_evals=33, model_iterations=1320`.
+- `tail runs/composed_1d_only/calculation.log` confirmed worker Kalman DEBUG records are written and state arrays/datasets are summarized rather than dumped as full arrays.
+- `timeout 300s tests/run` timed out after progress markers `F.....`; `timeout 180s env PYTEST_ADDOPTS='-x' tests/run` stopped at the first failure in `tests/composed/test_composed.py::test_setup_models_uses_real_dask_queues_with_config_mocks`.
+
+## Open items
+- The fixture-backed composed mock test passes, but it emits `zarr` warnings about `Uhelna` / `parflow` not being recognized as components of a Zarr hierarchy. The minimal local store layout is sufficient for the test but not warning-free.
+- Integrated runs in this environment can warn that Dask port `8787` is already in use and pick another dashboard port. The run still succeeds.
+- The completed `runs/composed_1d_only` process still reports `Unclosed client session` warnings from `aiohttp` at shutdown. The simulation succeeds, but cleanup of the underlying zarr/S3 or Dask client sessions should be reviewed separately.
+
 `2026-04-29`: `cfad588` @ `main` by `Codex`
 
 ## Goal
