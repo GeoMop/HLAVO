@@ -57,7 +57,8 @@ GIS sources.
   2. For up to 3 item planes report them directly in console and ask for the feedback in the prompt.
   3. For more items, write them into PLAN.md last questions section. And ask user to replay to them there.
 - Before finishing, review changes against the documentation and put open project-specific questions or inconsistencies/remarks (QaR) in the last section of `PLAN.md`.
-- Regularly review the QaR section, incorporate my answers into the plan above and mark the item resolved. I will then remove resolved items.
+- Use the `AGENT log` section in `PLAN.md` for completed work records. Use QaR only for unresolved inconsistencies, questions, or remarks that need user attention.
+- Regularly review the QaR section, incorporate my answers into the plan above, and move resolved work records to `AGENT log`.
 
 - Treat `AGENT` notes in source comments or documentation as direct instructions or answers. Once resolved, add one short line after the note summarizing the resolution.
 - Let user remove AGENT instructions and resolution notes. Do not remove them yourself unless ask for that explicitely.
