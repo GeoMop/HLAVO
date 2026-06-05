@@ -13,17 +13,18 @@
 
 ## TODO points
 
-### ToyProblem tests
-- document ToyProblem in particular: input and output files policy, config parameters, how the single simulation run could be parametrised
-
-### Fix infine loop in runs/composed_1d_only
-It seems there is an infinite loop somewhere in the Kalman.
-Introduce a single log for whole calculation and log start of individual parflow subprocesses and 
-debugging array output. Use logging but with presence on the stdout for the Kalman time iterations.
-We should know the time info with respect to the global time (from [3D]).
+### Fix responsability of model_composed.py and Model1D problematic mock inputs
+- read only `site_ids` there, which is mandatory key of the config
+- Create Model1DConstantWeather - for running Model3D with constant surface velocity
+  This modelwill accept `sites` with longitude, latitude, velocity as a simplect replacement of the full Model1D
+- remove `sites` reading from model_composed.py
+- Keep KalmanMock - that is usefull for simple surface layer models but for the real weather data from ZARR provided by the full Modle1D
 
 
 ## AGENT log
+- `2026-06-05`: Reworked [doc/design.md](/home/hlavo/workspace/doc/design.md) from a current-state summary into a tentative target design note. Added call/construction graph links, narrowed the orchestration weak-point wording around `site_ids`, documented the suggested `Model3D`/`Model3DBackend` rename split, and added `Resolved:` lines under the active `AGENT` notes in that file. Documentation-only change; no tests required.
+- `2026-06-05`: Added [doc/design.md](/home/hlavo/workspace/doc/design.md) with a concise structural overview of the essential runtime classes and functions, plus short design-quality judgments and one-line future risk notes for weaker areas. Documentation-only change; no tests required.
+- `2026-06-04`: Fixed the merge regressions behind [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) and [tests/schemas/test_simulation.py](/home/hlavo/workspace/tests/schemas/test_simulation.py). [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now accepts `model_3d.backend_class_name` from either the top level or `model_3d.common`, and the mock backend again reads `time_step_hours` from the config object it actually receives. [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now supports mock configs that provide `site_ids` instead of `sites` and restores the mock `sensor_depth` field required by measurement setup. [tests/schemas/test_simulation.py](/home/hlavo/workspace/tests/schemas/test_simulation.py) now resolves `simulation_schema.yaml` from the repository path instead of the process working directory. Verified with `python3 -m py_compile hlavo/composed/model_3d.py hlavo/kalman/model_1d.py tests/schemas/test_simulation.py`, `timeout 180s python3 -m pytest tests/composed/test_composed.py -q -s`, and `PYTEST_ADDOPTS='tests/composed/test_composed.py -q tests/schemas/test_simulation.py -q' timeout 240s tests/run`.
 - `2026-06-04`: Reworked the ParFlow fix as a test correction instead of a production behavior change. [tests/soil_parflow/test_parflow_model.py](/home/hlavo/workspace/tests/soil_parflow/test_parflow_model.py) now checks for ParFlow success text in `parflow.log` rather than wrapper-added markers, and it expects the real output shapes: `pressure`/`moisture` as `NZ` cell-centered arrays and `velocity` as an `NZ + 1` face-centered array. [hlavo/soil_parflow/parflow_model.py](/home/hlavo/workspace/hlavo/soil_parflow/parflow_model.py) was reverted to keep its original interface. Verified with `python3 -m py_compile hlavo/soil_parflow/parflow_model.py tests/soil_parflow/test_parflow_model.py` and `PYTEST_ADDOPTS='tests/soil_parflow/test_parflow_model.py -q tests/model_1d/test_model_1d.py -q' timeout 240s tests/run`.
 - `2026-06-04`: Fixed [tests/soil_parflow/test_parflow_model.py](/home/hlavo/workspace/tests/soil_parflow/test_parflow_model.py) regressions in [hlavo/soil_parflow/parflow_model.py](/home/hlavo/workspace/hlavo/soil_parflow/parflow_model.py). `ToyProblem.run()` now writes explicit `start:` / `finish:` markers into `parflow.log`, and `get_data(..., "velocity")` now converts ParFlow face-centered `velz` output (`NZ + 1`) to a cell-centered `NZ` profile by averaging adjacent faces. Verified with `python3 -m py_compile hlavo/soil_parflow/parflow_model.py` and `PYTEST_ADDOPTS='tests/soil_parflow/test_parflow_model.py -q' timeout 180s tests/run`.
 - `2026-06-04`: Simplified the shared logging API in [hlavo/misc/logging_utils.py](/home/hlavo/workspace/hlavo/misc/logging_utils.py) to match the fixed project policy. `ensure_stdout_handler(...)` now always attaches to the root logger, `ensure_debug_file_handler(...)` now always attaches to the `hlavo` logger tree, and [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py) plus [hlavo/composed/worker_1d.py](/home/hlavo/workspace/hlavo/composed/worker_1d.py) were updated to use the simplified helpers. Verified with `python3 -m py_compile hlavo/misc/logging_utils.py hlavo/main.py hlavo/composed/worker_1d.py` and `PYTEST_ADDOPTS='tests/composed/test_composed.py -q' timeout 180s tests/run`.
@@ -40,6 +41,8 @@ We should know the time info with respect to the global time (from [3D]).
 - `2026-06-03`: Reviewed `AGENTS.md` Workflow and in-source communication split. Removed duplicated staging, `AGENT` handling, large-change planning, and Python coding-rule references from `AGENTS.md`. No unresolved Workflow inconsistency remains after the cleanup.
 
 ## AGENT Questions And Remarks
-- `2026-06-04`: The requested pre-write staging step could not be completed for this turn because `.git/index.lock` already existed in the repository and `git add ...` failed before the edits started. The code changes and verification completed, but the worktree should be checked for the stale/active git lock before the next staging step.
+- `2026-06-05`: Config ownership around the 3D side is still split between [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) and [hlavo/deep_model/model_3d_cfg.py](/home/hlavo/workspace/hlavo/deep_model/model_3d_cfg.py). That split already caused merge/config-shape regressions and should be unified before further interface changes.
 - `2026-06-03`: The fixture-backed composed mock test passes, but `zarr` emits warnings such as `Object at Uhelna is not recognized as a component of a Zarr hierarchy.` when opening the minimal local stores through `zarr_fuse`. The datasets load and the test passes, but the fixture store layout is only the minimal working shape, not a warning-free hierarchy.
+AGENT: not a big deal, but I will keep this remark for documentation purpose
 - `2026-06-03`: The completed `runs/composed_1d_only` process still reports `Unclosed client session` warnings from `aiohttp` at shutdown. The simulation succeeds, but the underlying zarr/S3 or Dask client-session cleanup should be reviewed separately.
+AGENT: possible known ZARR related problem, but have to review that yet

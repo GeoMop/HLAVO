@@ -36,8 +36,7 @@ class Model3DBackendMock:
         self.locations_1d = locations_1d
         self.model_3d_cfg = model_3d_cfg
         self._heads = np.zeros(len(locations_1d), dtype=float)
-        common_cfg = model_3d_cfg.get("common", {})
-        hours = float(common_cfg.get("time_step_hours", 24 * 5))
+        hours = float(model_3d_cfg.get("time_step_hours", 24 * 5))
         seconds = max(1, int(round(hours * 3600)))
         self.time_step = np.timedelta64(seconds, "s")
 
@@ -63,7 +62,7 @@ class Model3D:
         self.locations_1d = locations_1d
         common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
-            common_cfg['backend_class_name'],
+            model_3d_cfg["backend_class_name"],
             (Model3DBackendMock, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)

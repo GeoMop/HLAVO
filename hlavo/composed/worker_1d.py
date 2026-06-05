@@ -96,18 +96,20 @@ def model1d_worker_entry(composed: ComposedData, site_idx, config, queue_name_in
     load_dotenv()
     site_id = int(site_idx)
     configure_worker_logging(composed.workdir, site_id)
-    model = Worker1D(
+    worker = Worker1D(
         composed=composed,
         site_id=site_idx,
         config=config,
     )
-    return model.run_loop(queue_name_in, queue_name_out)
+    return worker.run_loop(queue_name_in, queue_name_out)
 
-if __name__ == "__main__":
+
+def call_worker_from_cli():
     from hlavo.misc.aux_zarr_fuse import load_dotenv
     from hlavo.misc.config import load_config
+    import sys
 
-    cfg_path, _, work_dir = sys.argv[1:4]
+    cfg_path, site_id, work_dir = sys.argv[1:4]
     cfg_path = Path(cfg_path).resolve()
 
     load_dotenv()
@@ -126,3 +128,6 @@ if __name__ == "__main__":
         queue_name_out=queue_name_out,
     )
     LOG.info("%s", result)
+
+if __name__ == "__main__":
+    call_worker_from_cli()

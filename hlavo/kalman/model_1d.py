@@ -36,16 +36,23 @@ class Model1DData:
 
     @classmethod
     def from_mock_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DData":
-        sites = config["sites"]
-        assert isinstance(sites, list), "model_1d.sites must be a list"
-        assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
-        site_cfg = sites[site_id]
-        longitude = float(site_cfg["longitude"])
-        latitude = float(site_cfg["latitude"])
+        if "sites" in config:
+            sites = config["sites"]
+            assert isinstance(sites, list), "model_1d.sites must be a list"
+            assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
+            site_cfg = sites[site_id]
+            longitude = float(site_cfg["longitude"])
+            latitude = float(site_cfg["latitude"])
+        else:
+            site_ids = [int(value) for value in config.get("site_ids", [])]
+            assert site_id in site_ids, f"site_id={site_id} outside configured mock site_ids"
+            longitude = float(config.get("mock_longitude", 14.889853))
+            latitude = float(config.get("mock_latitude", 50.863565))
 
         date_time = np.array([composed.start, composed.end], dtype="datetime64[s]")
         site_ids = np.array([site_id], dtype=np.int32)
         depth_level = np.array([0], dtype=np.int32)
+        probe_model = np.array(["mock"], dtype=object)
         moisture = np.full((date_time.size, site_ids.size, depth_level.size), 0.2, dtype=float)
         meteo_shape = (date_time.size, site_ids.size)
 
@@ -54,11 +61,13 @@ class Model1DData:
                 "moisture": (("date_time", "site_id", "depth_level"), moisture),
                 "longitude": (("date_time", "site_id"), np.full(meteo_shape, longitude)),
                 "latitude": (("date_time", "site_id"), np.full(meteo_shape, latitude)),
+                "sensor_depth": (("depth_level", "probe_model"), np.array([[0.1]], dtype=float)),
             },
             coords={
                 "date_time": date_time,
                 "site_id": site_ids,
                 "depth_level": depth_level,
+                "probe_model": probe_model,
             },
         )
         surface = xarray.Dataset(
