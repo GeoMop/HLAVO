@@ -35,7 +35,8 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
+    def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
+        schemas = config["schema_files"]
         select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
         profiles = select(load_measurments_data(scheme_file=
                                          composed.relative_resolve(schemas['profiles'])))
@@ -91,6 +92,69 @@ class KalmanMock:
     def save_results(self):
         return None
 
+
+@attrs.define(frozen=True)
+class ConstantWeatherSite:
+    site_id: int
+    longitude: float
+    latitude: float
+    velocity: float
+
+
+@attrs.define
+class Model1DConstantWeather:
+    composed: 'ComposedData'
+    site: ConstantWeatherSite
+
+    @classmethod
+    def from_config(cls, composed, site_id: int, config: dict) -> "Model1DConstantWeather":
+        site_cfg = cls._site_mapping(config)[site_id]
+        site = ConstantWeatherSite(
+            site_id=site_id,
+            longitude=float(site_cfg["longitude"]),
+            latitude=float(site_cfg["latitude"]),
+            velocity=float(site_cfg["velocity"]),
+        )
+        return cls(composed=composed, site=site)
+
+    @staticmethod
+    def _site_mapping(config: dict) -> dict[int, dict]:
+        raw_site_ids = config["site_ids"]
+        assert isinstance(raw_site_ids, list), "model_1d.site_ids must be a list"
+        raw_sites = config["sites"]
+        assert isinstance(raw_sites, list), "model_1d.sites must be a list"
+        assert len(raw_site_ids) == len(raw_sites), (
+            "model_1d.sites length must match model_1d.site_ids length for Model1DConstantWeather"
+        )
+        site_mapping = {}
+        for raw_site_id, site_cfg in zip(raw_site_ids, raw_sites):
+            site_id = int(raw_site_id)
+            assert isinstance(site_cfg, dict), "Each model_1d.sites item must be a mapping"
+            for required_key in ("longitude", "latitude", "velocity"):
+                assert required_key in site_cfg, (
+                    f"Missing '{required_key}' in model_1d.sites entry for site_id={site_id}"
+                )
+            site_mapping[site_id] = site_cfg
+        return site_mapping
+
+    @property
+    def longitude(self):
+        return self.site.longitude
+
+    @property
+    def latitude(self):
+        return self.site.latitude
+
+    def step(self, start_time, target_time, pressure_at_bottom):
+        _ = start_time
+        _ = target_time
+        _ = pressure_at_bottom
+        return self.site.velocity
+
+    def save_results(self):
+        return None
+
+
 @attrs.define
 class Model1D:
     composed: 'ComposedData'
@@ -101,15 +165,15 @@ class Model1D:
 
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
-        data = Model1DData.from_config(site_id, composed, config['schema_files'])
-        config = Model1D.create_kalman_measurements_config(data, config)
-        moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
+        data = Model1DData.from_config(site_id, composed, config)
+        meas_config = Model1D.create_kalman_measurements_config(data, config)
+        moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
         # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
         # measuerement source classes.
         # That would allow to 1. construct the Model1D measurement class and pass it to Kalman with the remaining config.
 
-        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})
         mcfg['clm_files'] = {k: composed.relative_resolve(v) for k, v in clm_f.items()}
@@ -183,7 +247,6 @@ class Model1D:
 
     def save_results(self):
         self.kalman.save_results()
-
     @staticmethod
     def create_kalman_measurements_config(data, config):
         sensor_depth = np.squeeze(data.profiles_dataset["sensor_depth"].values)

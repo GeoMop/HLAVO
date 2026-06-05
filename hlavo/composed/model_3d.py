@@ -34,9 +34,9 @@ class Model3DBackendMock:
     def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
         self.composed = composed
         self.locations_1d = locations_1d
+        self.model_3d_cfg = model_3d_cfg
         self._heads = np.zeros(len(locations_1d), dtype=float)
-        common_cfg = model_3d_cfg.get("common", {})
-        hours = float(common_cfg.get("time_step_hours", 24 * 5))
+        hours = float(model_3d_cfg.get("time_step_hours", 24 * 5))
         seconds = max(1, int(round(hours * 3600)))
         self.time_step = np.timedelta64(seconds, "s")
 
@@ -51,7 +51,7 @@ class Model3DBackendMock:
         return max(min(self.time_step, remaining), np.timedelta64(1, 's'))
 
     def model_step(self, dt: float, contributions) -> dict[int, float]:
-        _ = dt
+        dt_days = float(dt / np.timedelta64(1, "D"))
         # Keep mock heads keyed by site_id because the next 3D loop reads them by site_id.
         self._heads = np.asarray([contributions[site_id] for site_id in self.locations_1d], dtype=float)
         return self.initial_heads_to_1d()
@@ -60,11 +60,13 @@ class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
         self.locations_1d = locations_1d
+        backend_class_name = str(model_3d_cfg["backend_class_name"])
+        common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
-            model_3d_cfg['backend_class_name'],
+            backend_class_name,
             (Model3DBackendMock, Model3DBackend),
         )
-        self.backend = backend_class(composed, model_3d_cfg=model_3d_cfg, locations_1d=locations_1d)
+        self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
 
 
     def run_loop(

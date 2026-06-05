@@ -9,7 +9,8 @@ from dask.distributed import Queue
 from hlavo.composed.common_data import ComposedData
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
-from hlavo.kalman.model_1d import Model1D
+from hlavo.kalman.model_1d import Model1D, Model1DConstantWeather
+from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 
@@ -33,7 +34,11 @@ class Worker1D:
     def __init__(self, composed: ComposedData, site_id: int, config: dict):
         self.composed = composed
         self.site_id = site_id
-        self.model = Model1D.from_config(
+        model_1d_class = resolve_named_class(
+            config.get("model_1d_class_name", "Model1D"),
+            (Model1D, Model1DConstantWeather),
+        )
+        self.model = model_1d_class.from_config(
             composed=composed,
             site_id=site_id,
             config=config,
@@ -96,18 +101,20 @@ def model1d_worker_entry(composed: ComposedData, site_idx, config, queue_name_in
     load_dotenv()
     site_id = int(site_idx)
     configure_worker_logging(composed.workdir, site_id)
-    model = Worker1D(
+    worker = Worker1D(
         composed=composed,
         site_id=site_idx,
         config=config,
     )
-    return model.run_loop(queue_name_in, queue_name_out)
+    return worker.run_loop(queue_name_in, queue_name_out)
 
-if __name__ == "__main__":
+
+def call_worker_from_cli():
     from hlavo.misc.aux_zarr_fuse import load_dotenv
     from hlavo.misc.config import load_config
+    import sys
 
-    cfg_path, _, work_dir = sys.argv[1:4]
+    cfg_path, site_id, work_dir = sys.argv[1:4]
     cfg_path = Path(cfg_path).resolve()
 
     load_dotenv()
@@ -126,3 +133,6 @@ if __name__ == "__main__":
         queue_name_out=queue_name_out,
     )
     LOG.info("%s", result)
+
+if __name__ == "__main__":
+    call_worker_from_cli()

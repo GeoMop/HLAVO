@@ -9,7 +9,7 @@ import zarr_fuse as zf
 from hlavo.misc.aux_zarr_fuse import override_local_storage
 
 
-SCHEMA_PATH = Path("hlavo/schemas/simulation_schema.yaml")
+SCHEMA_PATH = Path(__file__).resolve().parents[2] / "hlavo" / "schemas" / "simulation_schema.yaml"
 STORE_PATH = Path(__file__).with_name("simulations.zarr")
 
 

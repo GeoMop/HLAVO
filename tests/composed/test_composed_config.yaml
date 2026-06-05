@@ -10,9 +10,9 @@ model_3d:
     time_step_hours: 1
 
 model_1d:
-  kalman_class_name: "KalmanMock"
-  mock_velocity: 3.0e-4
+  model_1d_class_name: "Model1DConstantWeather"
   site_ids: [1]
-  kalman_config:
-    measurements_noise_level: 0.0
-    measurements_noise_distr_type: gaussian
+  sites:
+    - longitude: 14.889853
+      latitude: 50.863565
+      velocity: 3.0e-4
