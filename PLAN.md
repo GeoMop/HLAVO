@@ -13,15 +13,10 @@
 
 ## TODO points
 
-### Fix responsability of model_composed.py and Model1D problematic mock inputs
-- read only `site_ids` there, which is mandatory key of the config
-- Create Model1DConstantWeather - for running Model3D with constant surface velocity
-  This modelwill accept `sites` with longitude, latitude, velocity as a simplect replacement of the full Model1D
-- remove `sites` reading from model_composed.py
-- Keep KalmanMock - that is usefull for simple surface layer models but for the real weather data from ZARR provided by the full Modle1D
 
 
 ## AGENT log
+- `2026-06-05`: Implemented the planned `model_composed.py` / mock-1D responsibility split. [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py) now requires `model_1d.site_ids` and no longer derives worker ids from `sites`. [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now provides `Model1DConstantWeather` for constant site velocity inputs, while `Model1D` again always loads site data from configured schemas and `KalmanMock` remains only a Kalman-side mock. [hlavo/composed/worker_1d.py](/home/hlavo/workspace/hlavo/composed/worker_1d.py) now chooses between `Model1D` and `Model1DConstantWeather` via `model_1d_class_name`. Updated [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py), [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml), and [runs/composed_3D_only/config.yaml](/home/hlavo/workspace/runs/composed_3D_only/config.yaml) to use the new constant-weather model. Verified with `python3 -m py_compile hlavo/kalman/model_1d.py hlavo/composed/worker_1d.py hlavo/composed/model_composed.py tests/composed/test_composed.py` and `PYTEST_ADDOPTS='tests/composed/test_composed.py -q tests/model_1d/test_model_1d.py -q' timeout 300s tests/run`.
 - `2026-06-05`: Reworked [doc/design.md](/home/hlavo/workspace/doc/design.md) from a current-state summary into a tentative target design note. Added call/construction graph links, narrowed the orchestration weak-point wording around `site_ids`, documented the suggested `Model3D`/`Model3DBackend` rename split, and added `Resolved:` lines under the active `AGENT` notes in that file. Documentation-only change; no tests required.
 - `2026-06-05`: Added [doc/design.md](/home/hlavo/workspace/doc/design.md) with a concise structural overview of the essential runtime classes and functions, plus short design-quality judgments and one-line future risk notes for weaker areas. Documentation-only change; no tests required.
 - `2026-06-04`: Fixed the merge regressions behind [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) and [tests/schemas/test_simulation.py](/home/hlavo/workspace/tests/schemas/test_simulation.py). [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now accepts `model_3d.backend_class_name` from either the top level or `model_3d.common`, and the mock backend again reads `time_step_hours` from the config object it actually receives. [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now supports mock configs that provide `site_ids` instead of `sites` and restores the mock `sensor_depth` field required by measurement setup. [tests/schemas/test_simulation.py](/home/hlavo/workspace/tests/schemas/test_simulation.py) now resolves `simulation_schema.yaml` from the repository path instead of the process working directory. Verified with `python3 -m py_compile hlavo/composed/model_3d.py hlavo/kalman/model_1d.py tests/schemas/test_simulation.py`, `timeout 180s python3 -m pytest tests/composed/test_composed.py -q -s`, and `PYTEST_ADDOPTS='tests/composed/test_composed.py -q tests/schemas/test_simulation.py -q' timeout 240s tests/run`.
@@ -46,3 +41,5 @@
 AGENT: not a big deal, but I will keep this remark for documentation purpose
 - `2026-06-03`: The completed `runs/composed_1d_only` process still reports `Unclosed client session` warnings from `aiohttp` at shutdown. The simulation succeeds, but the underlying zarr/S3 or Dask client-session cleanup should be reviewed separately.
 AGENT: possible known ZARR related problem, but have to review that yet
+
+ - the 3D config ownership split between hlavo/composed/model_3d.py and hlavo/deep_model/model_3d_cfg.py remains the next design-level cleanup item.

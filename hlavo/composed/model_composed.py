@@ -72,11 +72,9 @@ def setup_models(work_dir, config_path, client):
 
 
 def _model_1d_site_ids(model_1d_cfg: dict) -> list[int]:
-    if "site_ids" in model_1d_cfg:
-        return [int(site_id) for site_id in model_1d_cfg["site_ids"]]
-    sites = model_1d_cfg["sites"]
-    assert isinstance(sites, list), "model_1d.sites must be a list"
-    return list(range(len(sites)))
+    raw_site_ids = model_1d_cfg["site_ids"]
+    assert isinstance(raw_site_ids, list), "model_1d.site_ids must be a list"
+    return [int(site_id) for site_id in raw_site_ids]
 
 
 def run_simulation(work_dir: Path, config_path: Path) -> None:

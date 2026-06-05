@@ -12,14 +12,10 @@ TESTS_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = TESTS_DIR / "test_composed_config.yaml"
 
 
-def test_setup_models_uses_real_dask_queues_with_config_mocks(tmp_path, local_mock_profile_surface_store):
+def test_setup_models_uses_real_dask_queues_with_constant_weather_model(tmp_path):
     work_dir = tmp_path / "workdir"
     work_dir.mkdir()
     config_data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    config_data["model_1d"]["schema_files"] = {
-        "profiles": str(local_mock_profile_surface_store["profiles"]),
-        "surface": str(local_mock_profile_surface_store["surface"]),
-    }
     runtime_config_path = tmp_path / "test_composed_runtime_config.yaml"
     runtime_config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
 

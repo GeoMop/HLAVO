@@ -35,54 +35,6 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_mock_config(cls, site_id: int, composed: "ComposedData", config: dict) -> "Model1DData":
-        if "sites" in config:
-            sites = config["sites"]
-            assert isinstance(sites, list), "model_1d.sites must be a list"
-            assert 0 <= site_id < len(sites), f"site_id={site_id} outside configured mock sites"
-            site_cfg = sites[site_id]
-            longitude = float(site_cfg["longitude"])
-            latitude = float(site_cfg["latitude"])
-        else:
-            site_ids = [int(value) for value in config.get("site_ids", [])]
-            assert site_id in site_ids, f"site_id={site_id} outside configured mock site_ids"
-            longitude = float(config.get("mock_longitude", 14.889853))
-            latitude = float(config.get("mock_latitude", 50.863565))
-
-        date_time = np.array([composed.start, composed.end], dtype="datetime64[s]")
-        site_ids = np.array([site_id], dtype=np.int32)
-        depth_level = np.array([0], dtype=np.int32)
-        probe_model = np.array(["mock"], dtype=object)
-        moisture = np.full((date_time.size, site_ids.size, depth_level.size), 0.2, dtype=float)
-        meteo_shape = (date_time.size, site_ids.size)
-
-        profiles = xarray.Dataset(
-            data_vars={
-                "moisture": (("date_time", "site_id", "depth_level"), moisture),
-                "longitude": (("date_time", "site_id"), np.full(meteo_shape, longitude)),
-                "latitude": (("date_time", "site_id"), np.full(meteo_shape, latitude)),
-                "sensor_depth": (("depth_level", "probe_model"), np.array([[0.1]], dtype=float)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-                "depth_level": depth_level,
-                "probe_model": probe_model,
-            },
-        )
-        surface = xarray.Dataset(
-            data_vars={
-                "precipitation": (("date_time", "site_id"), np.ones(meteo_shape, dtype=float)),
-                "temperature": (("date_time", "site_id"), np.full(meteo_shape, 273.15, dtype=float)),
-            },
-            coords={
-                "date_time": date_time,
-                "site_id": site_ids,
-            },
-        )
-        return cls((longitude, latitude), profiles, surface)
-
-    @classmethod
     def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
         select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
         profiles = select(load_measurments_data(scheme_file=
@@ -139,6 +91,69 @@ class KalmanMock:
     def save_results(self):
         return None
 
+
+@attrs.define(frozen=True)
+class ConstantWeatherSite:
+    site_id: int
+    longitude: float
+    latitude: float
+    velocity: float
+
+
+@attrs.define
+class Model1DConstantWeather:
+    composed: 'ComposedData'
+    site: ConstantWeatherSite
+
+    @classmethod
+    def from_config(cls, composed, site_id: int, config: dict) -> "Model1DConstantWeather":
+        site_cfg = cls._site_mapping(config)[site_id]
+        site = ConstantWeatherSite(
+            site_id=site_id,
+            longitude=float(site_cfg["longitude"]),
+            latitude=float(site_cfg["latitude"]),
+            velocity=float(site_cfg["velocity"]),
+        )
+        return cls(composed=composed, site=site)
+
+    @staticmethod
+    def _site_mapping(config: dict) -> dict[int, dict]:
+        raw_site_ids = config["site_ids"]
+        assert isinstance(raw_site_ids, list), "model_1d.site_ids must be a list"
+        raw_sites = config["sites"]
+        assert isinstance(raw_sites, list), "model_1d.sites must be a list"
+        assert len(raw_site_ids) == len(raw_sites), (
+            "model_1d.sites length must match model_1d.site_ids length for Model1DConstantWeather"
+        )
+        site_mapping = {}
+        for raw_site_id, site_cfg in zip(raw_site_ids, raw_sites):
+            site_id = int(raw_site_id)
+            assert isinstance(site_cfg, dict), "Each model_1d.sites item must be a mapping"
+            for required_key in ("longitude", "latitude", "velocity"):
+                assert required_key in site_cfg, (
+                    f"Missing '{required_key}' in model_1d.sites entry for site_id={site_id}"
+                )
+            site_mapping[site_id] = site_cfg
+        return site_mapping
+
+    @property
+    def longitude(self):
+        return self.site.longitude
+
+    @property
+    def latitude(self):
+        return self.site.latitude
+
+    def step(self, start_time, target_time, pressure_at_bottom):
+        _ = start_time
+        _ = target_time
+        _ = pressure_at_bottom
+        return self.site.velocity
+
+    def save_results(self):
+        return None
+
+
 @attrs.define
 class Model1D:
     composed: 'ComposedData'
@@ -150,10 +165,7 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
-        if kalman_class is KalmanMock:
-            data = Model1DData.from_mock_config(site_id, composed, config)
-        else:
-            data = Model1DData.from_config(site_id, composed, config['schema_files'])
+        data = Model1DData.from_config(site_id, composed, config['schema_files'])
         config = Model1D.create_kalman_measurements_config(data, config)
         moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of

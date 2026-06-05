@@ -9,7 +9,8 @@ from dask.distributed import Queue
 from hlavo.composed.common_data import ComposedData
 from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
-from hlavo.kalman.model_1d import Model1D
+from hlavo.kalman.model_1d import Model1D, Model1DConstantWeather
+from hlavo.misc.class_resolve import resolve_named_class
 from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 
@@ -33,7 +34,11 @@ class Worker1D:
     def __init__(self, composed: ComposedData, site_id: int, config: dict):
         self.composed = composed
         self.site_id = site_id
-        self.model = Model1D.from_config(
+        model_1d_class = resolve_named_class(
+            config.get("model_1d_class_name", "Model1D"),
+            (Model1D, Model1DConstantWeather),
+        )
+        self.model = model_1d_class.from_config(
             composed=composed,
             site_id=site_id,
             config=config,
