@@ -35,7 +35,8 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_config(cls, site_id, composed:'ComposedData', schemas) -> "Model1DData":
+    def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
+        schemas = config["schema_files"]
         select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
         profiles = select(load_measurments_data(scheme_file=
                                          composed.relative_resolve(schemas['profiles'])))
@@ -165,9 +166,9 @@ class Model1D:
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
         kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
-        data = Model1DData.from_config(site_id, composed, config['schema_files'])
-        config = Model1D.create_kalman_measurements_config(data, config)
-        moisture_sigma = config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        data = Model1DData.from_config(site_id, composed, config)
+        meas_config = Model1D.create_kalman_measurements_config(data, config)
+        moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
         # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
         # measuerement source classes.

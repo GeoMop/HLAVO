@@ -60,9 +60,10 @@ class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
         self.locations_1d = locations_1d
+        backend_class_name = str(model_3d_cfg["backend_class_name"])
         common_cfg = model_3d_cfg["common"]
         backend_class = resolve_named_class(
-            model_3d_cfg["backend_class_name"],
+            backend_class_name,
             (Model3DBackendMock, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)

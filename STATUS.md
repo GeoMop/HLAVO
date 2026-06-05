@@ -1,5 +1,27 @@
 # Status summary
 
+`2026-06-05`: `92c170a` @ `codex/m1-composed-mock-test` by `Jan Brezina`
+
+## Goal
+Resolve the `tests/composed/test_composed.py` merge by keeping the local `Model1DConstantWeather` target state and split the incoming zarr-backed `Model1D` + `KalmanMock` coverage into its own test/config pair.
+
+## Changes summary
+- Staged: [tests/composed/test_composed.py](/home/hlavo/workspace/tests/composed/test_composed.py) is resolved to the local constant-weather orchestration test again.
+- Staged: [tests/composed/test_composed_kalman_mock.py](/home/hlavo/workspace/tests/composed/test_composed_kalman_mock.py) adds a separate composed test that copies the production schemas, rewrites them to temporary local `file://` zarr stores, fills those stores through `zarr_fuse`, and exercises `Model1D` with `KalmanMock`.
+- Staged: [tests/composed/test_composed_kalman_mock_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_kalman_mock_config.yaml) adds the dedicated config for the new zarr-backed case, including the minimal `kalman_config.measurements_noise_*` keys still required by `Model1D.create_kalman_measurements_config(...)`.
+- Clean after conflict resolution: [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml) stays on the local `Model1DConstantWeather` setup and no longer carries the incoming zarr-mock variant inline.
+
+## Verified
+- `python3 -m py_compile tests/composed/test_composed.py tests/composed/test_composed_kalman_mock.py`
+  result: compile checks passed after the merge split.
+- `timeout 90s python3 - <<'PY' ...`
+  result: direct reproduction of the new zarr-backed composed path completed to `2025-03-07T00:00:00`; the initial hang was traced to missing `kalman_config.measurements_noise_level` / `measurements_noise_distr_type` in the new config and then fixed.
+- `PYTEST_ADDOPTS='tests/composed/test_composed.py -q tests/composed/test_composed_kalman_mock.py -q' timeout 300s tests/run`
+  result: both composed tests passed; pytest reported only the expected `zarr` `UnstableSpecificationWarning` warnings for fixed-length UTF32 string dtypes in the temporary mock stores.
+
+## Open items
+- The new zarr-backed composed test still emits `zarr` `UnstableSpecificationWarning` warnings for fixed-length UTF32 string arrays. The test passes, but the temporary store layout is not warning-free.
+
 `2026-06-04`: `2a57707` @ `main` by `Codex <codex@openai.com>`
 
 ## Goal
