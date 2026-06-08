@@ -8,10 +8,10 @@ on:
 
 jobs:
   deploy:
-    uses: GeoMop/zarr_fuse/.github/workflows/dashboard-reusable-workflow.yaml@feature/hlavo-integration
+    uses: GeoMop/zarr_fuse/.github/workflows/dashboard-reusable-workflow.yaml@feature/dashboard-multiple-selection
     with:
       zarr_repo: GeoMop/zarr_fuse
-      zarr-fuse-ref: feature/hlavo-integration
+      zarr-fuse-ref: feature/dashboard-multiple-selection
       source_repo: ${{ github.repository }}
       source_ref: ${{ github.ref }}
       configuration-dir-path: dashboard/config
