@@ -41,5 +41,5 @@ echo "Virtual environment activated."
 
 # Upgrade pip
 pip install --upgrade pip
-pip install "git+https://github.com/GeoMop/zarr_fuse.git@feature/hlavo-integration"
-pip install "git+https://github.com/GeoMop/zarr_fuse.git@feature/hlavo-integration#subdirectory=dashboard"
+pip install "git+https://github.com/GeoMop/zarr_fuse.git@feature/dashboard-multiple-selection"
+pip install "git+https://github.com/GeoMop/zarr_fuse.git@feature/dashboard-multiple-selection#subdirectory=dashboard"
