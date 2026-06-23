@@ -1,5 +1,29 @@
 # Status summary
 
+`2026-06-08`: `cae58ef` @ `codex/m2-zarr-coupled-output` by `Codex <codex@openai.com>`
+
+## Goal
+Tighten Milestone 2 of the composed coupling plan so the mock naming, config shape, and writer tests match the intended design instead of relying on ad hoc compatibility only.
+
+## Changes summary
+- Unstaged: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now defines canonical `SurfaceMock` and `SurfaceScalingMock` names, keeps `KalmanMock` and `KalmanScalingMock` as compatibility aliases, and makes the scaling mock use an explicit trailing 48-hour precipitation window before converting mean precipitation from `mm/day` to `m/day`.
+- Unstaged: [tests/composed/test_prediction_writer.py](/home/hlavo/workspace/tests/composed/test_prediction_writer.py) now uses canonical Milestone 2 config keys: `model_3d.backend_class_name`, `model_1d.site_ids`, and `kalman_class_name: "SurfaceScalingMock"`.
+- Unstaged: [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml) now uses `kalman_class_name: "SurfaceMock"` instead of the legacy mock name.
+- Unstaged: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now resolves `backend_class_name` safely from either the canonical top-level field or the older nested location without eager fallback evaluation.
+- Unstaged from earlier in this thread and still relevant: [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py) accepts canonical `model_1d.site_ids` and still tolerates legacy `model_1d.sites` by deriving positional ids.
+
+## Verified
+- `python -m py_compile /home/hlavo/workspace/hlavo/kalman/model_1d.py /home/hlavo/workspace/tests/composed/test_prediction_writer.py`
+  compile check passed.
+- `PYTEST_ADDOPTS='tests/composed/test_prediction_writer.py::test_file_prediction_writer_counts_entries -vv -s -o faulthandler_timeout=15' ./tests/run`
+  result: `1 passed`.
+- `PYTEST_ADDOPTS='tests/composed/test_prediction_writer.py tests/composed/test_composed.py -vv -s -o faulthandler_timeout=20' ./tests/run`
+  result: `3 passed`.
+
+## Open items
+- The composed runtime still carries compatibility paths for legacy `Kalman*` mock names and legacy `model_1d.sites`; the tests now use the canonical Milestone 2 shape, but repository-wide cleanup of old configs was not done in this step.
+- Zarr-based tests still emit existing warnings about unstable fixed-length UTF32 dtypes and transient `.partial` objects; no storage-layer cleanup was attempted here.
+
 `2026-04-25`: `7e8010` @ `main` by `Jan Brezina <jan.brezina@tul.cz>`
 
 ## Goal

@@ -16,6 +16,16 @@ from hlavo.misc.config import load_config
 LOG = logging.getLogger(__name__)
 
 
+def _resolve_locations_1d(model_1d_cfg: dict) -> list[int]:
+    if "site_ids" in model_1d_cfg:
+        return [int(site_id) for site_id in model_1d_cfg["site_ids"]]
+
+    if "sites" in model_1d_cfg:
+        return list(range(len(model_1d_cfg["sites"])))
+
+    raise KeyError("model_1d.site_ids")
+
+
 def setup_models(work_dir, config_path, client):
     work_dir = Path(work_dir).resolve()
     config_path = Path(config_path).resolve()
@@ -24,7 +34,7 @@ def setup_models(work_dir, config_path, client):
     config_data, _ = load_config(config_path)
     composed = ComposedData.from_config(work_dir, config_data, config_path)
     model_1d_cfg = config_data["model_1d"]
-    locations_1d = [int(site_id) for site_id in model_1d_cfg["site_ids"]]
+    locations_1d = _resolve_locations_1d(model_1d_cfg)
 
     queue_names_3d_to_1d = []
     futures_1d = []

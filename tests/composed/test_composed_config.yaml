@@ -10,7 +10,7 @@ model_3d:
 
 model_1d:
   site_ids: [1]
-  kalman_class_name: "KalmanMock"
+  kalman_class_name: "SurfaceMock"
   mock_velocity: 3.0e-4
   moisture_sigma: 0.05
   schema_files:

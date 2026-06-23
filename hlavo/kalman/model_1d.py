@@ -63,7 +63,7 @@ class Model1DData:
 
 
 @attrs.define
-class KalmanMock:
+class SurfaceMock:
     fixed_velocity: float = 0.1
     longitude: float = 14.889853
     latitude: float = 50.863565
@@ -93,7 +93,7 @@ class KalmanMock:
 
 
 @attrs.define
-class KalmanScalingMock:
+class SurfaceScalingMock:
     longitude: float = 14.889853
     latitude: float = 50.863565
     precipitation_var: str = "precipitation"
@@ -110,7 +110,7 @@ class KalmanScalingMock:
         _ = ukf
         _ = pressure_at_bottom
         scaling_factor = self._scaling_factor(measurements)
-        precipitation = meteo[self.precipitation_var]
+        precipitation = self._precipitation_window(meteo)
         if precipitation.size == 0:
             mean_precipitation_m_per_day = 0.0
         else:
@@ -125,11 +125,25 @@ class KalmanScalingMock:
         saturation = np.clip(mean_moisture, 0.0, 1.0)
         return 0.1 + 0.7 * saturation
 
+    def _precipitation_window(self, meteo):
+        precipitation = meteo[self.precipitation_var]
+        if precipitation.sizes.get("date_time", 0) == 0:
+            return precipitation
+
+        end_time = np.datetime64(precipitation["date_time"].values[-1], "m")
+        start_time = end_time - np.timedelta64(48, "h")
+        return precipitation.sel(date_time=slice(start_time, end_time))
+
     def set_kalman_filter(self, kalman_R_matrix):
         return kalman_R_matrix
 
     def save_results(self):
         return None
+
+
+SurfaceKalman = KalmanFilter
+KalmanMock = SurfaceMock
+KalmanScalingMock = SurfaceScalingMock
 
 @attrs.define
 class Model1D:
@@ -137,11 +151,14 @@ class Model1D:
     site_id: int
     moisture_sigma: float
     data: Model1DData
-    kalman: KalmanFilter | KalmanMock | KalmanScalingMock
+    kalman: KalmanFilter | SurfaceMock | SurfaceScalingMock
 
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
-        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock, KalmanScalingMock))
+        kalman_class = resolve_named_class(
+            config['kalman_class_name'],
+            (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
+        )
         data = Model1DData.from_config(site_id, composed, config)
 
         mcfg = config.get('model_config', {})

@@ -69,9 +69,9 @@ def _write_config(tmp_path: Path, paths: dict[str, Path], writer_class_name: str
         "start_datetime": "2025-03-01T00:00:00",
         "end_datetime": "2025-04-01T00:00:00",
         "model_3d": {
+            "backend_class_name": "Model3DDelay",
             "common": {
                 "name": "uhelna",
-                "backend_class_name": "Model3DDelay",
                 "time_step_hours": 24.0,
                 "initial_water_level": -60.0,
                 "writer": {
@@ -85,17 +85,14 @@ def _write_config(tmp_path: Path, paths: dict[str, Path], writer_class_name: str
             },
         },
         "model_1d": {
-            "kalman_class_name": "KalmanScalingMock",
+            "kalman_class_name": "SurfaceScalingMock",
             "precipitation_var": "APCP",
             "moisture_sigma": 0.05,
             "schema_files": {
                 "profiles": str(paths["profile_schema"]),
                 "surface": str(paths["surface_schema"]),
             },
-            "sites": [
-                {"longitude": 14.88, "latitude": 50.86},
-                {"longitude": 14.90, "latitude": 50.88},
-            ],
+            "site_ids": [0, 1],
         },
     }
     config_path = tmp_path / f"config_{writer_class_name}.yaml"
