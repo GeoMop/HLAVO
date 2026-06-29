@@ -5,7 +5,6 @@ configuration:
     port: 8000
     worker_poll_interval: 30
   smtp:
-    enabled: true
     notify_to: ["stepan.mocik@gmail.com", "jan.brezina@tul.cz"]
     host: smtp.gmail.com
     port: 587

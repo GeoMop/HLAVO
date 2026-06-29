@@ -18,6 +18,11 @@ jobs:
       docker-registry: docker.io
       zarr-fuse-ref: main
       extra-helm-args: >-
-        --set image.name="jbrezmorf/hlavo-ingress-server" \
-        --set deployment.secrets.smtp.password="${{ secrets.INGRESS_SERVER_SMTP_PASSWORD }}"
-    secrets: inherit
+        --set image.name="jbrezmorf/hlavo-ingress-server"
+    secrets:
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+      BASIC_AUTH_USERS_JSON: ${{ secrets.BASIC_AUTH_USERS_JSON }}
+      SMTP_PASSWORD: ${{ secrets.INGRESS_SERVER_SMTP_PASSWORD }}
