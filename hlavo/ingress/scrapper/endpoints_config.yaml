@@ -1,3 +1,17 @@
+configuration:
+  base:
+    queue_dir_path: /var/zarr_fuse
+    log_level: INFO
+    port: 8000
+    worker_poll_interval: 30
+  smtp:
+    enabled: true
+    notify_to: ["stepan.mocik@gmail.com", "jan.brezina@tul.cz"]
+    host: smtp.gmail.com
+    port: 587
+    from_email: "zarr.fuse.support@gmail.com"
+    username: "zarr.fuse.support@gmail.com"
+
 active_scrappers:
   - name: hlavo-surface-forecast
     schema_path: schemas/hlavo_surface_schema.yaml

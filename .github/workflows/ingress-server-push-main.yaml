@@ -19,4 +19,5 @@ jobs:
       zarr-fuse-ref: main
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
+        --set deployment.secrets.smtp.password="${{ secrets.INGRESS_SERVER_SMTP_PASSWORD }}"
     secrets: inherit
