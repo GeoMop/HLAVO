@@ -2,6 +2,7 @@
 
 runs/composed_3D_only/model_with_mine_work
 runs/composed_3D_only/model_with_mine
+hlavo/deep_model/runs
 
 
 tests/ingress/aladin_data

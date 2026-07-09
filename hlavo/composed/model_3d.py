@@ -63,6 +63,8 @@ class Model3DBackendMock:
 
 
 class Model3DDelay(Model3DBackendMock):
+    TARGET_WATER_LEVEL = -60.0
+
     def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
         super().__init__(composed, model_3d_cfg, locations_1d)
         self.water_level = float(model_3d_cfg["initial_water_level"])
@@ -71,7 +73,9 @@ class Model3DDelay(Model3DBackendMock):
         dt_days = float(dt / np.timedelta64(1, "D"))
         recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)
         self.water_level = self.water_level + float(np.sum(recharge)) * dt_days
-        self.water_level = self.water_level - max(self.water_level - (-60.0), 0.0) * dt_days * 0.1
+        self.water_level = self.water_level - max(
+            self.water_level - self.TARGET_WATER_LEVEL, 0.0
+        ) * dt_days * 0.1
         return {site_id: self.water_level for site_id in self.locations_1d}
 
     def well_prediction(self, wells_dataset):

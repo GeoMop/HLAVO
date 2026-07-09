@@ -22,6 +22,9 @@ def _schema_path(composed: ComposedData, path: str | Path) -> Path:
     return composed.relative_resolve(path)
 
 
+FILE_PREDICTION_NAME = "predictions.jsonl"
+
+
 @attrs.define
 class PredictionWriterBase:
     composed: ComposedData
@@ -52,7 +55,7 @@ class FilePredictionWriter(PredictionWriterBase):
 
     @classmethod
     def from_config(cls, composed: ComposedData, locations_1d: list[int], config: dict):
-        output_path = composed.workdir / config["file_name"]
+        output_path = composed.workdir / FILE_PREDICTION_NAME
         wells_dataset = _load_wells_dataset(composed, config)
         return cls(
             composed=composed,
@@ -103,11 +106,11 @@ class ZarrPredictionWriter(PredictionWriterBase):
 
     @classmethod
     def from_config(cls, composed: ComposedData, locations_1d: list[int], config: dict):
-        schema_path = _schema_path(composed, config["schema_file"])
-        store_url = None
-        if "store_url" in config:
-            store_url = str(composed.relative_resolve(config["store_url"]))
-        root = _open_store(schema_path, store_url)
+        output_schema_path = _schema_path(composed, config["output_schema_file"])
+        output_store_url = None
+        if "output_store_url" in config:
+            output_store_url = str(composed.relative_resolve(config["output_store_url"]))
+        root = _open_store(output_schema_path, output_store_url)
         wells_dataset = _load_wells_dataset(composed, config)
         return cls(
             composed=composed,
@@ -218,14 +221,14 @@ def _open_store(schema_path: Path, store_url: str | None):
     if store_url is None:
         return zf.open_store(schema_path)
 
-    schema = zf.schema.deserialize(schema_path)
-    schema.ds.ATTRS["STORE_URL"] = store_url
-    previous_store_url = os.environ.pop("ZF_STORE_URL", None)
-    try:
-        return zf.open_store(schema)
-    finally:
-        if previous_store_url is not None:
-            os.environ["ZF_STORE_URL"] = previous_store_url
+    previous_store_url = os.environ.get("ZF_STORE_URL")
+    os.environ["ZF_STORE_URL"] = store_url
+    root = zf.open_store(schema_path)
+    if previous_store_url is None:
+        os.environ.pop("ZF_STORE_URL", None)
+    else:
+        os.environ["ZF_STORE_URL"] = previous_store_url
+    return root
 
 
 def _well_coordinates(wells_dataset: xr.Dataset | None, well_id: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

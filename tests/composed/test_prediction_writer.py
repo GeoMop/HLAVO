@@ -76,9 +76,8 @@ def _write_config(tmp_path: Path, paths: dict[str, Path], writer_class_name: str
                 "initial_water_level": -60.0,
                 "writer": {
                     "class_name": writer_class_name,
-                    "file_name": "predictions.jsonl",
-                    "schema_file": str(SIMULATION_SCHEMA),
-                    "store_url": str(tmp_path / "simulation.zarr"),
+                    "output_schema_file": str(SIMULATION_SCHEMA),
+                    "output_store_url": str(tmp_path / "simulation.zarr"),
                     "wells_schema_file": str(paths["wells_schema"]),
                     "wells_store_url": str(paths["wells_store"]),
                 },
