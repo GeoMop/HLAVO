@@ -78,11 +78,12 @@ class SurfaceMock:
         _ = seed
         return cls(fixed_velocity=float(model_1d_cfg.get("mock_velocity", 0.0)))
 
-    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom, site_id=None) -> float:
         _ = ukf
         _ = measurements
         _ = meteo
         _ = pressure_at_bottom
+        _ = site_id
         return self.fixed_velocity
 
     def set_kalman_filter(self, kalman_R_matrix):
@@ -139,11 +140,74 @@ class SurfaceScalingMock:
 
     def save_results(self):
         return None
+        
+        
+@attrs.define(frozen=True)
+class ConstantWeatherSite:
+    site_id: int
+    longitude: float
+    latitude: float
+    velocity: float
 
+
+@attrs.define
+class Model1DConstantWeather:
+    composed: 'ComposedData'
+    site: ConstantWeatherSite
+
+    @classmethod
+    def from_config(cls, composed, site_id: int, config: dict) -> "Model1DConstantWeather":
+        site_cfg = cls._site_mapping(config)[site_id]
+        site = ConstantWeatherSite(
+            site_id=site_id,
+            longitude=float(site_cfg["longitude"]),
+            latitude=float(site_cfg["latitude"]),
+            velocity=float(site_cfg["velocity"]),
+        )
+        return cls(composed=composed, site=site)
+
+    @staticmethod
+    def _site_mapping(config: dict) -> dict[int, dict]:
+        raw_site_ids = config["site_ids"]
+        assert isinstance(raw_site_ids, list), "model_1d.site_ids must be a list"
+        raw_sites = config["sites"]
+        assert isinstance(raw_sites, list), "model_1d.sites must be a list"
+        assert len(raw_site_ids) == len(raw_sites), (
+            "model_1d.sites length must match model_1d.site_ids length for Model1DConstantWeather"
+        )
+        site_mapping = {}
+        for raw_site_id, site_cfg in zip(raw_site_ids, raw_sites):
+            site_id = int(raw_site_id)
+            assert isinstance(site_cfg, dict), "Each model_1d.sites item must be a mapping"
+            for required_key in ("longitude", "latitude", "velocity"):
+                assert required_key in site_cfg, (
+                    f"Missing '{required_key}' in model_1d.sites entry for site_id={site_id}"
+                )
+            site_mapping[site_id] = site_cfg
+        return site_mapping
+
+    @property
+    def longitude(self):
+        return self.site.longitude
+
+    @property
+    def latitude(self):
+        return self.site.latitude
+
+    def step(self, start_time, target_time, pressure_at_bottom):
 
 SurfaceKalman = KalmanFilter
 KalmanMock = SurfaceMock
 KalmanScalingMock = SurfaceScalingMock
+
+        _ = start_time
+        _ = target_time
+        _ = pressure_at_bottom
+        return self.site.velocity
+
+    def save_results(self):
+        return None
+
 
 @attrs.define
 class Model1D:
@@ -160,6 +224,12 @@ class Model1D:
             (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
         )
         data = Model1DData.from_config(site_id, composed, config)
+        meas_config = Model1D.create_kalman_measurements_config(data, config)
+        moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
+        # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
+        # measuerement source classes.
+        # That would allow to 1. construct the Model1D measurement class and pass it to Kalman with the remaining config.
 
         mcfg = config.get('model_config', {})
         clm_f = mcfg.get('clm_files', {})
@@ -173,7 +243,7 @@ class Model1D:
         return Model1D(
                 composed=composed,
                 site_id=site_id,
-                moisture_sigma=float(config["moisture_sigma"]),
+                moisture_sigma=float(moisture_sigma),
                 data=data,
                 kalman=kalman)
 
@@ -203,8 +273,21 @@ class Model1D:
 
 
     def step(self, start_time, target_time, pressure_at_bottom):
+        LOG.debug(
+            "[1D %s] Kalman input window: %s -> %s, pressure_at_bottom=%s",
+            self.site_id,
+            start_time,
+            target_time,
+            pressure_at_bottom,
+        )
         measurements = dataset_time_slice(self.data.profiles_dataset, start_time, target_time)
         meteo = dataset_time_slice(self.data.surface_dataset, start_time, target_time)
+        LOG.debug(
+            "[1D %s] measurement sizes=%s meteo sizes=%s",
+            self.site_id,
+            measurements.sizes,
+            meteo.sizes,
+        )
 
         darcy_velocity = None
         if len(measurements) > 0:
@@ -213,6 +296,7 @@ class Model1D:
                 measurements,
                 meteo,
                 pressure_at_bottom,
+                site_id=self.site_id,
             )
         # TODO: more detailed output and either send through Queue to 3D worker and
         # save to ZARR from there, or excersize zarr parallel write (preallocation and suitable chunking necessary)
@@ -220,3 +304,20 @@ class Model1D:
 
     def save_results(self):
         self.kalman.save_results()
+    @staticmethod
+    def create_kalman_measurements_config(data, config):
+        sensor_depth = np.squeeze(data.profiles_dataset["sensor_depth"].values)
+
+        # Configure Kalman filter measurement settings for training
+        # "moisture" is treated as the observed variable
+        config["kalman_config"]["train_measurements"] = {
+            "moisture": {
+                # Convert sensor depth to centimeters and invert sign
+                "z_pos": sensor_depth * -100,
+                # Measurement noise level (e.g., standard deviation)
+                "noise_level": config["kalman_config"]["measurements_noise_level"],
+                # Type of noise distribution (e.g., Gaussian, uniform)
+                "noise_distr_type": config["kalman_config"]["measurements_noise_distr_type"]
+            }
+        }
+        return config

@@ -1,6 +1,8 @@
 # Sample problem for Richards equation solved by PARFLOW
 #(requires "pftools" Python package provided via pip)
 
+import contextlib
+import logging
 import shutil
 import sys
 import xarray as xr
@@ -16,7 +18,71 @@ from hlavo.misc.auxiliary_functions import set_nested_attr, set_nested_attrs
 from parflow.tools.fs import get_absolute_path
 
 
+LOG = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def redirect_process_output(log_path):
+    log_path = pathlib.Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    stdout_fd = os.dup(1)
+    stderr_fd = os.dup(2)
+    try:
+        with log_path.open("w", buffering=1) as log_file:
+            with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                os.dup2(log_file.fileno(), 1)
+                os.dup2(log_file.fileno(), 2)
+                try:
+                    yield
+                finally:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    os.dup2(stdout_fd, 1)
+                    os.dup2(stderr_fd, 2)
+    finally:
+        os.close(stdout_fd)
+        os.close(stderr_fd)
+
+
 class ToyProblem(AbstractModel):
+    """
+    One-dimensional ParFlow Richards model used as the surface forward model.
+
+    `ToyProblem` wraps a single ParFlow `Run` named `toy_richards`. The x and y
+    grid dimensions are fixed to one cell; the vertical grid, bottom boundary,
+    optional piecewise permeability, dynamic parameter mapping, and optional CLM
+    input files are supplied through `config`.
+
+    Config keys:
+    - `init_pressure`: two values used by `make_linear_pressure()` to build the
+      initial pressure profile. The current implementation interprets them as
+      top and bottom pressure and returns a bottom-to-top vector.
+    - `static_params.ComputationalGrid`: required `Lower.Z`, `DZ`, and `NZ`
+      values for the vertical grid.
+    - `static_params.BCPressure_bottom`: optional bottom pressure boundary
+      value. If absent, `-50` is used.
+    - `static_params.Perm`: optional mapping from upper z coordinates to
+      permeability values for piecewise-constant vertical regions. Without it,
+      the whole domain uses one constant permeability.
+    - `params`: mapping from model/state parameter names to ParFlow attribute
+      paths. `run(..., state_params=...)` applies matching values to these
+      paths before launching ParFlow. Values can target one path or a list of
+      paths.
+    - `use_clm`: optional boolean. When true, the run uses CLM forcing and
+      `clm_files` is required.
+    - `clm_files`: required with `use_clm`; contains `drv_vegm_file` and
+      `drv_vegp_file` paths copied into the run working directory.
+
+    File policy:
+    - `workdir` is the default base working directory for model runs.
+    - Each `run()` uses `working_dir` if provided, otherwise `workdir`.
+    - The selected run directory is removed and recreated at the start of every
+      `run()`.
+    - Runtime input/output filenames are fixed by the wrapper and ParFlow:
+      `toy_richards.init_pressure.pfb`, `toy_richards.*`, `parflow.log`, and,
+      for CLM runs, `drv_vegm.dat`, `drv_vegp.dat`, `drv_clmin.dat`,
+      `narr_1hr.txt`, and CLM diagnostic subdirectories/files.
+    """
     def __init__(self, config, workdir=None):
         # Define a toy problem for PARFLOW simulator
         original_argv = sys.argv
@@ -518,32 +584,71 @@ class ToyProblem(AbstractModel):
             met_data:xr.Dataset=None,
             working_dir=None,
             input_dir=None):
+        """
+        Run one ParFlow simulation interval from an explicit pressure state.
+
+        `run()` is the main entry point used by the Kalman filter. It converts
+        `working_dir` to a `Path`, removes and recreates that directory, writes
+        fixed-name ParFlow input files, redirects ParFlow stdout/stderr to
+        `parflow.log`, launches ParFlow, and leaves the ParFlow data accessor
+        pointed at the completed run directory.
+
+        Parameters:
+        - `init_pressure`: one-dimensional pressure array with length `NZ`.
+          It is written to `toy_richards.init_pressure.pfb` and configured as
+          the ParFlow initial pressure file.
+        - `precipitation_value`: top boundary flux used for non-CLM runs.
+        - `state_params`: optional parameter dictionary. Keys present in
+          `config["params"]` are applied to the mapped ParFlow attributes before
+          launching the run; other keys are ignored.
+        - `start_time`, `stop_time`, `time_step`: timing values for non-CLM
+          runs. Kalman calls pass a fresh interval with `start_time=0`.
+        - `met_data`: CLM forcing dataset. Required when CLM is enabled. It
+          must provide `date_time`, attrs `time_step` and `time_interval`, and
+          variables `DSWR`, `DLWR`, `APCP`, `Temp`, `UGRD`, `VGRD`, `Press`,
+          and `SPFH`.
+        - `working_dir`: optional per-run directory. Kalman passes a unique
+          directory for each state-transition call; otherwise `self._workdir`
+          is used.
+        - `input_dir`: accepted for compatibility with callers; CLM file paths
+          are currently taken from `config["clm_files"]`.
+
+        Outputs:
+        - `parflow.log` contains ParFlow stdout/stderr.
+        - ParFlow writes fixed-name pressure, saturation, velocity, metadata,
+          and YAML files under `working_dir`.
+        - Use `get_data(current_time_step, "pressure" | "moisture" |
+          "velocity")` after the run to read arrays used by the Kalman filter.
+        """
         if working_dir is None:
             working_dir = self._workdir
+        working_dir = pathlib.Path(working_dir)
         shutil.rmtree(working_dir)
         os.makedirs(working_dir)
 
-        if self._run.Solver.LSM == "CLM":
-            # set time interval and step from meteorological dataset
-            start_time = 0
-            stop_time = met_data.time_interval / np.timedelta64(1, 'h')
-            time_step = met_data.time_step / np.timedelta64(1, 'h')
-            precipitation_value = 0 # precipitation is computed by CLM
-            self.prepare_clm(working_dir, input_dir, met_data)
+        log_path = working_dir / "parflow.log"
+        with redirect_process_output(log_path):
+            if self._run.Solver.LSM == "CLM":
+                # set time interval and step from meteorological dataset
+                start_time = 0
+                stop_time = met_data.time_interval / np.timedelta64(1, 'h')
+                time_step = met_data.time_step / np.timedelta64(1, 'h')
+                precipitation_value = 0 # precipitation is computed by CLM
+                self.prepare_clm(working_dir, input_dir, met_data)
 
-        if state_params is not None:
-            self.set_dynamic_params(state_params)
-        self._run.Patch.top.BCPressure.alltime.Value = precipitation_value
-        self.set_init_pressure(init_pressure, working_dir=working_dir)
-        self._run.TimingInfo.StartTime = start_time
-        self._run.TimingInfo.StopTime = stop_time
-        self._run.TimeStep.Value = time_step
-        self._run.TimingInfo.DumpInterval = -1
+            if state_params is not None:
+                self.set_dynamic_params(state_params)
+            self._run.Patch.top.BCPressure.alltime.Value = precipitation_value
+            self.set_init_pressure(init_pressure, working_dir=working_dir)
+            self._run.TimingInfo.StartTime = start_time
+            self._run.TimingInfo.StopTime = stop_time
+            self._run.TimeStep.Value = time_step
+            self._run.TimingInfo.DumpInterval = -1
 
-        print("start: {} stop: {} step: {}".format(start_time, stop_time, time_step))
+            LOG.debug("ParFlow run timing: start=%s stop=%s step=%s", start_time, stop_time, time_step)
 
-        self._run.run(working_directory=str(working_dir))
-        self._run.write(file_format='yaml')
+            self._run.run(working_directory=str(working_dir))
+            self._run.write(file_format='yaml')
 
         settings.set_working_directory(working_dir)
 

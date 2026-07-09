@@ -37,6 +37,9 @@ class Model3DBackendMock:
         self.locations_1d = locations_1d
         self.model_3d_cfg = model_3d_cfg
         self._heads = np.zeros(len(locations_1d), dtype=float)
+        hours = float(model_3d_cfg.get("time_step_hours", 24 * 5))
+        seconds = max(1, int(round(hours * 3600)))
+        self.time_step = np.timedelta64(seconds, "s")
 
     def build_cell_assignment(self) -> None:
         return None
@@ -46,15 +49,13 @@ class Model3DBackendMock:
 
     def choose_dt(self, current_time: float, t_end: float) -> float:
         remaining = t_end - current_time
-        time_step_hours = float(self.model_3d_cfg["time_step_hours"])
-        max_step = np.timedelta64(int(round(time_step_hours * 3600)), "s")
-        return max(min(max_step, remaining), np.timedelta64(1, 's'))
+        return max(min(self.time_step, remaining), np.timedelta64(1, 's'))
 
-    def model_step(self, dt: float, contributions) -> np.ndarray:
+    def model_step(self, dt: float, contributions) -> dict[int, float]:
         dt_days = float(dt / np.timedelta64(1, "D"))
-        recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)
-        self._heads = self._heads + recharge * dt_days
-        return {site_id: self._heads[i] for i, site_id in enumerate(self.locations_1d)}
+        # Keep mock heads keyed by site_id because the next 3D loop reads them by site_id.
+        self._heads = np.asarray([contributions[site_id] for site_id in self.locations_1d], dtype=float)
+        return self.initial_heads_to_1d()
 
     def well_prediction(self, wells_dataset):
         _ = wells_dataset
@@ -116,6 +117,7 @@ class Model3D:
             assert  dt > np.timedelta64(0, 's'), f"Non-positive time step: {dt}"
 
             target_time = time + dt
+            assert target_time > time, f"Non-advancing 3D target time: time={time}, target_time={target_time}, dt={dt}"
             LOG.info("[3D] === Step: t=%s -> t=%s ===", time, target_time)
 
             for i, site_id in enumerate(self.locations_1d):
@@ -150,4 +152,4 @@ class Model3D:
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
         if self.writer is not None:
             self.writer.close()
-        return heads_to_1d
+        return time

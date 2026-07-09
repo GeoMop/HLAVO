@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import logging
 from pathlib import Path
 
 from hlavo.composed.model_composed import run_simulation
 from hlavo.deep_model.build_modflow_grid import build_model
+from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 from hlavo.tools import zf
 
 LOG = logging.getLogger(__name__)
@@ -58,6 +60,19 @@ def _configure_logging() -> None:
     )
 
 
+def configure_calculation_logging(workdir: Path, log_name: str = "hlavo_main.log", reset: bool = False) -> Path:
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    log_path = workdir / log_name
+    if reset:
+        log_path.unlink(missing_ok=True)
+
+    set_hlavo_loggers()
+    resolved_log_path = ensure_debug_file_handler(log_path, "_hlavo_main_log_handler")
+    ensure_stdout_handler("_hlavo_stdout_handler")
+    return resolved_log_path
+
+
 def _run_build_model(*, config_path: Path, workdir: Path) -> int:
     build_config = build_model(config_source=config_path, workspace=workdir)
     LOG.info("3D model built in %s", build_config.workspace)
@@ -65,6 +80,8 @@ def _run_build_model(*, config_path: Path, workdir: Path) -> int:
 
 
 def _run_simulate(*, config_path: Path, workdir: Path) -> int:
+    log_path = configure_calculation_logging(workdir, reset=True)
+    LOG.info("Calculation started at %s; log: %s", datetime.now().isoformat(timespec="seconds"), log_path)
     run_simulation(work_dir=workdir, config_path=config_path)
     return 0
 

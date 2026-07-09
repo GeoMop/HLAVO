@@ -359,36 +359,3 @@ def read_storage(storage_path: str | Path = None):
     # place debug pause here and view pandas dataframe
     rdf_pd = rdf.sort(["site_id", "date_time", "depth_level"]).to_pandas()
     pass
-
-
-if __name__ == '__main__':
-    root_path = Path(__file__).parents[4]
-    # main(source_dir=root_path / "tests/ingress/moist_profile/20260201T205548_dataflow_grab",
-    #      storage_path=root_path / "tests/ingress/moist_profile/test_storage")
-        # storage_path = "test_storage")
-    # 2025 01-06
-    # main(source_dir="../20260301T224908_dataflow_grab",
-    #      storage_path=Path("storage_2025"))
-    # 2025 07-12
-    # main(source_dir="../20260301T225923_dataflow_grab",
-    #      storage_path=Path("storage_2025"))
-    # main(source_dir="../test_empty",
-    #      storage_path=Path("storage_empty"))
-
-
-    # TO S3
-    storage_url = "s3://hlavo-testing/profiles.zarr"
-    # storage_url = "s3://hlavo-release/profiles.zarr"
-    # remove_storage(schema_path=Path("../profile_schema.yaml"), storage_path=storage_url)
-    # data from 2025 01-06
-    # main(source_dir="../20260301T224908_dataflow_grab",
-    #      storage_path=storage_url)
-    # data from 2025 07-12
-    # main(source_dir="../20260301T225923_dataflow_grab",
-    #      storage_path=storage_url)
-    read_storage(storage_url)
-
-    # read to check zarr storage
-    # read_storage(storage_path=Path("test_storage"))
-    # read_storage(storage_path=root_path / "tests/ingress/moist_profile/test_storage")
-    # read_storage(storage_path=Path("storage_2025"))

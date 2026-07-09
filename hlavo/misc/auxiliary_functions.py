@@ -1,6 +1,10 @@
 import numpy as np
 import scipy as sc
 from functools import reduce
+import logging
+
+
+LOG = logging.getLogger(__name__)
 
 
 def nearestPD(A):
@@ -25,7 +29,7 @@ def nearestPD(A):
     A3 = (A2 + A2.T) / 2
 
     if isPD(A3):
-        print("isPD")
+        LOG.debug("nearest positive-definite matrix accepted without correction")
         return A3
 
     spacing = np.spacing(np.linalg.norm(A))
@@ -41,7 +45,7 @@ def nearestPD(A):
     I = np.eye(A.shape[0])
     k = 1
     while not isPD(A3):
-        print("while not isPD")
+        LOG.debug("nearest positive-definite correction iteration %s", k)
         mineig = np.min(np.real(np.linalg.eigvals(A3)))
         A3 += I * (-mineig * k**2 + spacing)
         k += 1
@@ -59,16 +63,17 @@ def isPD(B):
 
 
 def sqrt_func(x):
-    print("sqrt func call")
     try:
         result = sc.linalg.cholesky(x)
-    except:# np.linalg.LinAlgError:
-        #x = (x + x.T)/2
+    except sc.linalg.LinAlgError:
+        # UKF sigma point generation needs a positive-definite covariance factor.
+        # Numerical roundoff can produce a nearly positive semidefinite matrix.
+        LOG.debug("Cholesky failed, replacing covariance by nearest positive-definite matrix")
         x = nearestPD(x)
         e_val, e_vec = np.linalg.eigh(x)
-        print("e_val ", e_val)
+        LOG.debug("corrected covariance eigenvalues=%s", e_val)
         result = sc.linalg.cholesky(x)
-        print("result ", result)
+        LOG.debug("corrected Cholesky factor=%s", result)
     return result
 
 
@@ -132,7 +137,7 @@ def add_noise(data_array, noise_level=0.1, distr_type="uniform", seed=12345):
             #    std = np.abs(data_array * noise_level)
 
             value_noise = np.random.normal(0, noise_level)
-            print("value: {}, noise: {}, value + noise: {}".format(data_array, value_noise, data_array + value_noise))
+            LOG.debug("gaussian noise: value=%s, noise=%s, value_plus_noise=%s", data_array, value_noise, data_array + value_noise)
 
             data_array = data_array + value_noise
 
@@ -140,6 +145,6 @@ def add_noise(data_array, noise_level=0.1, distr_type="uniform", seed=12345):
             # for idx in different_signs_indices:
             #     data_array[idx] *= -1
 
-    print("data array ", data_array)
+    LOG.debug("noisy data array=%s", data_array)
 
     return data_array

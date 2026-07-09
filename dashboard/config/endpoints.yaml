@@ -140,21 +140,21 @@ chmi_stations:
 
   variable_map:
     Uhelna:
-      # raw_data:
-      #   open_meteo:
-      #     lat: "latitude"
-      #     lon: "longitude"
-      #     time: "date_time"
-      #     vertical: null
-      #     entity: "longitude"
-      # 
-      #   chmi_stations:
-      #     lat: "latitude"
-      #     lon: "longitude"
-      #     time: "date_time"
-      #     vertical: null
-      #     entity: "longitude"
-      # 
+      raw_data:
+        open_meteo:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: null
+          entity: "site_id"
+
+        chmi_stations:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: null
+          entity: "station_id"
+
       parflow:
         version_01:
           lat: "latitude"
@@ -207,34 +207,36 @@ surface_forecast:
   source:
     type: "s3"
     store_type: "zarr"
-    uri: "s3://hlavo-release/hlavo-release.zarr"
+    uri: "/home/jb/workspace/HLAVO/tests/schemas/simulations.zarr"
+    #uri: "s3://hlavo-release/hlavo-release.zarr"
     schema_path: "schemas/hlavo_surface_schema.yaml"
 
   variable_map:
-    yr.no:
-      lat: "latitude"
-      lon: "longitude"
-      time: "date_time"
-      vertical: null
-      entity: "lat_lon"
+    Uhelna:
+      site_prediction:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: "calibration"
+          entity: "site_id"
 
-    chmi_aladin_10m:
-      lat: "latitude"
-      lon: "longitude"
-      time: "date_time"
-      vertical: null
-      entity: "longitude"
+      well_prediction:
+          lat: "latitude"
+          lon: "longitude"
+          time: "date_time"
+          vertical: "calibration"
+          entity: "well_id"
 
   defaults:
-    display_variable: "air_temperature"
-    group_path: "/yr.no"
+    display_variable: "water_level"
+    group_path: "/well_predictions"
 
   visualization:
     map:
       center_lat: 50.8645
       center_lon: 14.892
       zoom: 10
-      title: "Surface meteorology forecasts"
+      title: "Positions of wells and moisture probes."
       point_size: 6
       alpha: 0.8
     timeseries:

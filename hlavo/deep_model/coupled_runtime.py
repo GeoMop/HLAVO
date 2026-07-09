@@ -1,3 +1,7 @@
+# TODO:
+# Rename to model_3d.py (after Model3D -> Worker3D
+# Move here Model3dBackendMock.
+
 from __future__ import annotations
 
 import logging
