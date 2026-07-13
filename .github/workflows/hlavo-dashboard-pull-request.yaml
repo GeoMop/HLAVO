@@ -26,9 +26,6 @@ jobs:
       release-name: hlavo-dashboard-ui
       configmap_name: hlavo-dashboard-config
       mount-volume-name: hlavo-config
-      mount-endpoints-path: /opt/hlavo/dashboard/config/endpoints.yaml
-      mount-schemas-path: /opt/hlavo/dashboard/schemas
-      mount-env-name: ENDPOINTS_PATH
     secrets:
       kubeconfig: ${{ secrets.KUBECONFIG }}
       source_repo_token: ${{ secrets.GITHUB_TOKEN }}
