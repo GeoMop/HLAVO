@@ -63,7 +63,7 @@ class Model1DData:
 
 
 @attrs.define
-class KalmanMock:
+class SurfaceMock:
     fixed_velocity: float = 0.1
     longitude: float = 14.889853
     latitude: float = 50.863565
@@ -93,6 +93,55 @@ class KalmanMock:
         return None
 
 
+@attrs.define
+class SurfaceScalingMock:
+    longitude: float = 14.889853
+    latitude: float = 50.863565
+    precipitation_var: str = "precipitation"
+
+    @classmethod
+    def from_config(cls, workdir, config_source, verbose=False, seed=None):
+        config_data, _ = load_config(config_source)
+        _ = workdir
+        _ = verbose
+        _ = seed
+        return cls(precipitation_var=str(config_data.get("precipitation_var", "precipitation")))
+
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+        _ = ukf
+        _ = pressure_at_bottom
+        scaling_factor = self._scaling_factor(measurements)
+        precipitation = self._precipitation_window(meteo)
+        if precipitation.size == 0:
+            mean_precipitation_m_per_day = 0.0
+        else:
+            mean_precipitation_m_per_day = float(precipitation.mean()) * 1.0e-3
+        return scaling_factor * mean_precipitation_m_per_day
+
+    @staticmethod
+    def _scaling_factor(measurements) -> float:
+        if measurements.sizes.get("date_time", 0) == 0:
+            return 0.1
+        mean_moisture = float(measurements["moisture"].mean())
+        saturation = np.clip(mean_moisture, 0.0, 1.0)
+        return 0.1 + 0.7 * saturation
+
+    def _precipitation_window(self, meteo):
+        precipitation = meteo[self.precipitation_var]
+        if precipitation.sizes.get("date_time", 0) == 0:
+            return precipitation
+
+        end_time = np.datetime64(precipitation["date_time"].values[-1], "m")
+        start_time = end_time - np.timedelta64(48, "h")
+        return precipitation.sel(date_time=slice(start_time, end_time))
+
+    def set_kalman_filter(self, kalman_R_matrix):
+        return kalman_R_matrix
+
+    def save_results(self):
+        return None
+        
+        
 @attrs.define(frozen=True)
 class ConstantWeatherSite:
     site_id: int
@@ -146,6 +195,11 @@ class Model1DConstantWeather:
         return self.site.latitude
 
     def step(self, start_time, target_time, pressure_at_bottom):
+
+SurfaceKalman = KalmanFilter
+KalmanMock = SurfaceMock
+KalmanScalingMock = SurfaceScalingMock
+
         _ = start_time
         _ = target_time
         _ = pressure_at_bottom
@@ -161,11 +215,14 @@ class Model1D:
     site_id: int
     moisture_sigma: float
     data: Model1DData
-    kalman: KalmanFilter | KalmanMock
+    kalman: KalmanFilter | SurfaceMock | SurfaceScalingMock
 
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
-        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
+        kalman_class = resolve_named_class(
+            config['kalman_class_name'],
+            (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
+        )
         data = Model1DData.from_config(site_id, composed, config)
         meas_config = Model1D.create_kalman_measurements_config(data, config)
         moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
