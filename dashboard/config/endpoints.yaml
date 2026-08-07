@@ -260,7 +260,7 @@ surface_forecast:
       cache_dir: ""
 
   tile_build:
-    enabled: false
+    enabled: true
     source_image: ""
     georef_file: ""
     vrt_file: ""
