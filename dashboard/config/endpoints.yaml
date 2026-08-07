@@ -255,12 +255,12 @@ surface_forecast:
       middle_window_days: 7
       right_window_hours: 24
     overlay:
-      enabled: false
+      enabled: true
       tile_url: ""
       cache_dir: ""
 
   tile_build:
-    enabled: true
+    enabled: false
     source_image: ""
     georef_file: ""
     vrt_file: ""
