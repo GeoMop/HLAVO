@@ -19,7 +19,7 @@ jobs:
 
       source_repo: ${{ github.repository }}
       source_ref: ${{ github.sha }}
-      source-endpoints-path: dashboard/config/endpoints.yaml
+      source-views-path: dashboard/config/zf_views.yaml
       source-schemas-path: dashboard/config/schemas
 
       frontend_image: jbrezmorf/hlavo-dashboard-ui-frontend
