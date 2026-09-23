@@ -1,5 +1,7 @@
 ## Curent goals
 
+- Continue milestones in `MILESTONES.md` (M1, M2 done; next M3).
+
 
 ## Current Repository State
 

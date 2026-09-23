@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import time
 from typing import *
 
 import logging
@@ -87,6 +89,34 @@ class Model3DDelay(Model3DBackendMock):
         return {str(well_id): self.water_level for well_id in wells_dataset["well_id"].values}
 
 
+QUEUE_POLL_MAX_SECONDS = 1.0
+
+
+def _receive_from_1d(queue: Queue, worker_futures: dict | None):
+    """Block on the 1D->3D queue, but fail fast if a 1D worker has died.
+
+    A plain ``queue.get()`` waits forever when a worker raises, turning any
+    1D failure into a silent hang. Poll ``qsize()`` instead (``get(timeout=...)``
+    makes the dask scheduler log a traceback on every timeout) and re-raise the
+    worker's original exception via ``future.result()``. The 3D model is the only
+    consumer of this queue, so ``get()`` after a positive ``qsize()`` does not block.
+    """
+    delay = 0.01
+    while True:
+        if queue.qsize() > 0:
+            return queue.get()
+        for site_id, future in (worker_futures or {}).items():
+            if future.status == "error":
+                LOG.error("[3D] 1D worker for site_id=%s failed", site_id)
+                future.result()  # re-raises the worker's exception
+            if future.status == "cancelled":
+                raise RuntimeError(f"1D worker for site_id={site_id} was cancelled.")
+            # status "finished" is legal: on the last step a worker may end
+            # while the 3D model still waits for other sites.
+        time.sleep(delay)
+        delay = min(2 * delay, QUEUE_POLL_MAX_SECONDS)
+
+
 class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
@@ -108,6 +138,7 @@ class Model3D:
         self,
         queue_names_out_to_1d: list[str],
         queue_name_in_from_1d: str,
+        worker_futures: dict | None = None,
     ):
         start_t = self.composed.start
         time = start_t
@@ -140,7 +171,7 @@ class Model3D:
             contributions = {}
             site_messages = []
             while len(contributions) < len(self.locations_1d):
-                msg_in = q_1d_to_3d.get()
+                msg_in = _receive_from_1d(q_1d_to_3d, worker_futures)
                 assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
                 id = int(msg_in.site_id)
                 assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id

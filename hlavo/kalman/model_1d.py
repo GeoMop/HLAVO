@@ -18,7 +18,14 @@ LOG = logging.getLogger(__name__)
 
 
 def dataset_time_slice(dataset, start_time: np.datetime64, stop_time: np.datetime64):
-    return dataset.sel(date_time=slice(start_time, stop_time))
+    """Select the half-open window [start_time, stop_time).
+
+    Label slicing in xarray includes both ends, which would feed a sample lying
+    exactly on a step boundary into two consecutive steps.
+    """
+    date_time = dataset["date_time"].values
+    mask = (date_time >= np.datetime64(start_time)) & (date_time < np.datetime64(stop_time))
+    return dataset.isel(date_time=np.flatnonzero(mask))
 
 
 @attrs.define(frozen=True)

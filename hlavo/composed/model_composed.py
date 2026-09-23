@@ -65,6 +65,7 @@ def setup_models(work_dir, config_path, client):
     final_state_3d = model_3d.run_loop(
         queue_names_out_to_1d=queue_names_3d_to_1d,
         queue_name_in_from_1d=queue_name_1d_to_3d,
+        worker_futures=dict(zip(locations_1d, futures_1d)),
     )
 
     LOG.info("[SETUP] Waiting for all 1D models to finish...")
