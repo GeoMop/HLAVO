@@ -69,6 +69,9 @@ class Model3DDelay(Model3DBackendMock):
         super().__init__(composed, model_3d_cfg, locations_1d)
         self.water_level = float(model_3d_cfg["initial_water_level"])
 
+    def initial_heads_to_1d(self) -> dict[int, float]:
+        return {site_id: self.water_level for site_id in self.locations_1d}
+
     def model_step(self, dt: float, contributions) -> dict[int, float]:
         dt_days = float(dt / np.timedelta64(1, "D"))
         recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)

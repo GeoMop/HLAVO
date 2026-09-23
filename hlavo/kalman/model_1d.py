@@ -107,9 +107,10 @@ class SurfaceScalingMock:
         _ = seed
         return cls(precipitation_var=str(config_data.get("precipitation_var", "precipitation")))
 
-    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom) -> float:
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom, site_id=None) -> float:
         _ = ukf
         _ = pressure_at_bottom
+        _ = site_id
         scaling_factor = self._scaling_factor(measurements)
         precipitation = self._precipitation_window(meteo)
         if precipitation.size == 0:
@@ -195,11 +196,6 @@ class Model1DConstantWeather:
         return self.site.latitude
 
     def step(self, start_time, target_time, pressure_at_bottom):
-
-SurfaceKalman = KalmanFilter
-KalmanMock = SurfaceMock
-KalmanScalingMock = SurfaceScalingMock
-
         _ = start_time
         _ = target_time
         _ = pressure_at_bottom
@@ -207,6 +203,11 @@ KalmanScalingMock = SurfaceScalingMock
 
     def save_results(self):
         return None
+
+
+SurfaceKalman = KalmanFilter
+KalmanMock = SurfaceMock
+KalmanScalingMock = SurfaceScalingMock
 
 
 @attrs.define
@@ -224,8 +225,11 @@ class Model1D:
             (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
         )
         data = Model1DData.from_config(site_id, composed, config)
-        meas_config = Model1D.create_kalman_measurements_config(data, config)
-        moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        if kalman_class is KalmanFilter:
+            meas_config = Model1D.create_kalman_measurements_config(data, config)
+            moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        else:
+            moisture_sigma = config["moisture_sigma"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
         # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
         # measuerement source classes.
