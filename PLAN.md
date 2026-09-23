@@ -1,6 +1,6 @@
 ## Curent goals
 
-- Continue milestones in `MILESTONES.md` (M1, M2 done; next M3).
+- Continue milestones in `MILESTONES.md` (M1-M3 done; next M4).
 
 
 ## Current Repository State
