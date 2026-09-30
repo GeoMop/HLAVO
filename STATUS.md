@@ -1,5 +1,28 @@
 # Status summary
 
+`2026-09-30`: `3c01cbf` @ `codex/m2-zarr-coupled-output` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Add a run `runs/composed_3d_writer`: the composed model (Model1D + SurfaceScalingMock, Model3DDelay) over March 2025 writing its predictions into a local ZARR store, running without network access.
+
+## Changes summary
+- Committed on top of `3c01cbf`: [runs/composed_3d_writer/config.yaml](/home/hlavo/workspace/runs/composed_3d_writer/config.yaml), [runs/composed_3d_writer/run_simulate.sh](/home/hlavo/workspace/runs/composed_3d_writer/run_simulate.sh), [runs/composed_3d_writer/prepare_inputs.py](/home/hlavo/workspace/runs/composed_3d_writer/prepare_inputs.py) (synthetic local profile/meteo/wells stores + schema copies in `inputs/`, called by `run_simulate.sh`), [runs/composed_3d_writer/README.md](/home/hlavo/workspace/runs/composed_3d_writer/README.md).
+- Committed: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) and [hlavo/composed/prediction_writer.py](/home/hlavo/workspace/hlavo/composed/prediction_writer.py) load with `.compute(scheduler="synchronous")`, identical to the Dask deadlock fix in `2a951fa` on `codex/m3-modflowapi`.
+- Committed: `.gitignore` (run outputs `simulation.zarr`, `inputs`), [PLAN.md](/home/hlavo/workspace/PLAN.md) QaR items (APCP unit, writer `mode="w"`, duplicated input builders, deadlock wording, zarr_fuse writes on open).
+- Committed: [doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md): open question with options for the zarr_fuse issue below.
+
+## Verified
+- `runs/composed_3d_writer/run_simulate.sh 2>&1 | tee runs/composed_3d_writer/run.log`:
+  - with S3 inputs: failed, connection timeout to `s3.cl4.du.cesnet.cz` (S3 server problem); switched to local inputs.
+  - local inputs, before the deadlock fix: `prepare_inputs.py` wrote all three stores; the run hung in the meteo load of site 2 (Dask deadlock).
+  - local inputs, with the deadlock fix: fails at the start with `ContainsGroupError ... at path 'Uhelna'` from `zf.open_store` in `load_meteo_data` (concurrent opens of the same store by the two 1D workers); the fail-fast loop reported it immediately.
+- No unit tests run after the two-line deadlock change on this branch (same change passed `tests/composed` on `codex/m3-modflowapi`).
+
+## Open items
+- Decide the zarr_fuse fix ([doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)); the run cannot pass with 2 sites until then (1 site as a stopgap).
+- After the run passes: check `simulation.zarr` contents and the README inspection command, add the AGENT log entry, run `tests/composed`.
+- The run is committed in its failing state (2 sites); see the first open item.
+
 `2026-09-30`: `eb16876` @ `codex/m2-zarr-coupled-output` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal

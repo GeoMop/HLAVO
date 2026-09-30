@@ -214,7 +214,8 @@ def _load_wells_dataset(composed: ComposedData, config: dict) -> xr.Dataset | No
     if "wells_store_url" in config:
         store_url = str(composed.relative_resolve(config["wells_store_url"]))
     root = _open_store(_schema_path(composed, config["wells_schema_file"]), store_url)
-    return root["Uhelna"]["water_levels"].dataset.compute()
+    # Local load; do not route through the (possibly busy) distributed cluster, see Model1DData.
+    return root["Uhelna"]["water_levels"].dataset.compute(scheduler="synchronous")
 
 
 def _open_store(schema_path: Path, store_url: str | None):

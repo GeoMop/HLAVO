@@ -1,0 +1,47 @@
+# Composed 1D-3D run writing its predictions into a local ZARR store.
+# Runs fully locally: the inputs (profiles, meteo, wells) are synthetic local ZARR stores created
+# in inputs/ by prepare_inputs.py (called by run_simulate.sh). To use the real S3 stores instead,
+# point the schema files below to the schemas in hlavo/ingress/... (needs .secrets_env credentials).
+# All relative paths are relative to this file; outputs go to the workdir (this folder, see run_simulate.sh).
+seed: 123456
+# Simulated interval: March 2025, covered by the generated inputs (prepare_inputs.py).
+start_datetime: "2025-03-01T00:00:00"
+end_datetime: "2025-04-01T00:00:00"
+
+model_3d:
+  backend_class_name: "Model3DDelay"
+  # Mock deep model: one water-level accumulator shared by all sites, fed by the 1D recharge
+  # and draining towards the initial level. The real MODFLOW backend (Model3DBackend) needs
+  # the geometry work of milestone 4.
+  common:
+    name: "uhelna"
+    time_step_hours: 24.0
+    # Coupling step [h]: every 24 h the 3D model sends heads to the 1D models and receives recharge.
+    initial_water_level: -60.0
+    # Model3DDelay: initial and equilibrium water level [m] relative to the surface.
+    writer:
+      class_name: "ZarrPredictionWriter"
+      output_schema_file: ../../hlavo/schemas/simulation_schema.yaml
+      # Structure of the output store: nodes Uhelna/site_prediction and Uhelna/well_prediction.
+      output_store_url: simulation.zarr
+      # Local output store in the workdir; overrides STORE_URL of the output schema.
+      wells_schema_file: inputs/wells_schema.yaml
+      # Wells store read for the well ids and positions of well_prediction (local, prepare_inputs.py).
+
+model_1d:
+  model_1d_class_name: "Model1D"
+  # 1D model reading site profiles and meteo from the ZARR stores given in schema_files.
+  kalman_class_name: "SurfaceScalingMock"
+  # Mock of the surface model: recharge = scaling(mean profile moisture, 0.1..0.8) * mean precipitation
+  # over the last 48 h of the step.
+  precipitation_var: "APCP"
+  # Precipitation variable of the meteo node Uhelna/parflow/version_01.
+  # ?? APCP is declared (and generated) in mm/s, the mock treats it as mm/day (see QaR in PLAN.md).
+  moisture_sigma: 0.05
+  # Standard deviation of the moisture measurements; required by Model1D, not used by the mock.
+  site_ids: [1, 2]
+  # Sites present in the generated inputs (prepare_inputs.py, SITES).
+  schema_files:
+    profiles: inputs/profile_schema.yaml
+    surface: inputs/chmi_stations_schema.yaml
+    # Schema copies written by prepare_inputs.py, STORE_URL pointing to the local stores in inputs/.

@@ -1,0 +1,208 @@
+ATTRS:
+  description: Storage for the moisture profile monitoring network. Optionally amended
+    by the local meteo data.
+  S3_ENDPOINT_URL: https://s3.cl4.du.cesnet.cz
+  STORE_URL: /home/hlavo/workspace/runs/composed_3d_writer/inputs/profiles.zarr
+Uhelna:
+  profiles:
+    ATTRS:
+      description: Moisture profile data
+      VERSION: 0.3.0
+      ingress:
+        location_file: site_coords.csv
+        status_file: site_status.csv
+    VARS: &id001
+      T_sensor:
+        unit: deg C
+        type: float
+        na_value: nan
+        description: Temperature of sensor
+        coords:
+        - date_time
+        - site_id
+        - depth_level
+      T_probe:
+        unit: deg C
+        type: float
+        na_value: nan
+        description: Temperature of probe head (Odyssey, PR2 - measured surface temperature)
+        coords:
+        - date_time
+        - site_id
+      moisture:
+        unit: ''
+        type: float
+        na_value: nan
+        description: 'Moisture reading of the probe. Should be proportional to (absolute)
+          volumetric water (usual range: (0, 35))'
+        coords:
+        - date_time
+        - site_id
+        - depth_level
+      permeability:
+        unit: ''
+        type: float
+        description: Relative permeability, original physically based reading.
+        coords:
+        - date_time
+        - site_id
+        - depth_level
+      longitude:
+        description: GPS. Signed Earth longitude. Indicated by the probe itself.
+        unit: deg
+        type: float
+        na_value: nan
+        coords:
+        - date_time
+        - site_id
+      latitude:
+        description: GPS. Signed Earth latitude. Indicated by the probe itself.
+        unit: deg
+        type: float
+        na_value: nan
+        coords:
+        - date_time
+        - site_id
+      probe_id:
+        description: Moisture profile probe ID. U-n for Odyssey. PR-n for PR2 probes.
+        type: str[16]
+        coords:
+        - date_time
+        - site_id
+      site_status:
+        description: 'Integer status code of the site: positive - ok, negative - data
+          invalid.'
+        type: int32
+        na_value: 0
+        coords:
+        - date_time
+        - site_id
+      sensor_depth:
+        unit: meter
+        type: float
+        na_value: nan
+        coords:
+        - depth_level
+        - probe_model
+      manufacture_id:
+        description: Original manufacturer uid.
+        type: str[12]
+        coords:
+        - date_time
+        - site_id
+    COORDS:
+      date_time:
+        unit:
+          tick: m
+          tz: UTC
+        description: Time coordinate
+        sorted: None
+        chunk_size: 1024
+        step_limits:
+        - 15
+        - 15
+        - m
+      depth_level:
+        description: Depth index form top to bottom.
+      site_id:
+        description: Estimated location ID according to the table of possible locations.
+          Including the lab.
+        type: int32
+        na_value: 0
+        sorted: []
+        chunk_size: 512
+      probe_model:
+        decription: Type of the moisture profile probe.
+        sorted: []
+        range:
+          discrete:
+          - Odyssey
+          - PR2
+  lab:
+    ATTRS:
+      description: Moisture profile data in laboratory column experiment
+      VERSION: 0.3.0
+      ingress:
+        location_file: site_coords.csv
+        status_file: site_status.csv
+    VARS: *id001
+    COORDS:
+      date_time:
+        unit:
+          tick: m
+          tz: UTC
+        description: Time coordinate
+        sorted: None
+        chunk_size: 1024
+        step_limits:
+        - 5
+        - 15
+        - m
+      depth_level:
+        description: Depth index form top to bottom.
+      site_id:
+        description: Estimated location ID according to the table of possible locations.
+          Including the lab.
+        type: int32
+        na_value: 0
+        sorted: []
+        chunk_size: 512
+      probe_model:
+        decription: Type of the moisture profile probe.
+        range:
+          discrete:
+          - Odyssey
+          - PR2
+  meteo:
+    ATTRS:
+      description: Amateur meteo station data.
+      VERSION: 0.3.0
+    VARS:
+      meteo_T:
+        unit: deg C
+        description: Meteo station. Air temperature.
+        coords:
+        - date_time
+        - meteo_station_id
+      meteo_moisture:
+        unit: deg C
+        description: Meteo station. Air temperature.
+        coords:
+        - date_time
+        - meteo_station_id
+      meteo_percipitation:
+        unit: deg C
+        description: Meteo station. Air temperature.
+        coords:
+        - date_time
+        - meteo_station_id
+      meteo_wind_velocity:
+        unit: deg C
+        description: Meteo station. Air temperature.
+        coords:
+        - date_time
+        - meteo_station_id
+      meteo_radiation:
+        unit: deg C
+        description: Meteo station. Air temperature.
+        coords:
+        - date_time
+        - meteo_station_id
+    COORDS:
+      date_time:
+        unit:
+          tick: h
+          tz: UTC
+        description: Time coordinate
+        df_col: timestamp
+        source_unit:
+          tick: s
+          tz: CET
+        sorted: None
+        chunk_size: 1024
+        step_limits:
+        - 1
+        - 12
+        - h
+      depth_level:
+        description: Depth index form top to bottom.

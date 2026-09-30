@@ -44,7 +44,12 @@ class Model1DData:
     @classmethod
     def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
         schemas = config["schema_files"]
-        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
+        # Load with the local synchronous scheduler: this runs inside a Dask worker task, and a
+        # plain .compute() would submit to the same cluster and wait for a free worker thread,
+        # which deadlocks when all threads are held by long-running 1D tasks.
+        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute(
+            scheduler="synchronous"
+        )
         profiles = select(load_measurments_data(scheme_file=
                                          composed.relative_resolve(schemas['profiles'])))
         LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)

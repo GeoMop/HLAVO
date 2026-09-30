@@ -218,3 +218,5 @@ microchip_SW/.vscode
 data_processing/.env
 /data_processing/.python-version
 /hlavo/kalman/pristupy.txt
+runs/composed_3d_writer/simulation.zarr
+runs/composed_3d_writer/inputs
