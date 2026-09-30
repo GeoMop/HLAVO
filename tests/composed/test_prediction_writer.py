@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 import yaml
-from dask.distributed import Client, LocalCluster
 import zarr_fuse as zf
 
 from hlavo.composed import model_composed
@@ -19,11 +18,11 @@ WELLS_SCHEMA = REPO_ROOT / "hlavo/ingress/well_data/wells_schema.yaml"
 SIMULATION_SCHEMA = REPO_ROOT / "hlavo/schemas/simulation_schema.yaml"
 
 
-def test_file_prediction_writer_counts_entries(tmp_path):
+def test_file_prediction_writer_counts_entries(tmp_path, dask_client):
     paths = _prepare_input_stores(tmp_path)
     config_path = _write_config(tmp_path, paths, writer_class_name="FilePredictionWriter")
 
-    _run_composed(tmp_path, config_path)
+    _run_composed(tmp_path, config_path, dask_client)
 
     rows = [
         json.loads(line)
@@ -33,11 +32,11 @@ def test_file_prediction_writer_counts_entries(tmp_path):
     assert sum(row["node"] == "well_prediction" for row in rows) == 62
 
 
-def test_zarr_prediction_writer_coord_sizes(tmp_path):
+def test_zarr_prediction_writer_coord_sizes(tmp_path, dask_client):
     paths = _prepare_input_stores(tmp_path)
     config_path = _write_config(tmp_path, paths, writer_class_name="ZarrPredictionWriter")
 
-    _run_composed(tmp_path, config_path)
+    _run_composed(tmp_path, config_path, dask_client)
 
     root = zf.open_store(_schema_copy(tmp_path, SIMULATION_SCHEMA, "simulation.zarr"))
     site_ds = root["Uhelna"]["site_prediction"].dataset
@@ -51,16 +50,10 @@ def test_zarr_prediction_writer_coord_sizes(tmp_path):
     assert well_ds.sizes["calibration"] == 1
 
 
-def _run_composed(tmp_path: Path, config_path: Path):
+def _run_composed(tmp_path: Path, config_path: Path, client):
     work_dir = tmp_path / "workdir"
     work_dir.mkdir()
-    cluster = LocalCluster(n_workers=2, threads_per_worker=1, processes=False)
-    client = Client(cluster)
-    try:
-        return model_composed.setup_models(work_dir=work_dir, config_path=config_path, client=client)
-    finally:
-        client.close()
-        cluster.close()
+    return model_composed.setup_models(work_dir=work_dir, config_path=config_path, client=client)
 
 
 def _write_config(tmp_path: Path, paths: dict[str, Path], writer_class_name: str) -> Path:

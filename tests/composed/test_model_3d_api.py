@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from dask.distributed import Client, LocalCluster
 
 from hlavo.composed import model_composed
 from hlavo.composed.model_3d_api import default_libmf6
@@ -25,6 +24,7 @@ def _write_config(tmp_path: Path) -> Path:
             "common": {
                 "name": "uhelna",
                 "time_step_hours": 24.0,
+                "ims": {"complexity": "MODERATE"},
                 "model_builder": "modflow_cube:build_cube",
                 "model_builder_config": {"initial_head": -60.0},
                 "writer": {"class_name": "FilePredictionWriter"},
@@ -44,19 +44,13 @@ def _write_config(tmp_path: Path) -> Path:
     return config_path
 
 
-def test_model_3d_api_couples_modflow_with_1d_models(tmp_path):
+def test_model_3d_api_couples_modflow_with_1d_models(tmp_path, dask_client):
     assert default_libmf6().exists()
     work_dir = tmp_path / "workdir"
     work_dir.mkdir()
     config_path = _write_config(tmp_path)
 
-    cluster = LocalCluster(n_workers=2, threads_per_worker=1, processes=False)
-    client = Client(cluster)
-    try:
-        final_time = model_composed.setup_models(work_dir=work_dir, config_path=config_path, client=client)
-    finally:
-        client.close()
-        cluster.close()
+    final_time = model_composed.setup_models(work_dir=work_dir, config_path=config_path, client=dask_client)
 
     assert final_time == np.datetime64(f"2025-03-{1 + N_DAYS:02d}T00:00:00")
     assert (work_dir / "model_3d" / "mfsim.nam").exists()

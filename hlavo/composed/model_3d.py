@@ -64,6 +64,10 @@ class Model3DBackendMock:
         _ = wells_dataset
         return {}
 
+    def close(self) -> None:
+        """Release backend resources at the end of Model3D.run_loop; the mocks hold none."""
+        return None
+
 
 class Model3DDelay(Model3DBackendMock):
     TARGET_WATER_LEVEL = -60.0
@@ -148,52 +152,50 @@ class Model3D:
         q_3d_to_1d = [Queue(name) for name in queue_names_out_to_1d]
         q_1d_to_3d = Queue(queue_name_in_from_1d)
 
-        try:
-            self.backend.build_cell_assignment()
-            heads_to_1d = self.backend.initial_heads_to_1d()
+        self.backend.build_cell_assignment()
+        heads_to_1d = self.backend.initial_heads_to_1d()
 
-            while time < end_t:
-                dt = self.backend.choose_dt(time, end_t)
-                assert  dt > np.timedelta64(0, 's'), f"Non-positive time step: {dt}"
+        while time < end_t:
+            dt = self.backend.choose_dt(time, end_t)
+            assert  dt > np.timedelta64(0, 's'), f"Non-positive time step: {dt}"
 
-                target_time = time + dt
-                assert target_time > time, f"Non-advancing 3D target time: time={time}, target_time={target_time}, dt={dt}"
-                LOG.info("[3D] === Step: t=%s -> t=%s ===", time, target_time)
+            target_time = time + dt
+            assert target_time > time, f"Non-advancing 3D target time: time={time}, target_time={target_time}, dt={dt}"
+            LOG.info("[3D] === Step: t=%s -> t=%s ===", time, target_time)
 
-                for i, site_id in enumerate(self.locations_1d):
-                    head = heads_to_1d[site_id]
-                    msg_out = Data3DTo1D(
-                        date_time=target_time,
-                        site_id=site_id,
-                        pressure_head=head,
-                    )
-                    q_3d_to_1d[i].put(msg_out)
-                    LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, head)
+            for i, site_id in enumerate(self.locations_1d):
+                head = heads_to_1d[site_id]
+                msg_out = Data3DTo1D(
+                    date_time=target_time,
+                    site_id=site_id,
+                    pressure_head=head,
+                )
+                q_3d_to_1d[i].put(msg_out)
+                LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, head)
 
-                contributions = {}
-                site_messages = []
-                while len(contributions) < len(self.locations_1d):
-                    msg_in = _receive_from_1d(q_1d_to_3d, worker_futures)
-                    assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
-                    id = int(msg_in.site_id)
-                    assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
-                    LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
-                    contributions[id] = float(msg_in.velocity)
-                    site_messages.append(msg_in)
+            contributions = {}
+            site_messages = []
+            while len(contributions) < len(self.locations_1d):
+                msg_in = _receive_from_1d(q_1d_to_3d, worker_futures)
+                assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
+                id = int(msg_in.site_id)
+                assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
+                LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
+                contributions[id] = float(msg_in.velocity)
+                site_messages.append(msg_in)
 
-                heads_to_1d = self.backend.model_step(dt, contributions)
-                if self.writer is not None:
-                    site_messages = sorted(site_messages, key=lambda msg: int(msg.site_id))
-                    well_prediction = self.backend.well_prediction(self.writer.wells)
-                    self.writer.write_step(target_time, site_messages, heads_to_1d, well_prediction)
-
-                time = target_time
-
-            LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
-        finally:
+            heads_to_1d = self.backend.model_step(dt, contributions)
             if self.writer is not None:
-                self.writer.close()
-            close_backend = getattr(self.backend, "close", None)
-            if close_backend is not None:
-                close_backend()
+                site_messages = sorted(site_messages, key=lambda msg: int(msg.site_id))
+                well_prediction = self.backend.well_prediction(self.writer.wells)
+                self.writer.write_step(target_time, site_messages, heads_to_1d, well_prediction)
+
+            time = target_time
+
+        LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        # Normal end of the simulation: flush the writer, release the backend (MF6 finalize).
+        # On an exception these are skipped; the exception ends the run and the process.
+        if self.writer is not None:
+            self.writer.close()
+        self.backend.close()
         return time

@@ -1,5 +1,27 @@
 # Status summary
 
+`2026-09-30`: `2012f9b` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Milestone 3 (`Model3DAPI`, MODFLOW 6 through modflowapi) on top of the reviewed M2 branch, plus the coding-rule fixes found when checking the M3 code against `python_coding.md`.
+
+## Changes summary
+- Committed `2a951fa`: [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py) `Model3DAPI` backend, `close` of writer and backend in `Model3D.run_loop`, Dask deadlock fix (`compute(scheduler="synchronous")`), test [tests/composed/test_model_3d_api.py](/home/hlavo/workspace/tests/composed/test_model_3d_api.py) with [tests/composed/modflow_cube.py](/home/hlavo/workspace/tests/composed/modflow_cube.py).
+- Committed `2012f9b`: merge of `codex/m2-zarr-coupled-output` (`3c01cbf` bookkeeping, `c6fb00a` run `runs/composed_3d_writer`), conflict-free.
+- Staged: coding-rule fixes in [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py) (required `time_step_hours` and `ims`, single `libmf6` location, `initialize()` once, `??` unit marker), `close()` on all backends ([hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py), [hlavo/deep_model/coupled_runtime.py](/home/hlavo/workspace/hlavo/deep_model/coupled_runtime.py)), `ims` in the test config; [PLAN.md](/home/hlavo/workspace/PLAN.md) AGENT log and QaR; this entry.
+- Unstaged (review of jbrezmorf): no `try` blocks in `hlavo/composed` and `tests/composed` (new fixture `dask_client` in [tests/composed/conftest.py](/home/hlavo/workspace/tests/composed/conftest.py)), MF6 API documentation in [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py), flopy package comments in [tests/composed/modflow_cube.py](/home/hlavo/workspace/tests/composed/modflow_cube.py).
+- Staged: removal from the index of the generated `runs/composed_3d_writer/inputs` and `runs/composed_3d_writer/simulation.zarr` (105 files committed in `c6fb00a`); files stay on disk and are ignored.
+
+## Verified
+- `2a951fa`: `dev/hlavo run pytest tests/composed -vv -s -o faulthandler_timeout=60`: 6 passed (2026-09-23).
+- Coding-rule fixes: `dev/hlavo run pytest tests/composed -vv -s -o faulthandler_timeout=60`: 6 passed (2026-09-30); libmf6 found at `/home/hlavo/miniconda3/envs/hlavo/lib/libmf6.so`, heads identical to `2a951fa`.
+- Review changes (no try blocks, `dask_client` fixture, API docs): same command, 6 passed (2026-09-30); only zarr `UnstableSpecificationWarning` and `.partial` warnings (see the zarr_fuse QaR).
+
+## Open items
+- Commit the staged coding-rule fixes and the unstaged review changes (including the new `tests/composed/conftest.py`), push the branch.
+- Open QaR items in [PLAN.md](/home/hlavo/workspace/PLAN.md): velocity unit, zarr_fuse writes on open ([doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)), guessed default in `Model3DBackendMock`, writer `mode="w"`.
+- Next milestone: M4 (geometry class around `qgis_reader`, `build_model`).
+
 `2026-09-30`: `3c01cbf` @ `codex/m2-zarr-coupled-output` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal

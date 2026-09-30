@@ -213,3 +213,7 @@ class Model3DBackend:
         heads = self.sanitize_heads(self._read_last_heads())
         self._write_ic(heads)
         return self.heads_to_1d(heads)
+
+    def close(self) -> None:
+        """Release backend resources at the end of Model3D.run_loop; each step runs mf6 as a separate process, nothing to release."""
+        return None
