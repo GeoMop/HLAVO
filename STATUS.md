@@ -18,7 +18,7 @@ Milestone 3 (`Model3DAPI`, MODFLOW 6 through modflowapi) on top of the reviewed 
 - Review changes (no try blocks, `dask_client` fixture, API docs): same command, 6 passed (2026-09-30); only zarr `UnstableSpecificationWarning` and `.partial` warnings (see the zarr_fuse QaR).
 
 ## Open items
-- Commit the staged coding-rule fixes and the unstaged review changes (including the new `tests/composed/conftest.py`), push the branch.
+- Review changes committed and pushed as `012db1c`. CI `Tests` failed on it: `modflowapi` missing in the CI venv (collection errors in `tests/composed`). Unstaged fix: `modflowapi` added to [pyproject.toml](/home/hlavo/workspace/pyproject.toml); commit, push and check the next CI run. `main` fails its `Tests` too (separate cause, not investigated).
 - Open QaR items in [PLAN.md](/home/hlavo/workspace/PLAN.md): velocity unit, zarr_fuse writes on open ([doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)), guessed default in `Model3DBackendMock`, writer `mode="w"`.
 - Next milestone: M4 (geometry class around `qgis_reader`, `build_model`).
 
