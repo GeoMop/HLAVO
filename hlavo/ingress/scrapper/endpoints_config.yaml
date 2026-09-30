@@ -29,7 +29,7 @@ active_scrappers:
       url: "https://api.met.no/weatherapi/locationforecast/2.0/complete"
       headers:
         - header_name: "User-Agent"
-          header_value: "MyWeatherApp/1.0 (your_email@example.com)"
+          header_value: "hlavo-scrapper/1.0 (https://github.com/GeoMop/HLAVO; stepan.mocik@gmail.com)"
       query_params:
         - name: lat
           value: "{dflat}"
