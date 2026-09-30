@@ -12,6 +12,7 @@ model_3d:
 model_1d:
   model_1d_class_name: "Model1DConstantWeather"
   site_ids: [1]
+  kalman_class_name: "SurfaceMock"
   sites:
     - longitude: 14.889853
       latitude: 50.863565

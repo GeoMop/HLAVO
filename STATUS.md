@@ -1,5 +1,73 @@
 # Status summary
 
+`2026-09-30`: `3c01cbf` @ `codex/m2-zarr-coupled-output` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Add a run `runs/composed_3d_writer`: the composed model (Model1D + SurfaceScalingMock, Model3DDelay) over March 2025 writing its predictions into a local ZARR store, running without network access.
+
+## Changes summary
+- Committed on top of `3c01cbf`: [runs/composed_3d_writer/config.yaml](/home/hlavo/workspace/runs/composed_3d_writer/config.yaml), [runs/composed_3d_writer/run_simulate.sh](/home/hlavo/workspace/runs/composed_3d_writer/run_simulate.sh), [runs/composed_3d_writer/prepare_inputs.py](/home/hlavo/workspace/runs/composed_3d_writer/prepare_inputs.py) (synthetic local profile/meteo/wells stores + schema copies in `inputs/`, called by `run_simulate.sh`), [runs/composed_3d_writer/README.md](/home/hlavo/workspace/runs/composed_3d_writer/README.md).
+- Committed: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) and [hlavo/composed/prediction_writer.py](/home/hlavo/workspace/hlavo/composed/prediction_writer.py) load with `.compute(scheduler="synchronous")`, identical to the Dask deadlock fix in `2a951fa` on `codex/m3-modflowapi`.
+- Committed: `.gitignore` (run outputs `simulation.zarr`, `inputs`), [PLAN.md](/home/hlavo/workspace/PLAN.md) QaR items (APCP unit, writer `mode="w"`, duplicated input builders, deadlock wording, zarr_fuse writes on open).
+- Committed: [doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md): open question with options for the zarr_fuse issue below.
+
+## Verified
+- `runs/composed_3d_writer/run_simulate.sh 2>&1 | tee runs/composed_3d_writer/run.log`:
+  - with S3 inputs: failed, connection timeout to `s3.cl4.du.cesnet.cz` (S3 server problem); switched to local inputs.
+  - local inputs, before the deadlock fix: `prepare_inputs.py` wrote all three stores; the run hung in the meteo load of site 2 (Dask deadlock).
+  - local inputs, with the deadlock fix: fails at the start with `ContainsGroupError ... at path 'Uhelna'` from `zf.open_store` in `load_meteo_data` (concurrent opens of the same store by the two 1D workers); the fail-fast loop reported it immediately.
+- No unit tests run after the two-line deadlock change on this branch (same change passed `tests/composed` on `codex/m3-modflowapi`).
+
+## Open items
+- Decide the zarr_fuse fix ([doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)); the run cannot pass with 2 sites until then (1 site as a stopgap).
+- After the run passes: check `simulation.zarr` contents and the README inspection command, add the AGENT log entry, run `tests/composed`.
+- The run is committed in its failing state (2 sites); see the first open item.
+
+`2026-09-30`: `eb16876` @ `codex/m2-zarr-coupled-output` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Finish Milestone 2 (zarr inputs and outputs of the composed model) after the July merge, and fix the issues found on the way before starting Milestone 3.
+
+## Changes summary
+- Committed `a418d43` (2026-07-09, user): bug fixes after the July 9th meeting; it also placed the `Kalman*`/`Surface*` aliases inside `Model1DConstantWeather.step()` (IndentationError) and overwrote `plan.md` with the `PLAN.md` content (case collision on macOS).
+- Committed `0b6b2e4`: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) alias placement fix, `site_id` argument of `SurfaceScalingMock.kalman_step()`, `moisture_sigma` from the config for mocks; [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) `Model3DDelay.initial_heads_to_1d()` returns the initial water level; [tests/composed/test_composed_kalman_mock_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_kalman_mock_config.yaml) uses the canonical `SurfaceMock`.
+- Committed `eb16876`: [MILESTONES.md](/home/hlavo/workspace/MILESTONES.md) restored milestone plan with status (M1, M2 done) and `plan.md` removed; fail-fast `_receive_from_1d` in [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) with the 1D futures passed from [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py); half-open `dataset_time_slice` in [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py); new fail-fast test in [tests/composed/test_composed_kalman_mock.py](/home/hlavo/workspace/tests/composed/test_composed_kalman_mock.py).
+- Unstaged: [PLAN.md](/home/hlavo/workspace/PLAN.md) AGENT log and QaR entries for the above, and this entry (bookkeeping only).
+- Branch `codex/m3-modflowapi` (`2a951fa`) builds on this one: Milestone 3 `Model3DAPI` and the Dask deadlock fix in `Model1DData.from_config()`.
+
+## Verified
+- `dev/hlavo run pytest tests/composed -vv -s` from the host (docker image), 2026-09-23: 4 passed at `0b6b2e4`, 5 passed at `eb16876`. Not re-run for this bookkeeping-only update.
+- From the test logs: the first 1D step receives `bottom_head=-60.0`; `SurfaceScalingMock` recharge is 0.0045 m/day on 4 steps (2 sites x 2 profile dates) and 0.001 m/day otherwise; the fail-fast test gets the worker `ValueError` within about 1 s; no `queue_get` scheduler tracebacks.
+
+## Open items
+- `test_zarr_prediction_writer_coord_sizes` can hang intermittently on this branch (Dask deadlock in `Model1DData.from_config()`); the fix is only in `2a951fa` on `codex/m3-modflowapi`.
+- Velocity unit mismatch (schema m/s vs. m/day in the code), leftover compatibility code, the `plan.md` deletion when merging to `main`, and stale untracked test stores: see QaR in [PLAN.md](/home/hlavo/workspace/PLAN.md).
+- The known zarr v3 `UnstableSpecificationWarning` for fixed-length UTF32 strings remains.
+
+`2026-06-08`: `cae58ef` @ `codex/m2-zarr-coupled-output` by `Codex <codex@openai.com>`
+
+## Goal
+Tighten Milestone 2 of the composed coupling plan so the mock naming, config shape, and writer tests match the intended design instead of relying on ad hoc compatibility only.
+
+## Changes summary
+- Unstaged: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) now defines canonical `SurfaceMock` and `SurfaceScalingMock` names, keeps `KalmanMock` and `KalmanScalingMock` as compatibility aliases, and makes the scaling mock use an explicit trailing 48-hour precipitation window before converting mean precipitation from `mm/day` to `m/day`.
+- Unstaged: [tests/composed/test_prediction_writer.py](/home/hlavo/workspace/tests/composed/test_prediction_writer.py) now uses canonical Milestone 2 config keys: `model_3d.backend_class_name`, `model_1d.site_ids`, and `kalman_class_name: "SurfaceScalingMock"`.
+- Unstaged: [tests/composed/test_composed_config.yaml](/home/hlavo/workspace/tests/composed/test_composed_config.yaml) now uses `kalman_class_name: "SurfaceMock"` instead of the legacy mock name.
+- Unstaged: [hlavo/composed/model_3d.py](/home/hlavo/workspace/hlavo/composed/model_3d.py) now resolves `backend_class_name` safely from either the canonical top-level field or the older nested location without eager fallback evaluation.
+- Unstaged from earlier in this thread and still relevant: [hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py) accepts canonical `model_1d.site_ids` and still tolerates legacy `model_1d.sites` by deriving positional ids.
+
+## Verified
+- `python -m py_compile /home/hlavo/workspace/hlavo/kalman/model_1d.py /home/hlavo/workspace/tests/composed/test_prediction_writer.py`
+  compile check passed.
+- `PYTEST_ADDOPTS='tests/composed/test_prediction_writer.py::test_file_prediction_writer_counts_entries -vv -s -o faulthandler_timeout=15' ./tests/run`
+  result: `1 passed`.
+- `PYTEST_ADDOPTS='tests/composed/test_prediction_writer.py tests/composed/test_composed.py -vv -s -o faulthandler_timeout=20' ./tests/run`
+  result: `3 passed`.
+
+## Open items
+- The composed runtime still carries compatibility paths for legacy `Kalman*` mock names and legacy `model_1d.sites`; the tests now use the canonical Milestone 2 shape, but repository-wide cleanup of old configs was not done in this step.
+- Zarr-based tests still emit existing warnings about unstable fixed-length UTF32 dtypes and transient `.partial` objects; no storage-layer cleanup was attempted here.
+
 `2026-06-05`: `92c170a` @ `codex/m1-composed-mock-test` by `Jan Brezina`
 
 ## Goal

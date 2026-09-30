@@ -2,6 +2,7 @@
 
 runs/composed_3D_only/model_with_mine_work
 runs/composed_3D_only/model_with_mine
+hlavo/deep_model/runs
 
 
 tests/ingress/aladin_data
@@ -217,3 +218,5 @@ microchip_SW/.vscode
 data_processing/.env
 /data_processing/.python-version
 /hlavo/kalman/pristupy.txt
+runs/composed_3d_writer/simulation.zarr
+runs/composed_3d_writer/inputs

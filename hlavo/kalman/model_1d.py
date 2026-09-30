@@ -18,7 +18,14 @@ LOG = logging.getLogger(__name__)
 
 
 def dataset_time_slice(dataset, start_time: np.datetime64, stop_time: np.datetime64):
-    return dataset.sel(date_time=slice(start_time, stop_time))
+    """Select the half-open window [start_time, stop_time).
+
+    Label slicing in xarray includes both ends, which would feed a sample lying
+    exactly on a step boundary into two consecutive steps.
+    """
+    date_time = dataset["date_time"].values
+    mask = (date_time >= np.datetime64(start_time)) & (date_time < np.datetime64(stop_time))
+    return dataset.isel(date_time=np.flatnonzero(mask))
 
 
 @attrs.define(frozen=True)
@@ -37,7 +44,12 @@ class Model1DData:
     @classmethod
     def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
         schemas = config["schema_files"]
-        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute()
+        # Load with the local synchronous scheduler: this runs inside a Dask worker task, and a
+        # plain .compute() would submit to the same cluster and wait for a free worker thread,
+        # which deadlocks when all threads are held by long-running 1D tasks.
+        select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute(
+            scheduler="synchronous"
+        )
         profiles = select(load_measurments_data(scheme_file=
                                          composed.relative_resolve(schemas['profiles'])))
         LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)
@@ -63,7 +75,7 @@ class Model1DData:
 
 
 @attrs.define
-class KalmanMock:
+class SurfaceMock:
     fixed_velocity: float = 0.1
     longitude: float = 14.889853
     latitude: float = 50.863565
@@ -93,6 +105,56 @@ class KalmanMock:
         return None
 
 
+@attrs.define
+class SurfaceScalingMock:
+    longitude: float = 14.889853
+    latitude: float = 50.863565
+    precipitation_var: str = "precipitation"
+
+    @classmethod
+    def from_config(cls, workdir, config_source, verbose=False, seed=None):
+        config_data, _ = load_config(config_source)
+        _ = workdir
+        _ = verbose
+        _ = seed
+        return cls(precipitation_var=str(config_data.get("precipitation_var", "precipitation")))
+
+    def kalman_step(self, ukf, measurements, meteo, pressure_at_bottom, site_id=None) -> float:
+        _ = ukf
+        _ = pressure_at_bottom
+        _ = site_id
+        scaling_factor = self._scaling_factor(measurements)
+        precipitation = self._precipitation_window(meteo)
+        if precipitation.size == 0:
+            mean_precipitation_m_per_day = 0.0
+        else:
+            mean_precipitation_m_per_day = float(precipitation.mean()) * 1.0e-3
+        return scaling_factor * mean_precipitation_m_per_day
+
+    @staticmethod
+    def _scaling_factor(measurements) -> float:
+        if measurements.sizes.get("date_time", 0) == 0:
+            return 0.1
+        mean_moisture = float(measurements["moisture"].mean())
+        saturation = np.clip(mean_moisture, 0.0, 1.0)
+        return 0.1 + 0.7 * saturation
+
+    def _precipitation_window(self, meteo):
+        precipitation = meteo[self.precipitation_var]
+        if precipitation.sizes.get("date_time", 0) == 0:
+            return precipitation
+
+        end_time = np.datetime64(precipitation["date_time"].values[-1], "m")
+        start_time = end_time - np.timedelta64(48, "h")
+        return precipitation.sel(date_time=slice(start_time, end_time))
+
+    def set_kalman_filter(self, kalman_R_matrix):
+        return kalman_R_matrix
+
+    def save_results(self):
+        return None
+        
+        
 @attrs.define(frozen=True)
 class ConstantWeatherSite:
     site_id: int
@@ -155,20 +217,31 @@ class Model1DConstantWeather:
         return None
 
 
+SurfaceKalman = KalmanFilter
+KalmanMock = SurfaceMock
+KalmanScalingMock = SurfaceScalingMock
+
+
 @attrs.define
 class Model1D:
     composed: 'ComposedData'
     site_id: int
     moisture_sigma: float
     data: Model1DData
-    kalman: KalmanFilter | KalmanMock
+    kalman: KalmanFilter | SurfaceMock | SurfaceScalingMock
 
     @classmethod
     def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
-        kalman_class = resolve_named_class(config['kalman_class_name'], (KalmanFilter, KalmanMock))
+        kalman_class = resolve_named_class(
+            config['kalman_class_name'],
+            (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
+        )
         data = Model1DData.from_config(site_id, composed, config)
-        meas_config = Model1D.create_kalman_measurements_config(data, config)
-        moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        if kalman_class is KalmanFilter:
+            meas_config = Model1D.create_kalman_measurements_config(data, config)
+            moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]
+        else:
+            moisture_sigma = config["moisture_sigma"]
         # TODO: refactor Kalman into Multiple nested classes so Model1D will be just one possible call of
         # an inner Kalman implementation, make syntehtic case and reading measurements from file as different
         # measuerement source classes.

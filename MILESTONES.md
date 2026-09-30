@@ -1,5 +1,14 @@
 # Plan to complete composed and 3D model
 
+> Restored from `origin/main:plan.md`. It used to live in `plan.md` next to `PLAN.md`,
+> which collide on case-insensitive file systems (macOS), so `plan.md` got overwritten.
+> Keep milestones here; `PLAN.md` holds current goals and the AGENT log.
+
+**Status**
+- Milestone 1: done. Test: `tests/composed/test_composed.py`, `tests/composed/test_composed_kalman_mock.py`.
+- Milestone 2: done (`0b6b2e4`). Test: `tests/composed/test_prediction_writer.py` (file and ZARR writer variants).
+- Milestone 3-7: open. Earlier attempts: `origin/codex/m3-modflowapi-backend`, `ot_milestones`.
+
 ## Rules
 
 Slightly modified rules apply for this sprint. 

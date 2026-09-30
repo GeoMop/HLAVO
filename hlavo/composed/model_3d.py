@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import time
 from typing import *
 
 import logging
@@ -14,6 +16,7 @@ from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 import hlavo.deep_model.model_3d_cfg as cfg3d
 from hlavo.deep_model.coupled_runtime import Model3DBackend
+from hlavo.composed.prediction_writer import prediction_writer_from_config
 from hlavo.misc.class_resolve import resolve_named_class
 
 TIME_ORIGIN = np.datetime64("2000-01-01T00:00:00", "ms")
@@ -56,23 +59,86 @@ class Model3DBackendMock:
         self._heads = np.asarray([contributions[site_id] for site_id in self.locations_1d], dtype=float)
         return self.initial_heads_to_1d()
 
+    def well_prediction(self, wells_dataset):
+        _ = wells_dataset
+        return {}
+
+
+class Model3DDelay(Model3DBackendMock):
+    TARGET_WATER_LEVEL = -60.0
+
+    def __init__(self, composed: ComposedData, model_3d_cfg: dict, locations_1d) -> None:
+        super().__init__(composed, model_3d_cfg, locations_1d)
+        self.water_level = float(model_3d_cfg["initial_water_level"])
+
+    def initial_heads_to_1d(self) -> dict[int, float]:
+        return {site_id: self.water_level for site_id in self.locations_1d}
+
+    def model_step(self, dt: float, contributions) -> dict[int, float]:
+        dt_days = float(dt / np.timedelta64(1, "D"))
+        recharge = np.array([float(contributions[site_id]) for site_id in self.locations_1d], dtype=float)
+        self.water_level = self.water_level + float(np.sum(recharge)) * dt_days
+        self.water_level = self.water_level - max(
+            self.water_level - self.TARGET_WATER_LEVEL, 0.0
+        ) * dt_days * 0.1
+        return {site_id: self.water_level for site_id in self.locations_1d}
+
+    def well_prediction(self, wells_dataset):
+        if wells_dataset is None:
+            return {}
+        return {str(well_id): self.water_level for well_id in wells_dataset["well_id"].values}
+
+
+QUEUE_POLL_MAX_SECONDS = 1.0
+
+
+def _receive_from_1d(queue: Queue, worker_futures: dict | None):
+    """Block on the 1D->3D queue, but fail fast if a 1D worker has died.
+
+    A plain ``queue.get()`` waits forever when a worker raises, turning any
+    1D failure into a silent hang. Poll ``qsize()`` instead (``get(timeout=...)``
+    makes the dask scheduler log a traceback on every timeout) and re-raise the
+    worker's original exception via ``future.result()``. The 3D model is the only
+    consumer of this queue, so ``get()`` after a positive ``qsize()`` does not block.
+    """
+    delay = 0.01
+    while True:
+        if queue.qsize() > 0:
+            return queue.get()
+        for site_id, future in (worker_futures or {}).items():
+            if future.status == "error":
+                LOG.error("[3D] 1D worker for site_id=%s failed", site_id)
+                future.result()  # re-raises the worker's exception
+            if future.status == "cancelled":
+                raise RuntimeError(f"1D worker for site_id={site_id} was cancelled.")
+            # status "finished" is legal: on the last step a worker may end
+            # while the 3D model still waits for other sites.
+        time.sleep(delay)
+        delay = min(2 * delay, QUEUE_POLL_MAX_SECONDS)
+
+
 class Model3D:
     def __init__(self, composed:ComposedData, model_3d_cfg: dict, locations_1d):
         self.composed = composed
         self.locations_1d = locations_1d
-        backend_class_name = str(model_3d_cfg["backend_class_name"])
         common_cfg = model_3d_cfg["common"]
+        if "backend_class_name" in model_3d_cfg:
+            backend_class_name = str(model_3d_cfg["backend_class_name"])
+        else:
+            backend_class_name = str(common_cfg["backend_class_name"])
         backend_class = resolve_named_class(
             backend_class_name,
-            (Model3DBackendMock, Model3DBackend),
+            (Model3DBackendMock, Model3DDelay, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
+        self.writer = prediction_writer_from_config(composed, locations_1d, common_cfg)
 
 
     def run_loop(
         self,
         queue_names_out_to_1d: list[str],
         queue_name_in_from_1d: str,
+        worker_futures: dict | None = None,
     ):
         start_t = self.composed.start
         time = start_t
@@ -103,17 +169,25 @@ class Model3D:
                 LOG.info("[3D] send head -> 1D %s: date_time=%s, head=%s", i, msg_out.date_time, head)
 
             contributions = {}
+            site_messages = []
             while len(contributions) < len(self.locations_1d):
-                msg_in = q_1d_to_3d.get()
+                msg_in = _receive_from_1d(q_1d_to_3d, worker_futures)
                 assert isinstance(msg_in, Data1DTo3D), f"Unexpected 1D->3D payload: {type(msg_in)}"
                 id = int(msg_in.site_id)
                 assert id not in contributions, "Duplicate contribution from 1D site_id=%s" % id
                 LOG.info("[3D] received from 1D %s: date_time=%s, recharge=%s", id, msg_in.date_time, msg_in.velocity)
                 contributions[id] = float(msg_in.velocity)
+                site_messages.append(msg_in)
 
             heads_to_1d = self.backend.model_step(dt, contributions)
+            if self.writer is not None:
+                site_messages = sorted(site_messages, key=lambda msg: int(msg.site_id))
+                well_prediction = self.backend.well_prediction(self.writer.wells)
+                self.writer.write_step(target_time, site_messages, heads_to_1d, well_prediction)
 
             time = target_time
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        if self.writer is not None:
+            self.writer.close()
         return time

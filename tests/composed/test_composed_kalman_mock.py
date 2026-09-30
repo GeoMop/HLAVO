@@ -6,6 +6,7 @@ from pathlib import Path
 from dask.distributed import Client, LocalCluster
 import numpy as np
 import pandas as pd
+import pytest
 import yaml
 import zarr_fuse as zf
 
@@ -84,7 +85,7 @@ def _make_surface_store(schema_path: Path) -> None:
     node.update(pd.DataFrame(rows))
 
 
-def _make_runtime_config(tmp_path: Path) -> Path:
+def _make_runtime_config(tmp_path: Path, model_1d_overrides: dict | None = None) -> Path:
     profiles_store = tmp_path / "profiles.zarr"
     surface_store = tmp_path / "chmi_stations.zarr"
     profiles_schema = tmp_path / "profile_schema.yaml"
@@ -101,6 +102,7 @@ def _make_runtime_config(tmp_path: Path) -> Path:
         "profiles": profiles_schema.name,
         "surface": surface_schema.name,
     }
+    config_data["model_1d"].update(model_1d_overrides or {})
     runtime_config_path.write_text(
         yaml.safe_dump(config_data, sort_keys=False),
         encoding="utf-8",
@@ -127,3 +129,26 @@ def test_setup_models_uses_real_dask_queues_with_kalman_mock_zarr_store(tmp_path
         cluster.close()
 
     assert final_state == np.datetime64("2025-03-07T00:00:00")
+
+
+def test_setup_models_fails_fast_when_1d_worker_fails(tmp_path: Path) -> None:
+    """A crashing 1D worker must surface its exception, not hang the 3D queue loop."""
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir()
+    runtime_config_path = _make_runtime_config(
+        tmp_path, model_1d_overrides={"kalman_class_name": "NoSuchSurfaceModel"}
+    )
+
+    cluster = LocalCluster(n_workers=2, threads_per_worker=1, processes=False)
+    client = Client(cluster)
+
+    try:
+        with pytest.raises(ValueError, match="Unable to resolve class 'NoSuchSurfaceModel'"):
+            model_composed.setup_models(
+                work_dir=work_dir,
+                config_path=runtime_config_path,
+                client=client,
+            )
+    finally:
+        client.close()
+        cluster.close()
