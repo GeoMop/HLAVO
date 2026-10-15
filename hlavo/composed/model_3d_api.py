@@ -300,22 +300,53 @@ class Model3DAPI:
         lib_path = Path(self.cfg["lib_path"]) if "lib_path" in self.cfg else default_libmf6()
         assert lib_path.exists(), f"libmf6 not found: {lib_path} (conda package modflow6, or set model_3d.common.lib_path)"
         LOG.info("[3D API] initializing MODFLOW 6 (%s) in %s", lib_path, self.sim_ws)
+        # MF6 API: ModflowApi(lib_path, working_directory) -> ModflowApi object
+        #   lib_path:          str, path of the shared library libmf6 (loaded by ctypes here).
+        #   working_directory: str, folder with mfsim.nam and the other input files; xmipy changes
+        #                      the process working directory to it during every later call.
+        #   Only loads the library; MF6 itself is not started yet.
         self.mf6 = ModflowApi(str(lib_path), working_directory=str(self.sim_ws))
+        # MF6 API: initialize() -> None
+        #   No argument: MF6 always reads mfsim.nam of the working directory (the optional BMI
+        #   `config_file` argument is ignored by MF6). Reads all input files, allocates the
+        #   memory, sets the heads X to the starting heads (IC package) and opens the output files.
+        #   Raises xmipy.errors.XMIError on an MF6 error, xmipy.errors.InputError if called twice.
         self.mf6.initialize()
 
         # MF6 memory names are upper case.
         self._model = setup.gwf.name.upper()
         self._recharge_pkg = setup.recharge_package.upper()
+        # MF6 API: get_var_address(var_name, component_name, subcomponent_name="") -> str
+        #   var_name:          MF6 variable name, here "X" (the heads).
+        #   component_name:    model name, here our GWF model.
+        #   subcomponent_name: package name; "" for model-level variables such as X.
+        #   Returns the memory address "<MODEL>/X" (all three names upper-cased by xmipy). It only
+        #   composes the string; a wrong name fails later in get_value / get_value_ptr.
         self._head_addr = self.mf6.get_var_address("X", self._model)
+        # NODEUSER: int32 array (n_reduced,), user node number (1-based) of every reduced node;
+        # shape (1,) when IDOMAIN removes no cell (see the module doc).
         node_user = np.asarray(self._get("NODEUSER", "DIS"), dtype=int)
+        # MF6 API: get_value_ptr(address) -> numpy array sharing memory with MF6 (no copy).
+        #   Here X: float64 array (n_reduced,), heads [m] of the active cells in reduced numbering;
+        #   only its size is used: the number of reduced nodes.
         n_reduced = self.mf6.get_value_ptr(self._head_addr).size
         # MF6 allocates NODEUSER with a single entry when IDOMAIN removes no cells (reduced == user).
         node_user = np.arange(n_reduced) if node_user.size != n_reduced else node_user - 1
         self.grid = GridMap.from_setup(setup, node_user, self.locations_1d)
 
     def _get(self, var: str, component: str | None = None) -> np.ndarray:
-        """Copy of the MF6 variable `var` of our model, optionally of a package (`component`)."""
+        """Copy of the MF6 variable `var` of our model, optionally of a package (`component`).
+
+        var:       MF6 variable name, e.g. "NODEUSER", "NBOUND", "NODELIST".
+        component: package name (e.g. "DIS" or the recharge package), None for model-level variables.
+        Returns a new numpy array (MF6 memory is not changed by writing into it): float64 for
+        MF6 double variables, int32 for integer variables, shape as reported by MF6; a scalar
+        (e.g. NBOUND) comes as an array of shape (1,).
+        """
+        # MF6 API: get_var_address(var_name, component_name, subcomponent_name) -> address
+        #   "<MODEL>/<PACKAGE>/<VAR>" (or "<MODEL>/<VAR>" without a package), see `initialize`.
         address = self.mf6.get_var_address(var, self._model, *([component] if component else []))
+        # MF6 API: get_value(address) -> numpy array, a copy of the MF6 variable (see the docstring).
         return self.mf6.get_value(address)
 
     def _set_recharge(self, recharge_columns: np.ndarray) -> None:
@@ -331,11 +362,23 @@ class Model3DAPI:
         which would overwrite earlier values. With a single stress period the input is read
         only once, so the values written here stay in force for the time step.
         """
+        # NBOUND: int32 scalar (shape (1,)), number of recharge entries in use;
+        #   for the array-based package NBOUND = nrow * ncol, entry i belongs to column i.
         nbound = int(np.ravel(self._get("NBOUND", self._recharge_pkg))[0])
+        # NODELIST: int32 array (maxbound,), maxbound = nrow * ncol here; reduced 1-based number of
+        #   the cell of every entry: the top cell of the column, moved by MF6 down to the highest
+        #   active cell when the top cell is inactive.
+        # ?? A column whose top cell is removed by IDOMAIN has NODELIST <= 0 and MF6 gives it no
+        #   recharge at all; here such an entry maps to a wrong column (negative index), harmless
+        #   only because MF6 ignores the entry.
         nodes = np.asarray(self._get("NODELIST", self._recharge_pkg), dtype=int)[:nbound] - 1
         ncpl = self.grid.shape[1] * self.grid.shape[2]
         columns = self.grid.node_user[nodes] % ncpl
+        # MF6 API: get_var_address -> "<MODEL>/<RCH>/RECHARGE" (see `initialize`).
         address = self.mf6.get_var_address("RECHARGE", self._model, self._recharge_pkg)
+        # MF6 API: get_value_ptr(address) -> numpy array sharing memory with MF6.
+        #   RECHARGE: float64 array (maxbound,), recharge rate [m/day] of every entry. Writing into
+        #   this array changes MF6's input directly; the solver uses it in do_time_step.
         recharge = self.mf6.get_value_ptr(address)
         assert recharge.ndim == 1 and recharge.size >= nbound, f"Unexpected RECHARGE shape {recharge.shape}"
         recharge[:nbound] = recharge_columns[columns]
@@ -347,6 +390,9 @@ class Model3DAPI:
     # ---- coupling --------------------------------------------------------
     def _pressure_heads(self) -> dict[int, float]:
         """Current heads X from MF6 memory, converted to pressure heads per 1D site."""
+        # MF6 API: get_value_ptr("<MODEL>/X") -> float64 array (n_reduced,), live view of the
+        #   current heads [m] in reduced numbering (dry cells DHDRY = -1e30). Not copied:
+        #   full_heads builds a new array from it before MF6 changes X in the next step.
         heads = self.grid.full_heads(self.mf6.get_value_ptr(self._head_addr))
         return self.grid.site_pressure_heads(heads)
 
@@ -370,13 +416,25 @@ class Model3DAPI:
         dt_days = float(dt / np.timedelta64(1, "s")) / SECONDS_PER_DAY
         # 1. Start the time step. MF6 ignores the argument and takes the length from TDIS,
         #    so check that its step matches the coupling step.
+        # MF6 API: prepare_time_step(dt) -> None
+        #   dt: float, step length in model time units (days); IGNORED by MF6.
+        #   Advances the MF6 time to the next time step of TDIS, reads the stress-period input
+        #   when a new period starts and computes the step length.
         self.mf6.prepare_time_step(dt_days)
+        # MF6 API: get_time_step() -> float, length of the current MF6 time step in model time
+        #   units (days), as computed by prepare_time_step.
         mf6_dt = self.mf6.get_time_step()
         assert abs(mf6_dt - dt_days) < 1e-9 * max(1.0, dt_days), f"MF6 step {mf6_dt} d != coupling step {dt_days} d"
         # 2. Replace the recharge of this step by the 1D results.
         self._set_recharge(self.grid.spread_recharge(contributions))
         # 3. Solve the step; 4. write budgets and outputs (raises if the step did not converge).
+        # MF6 API: do_time_step() -> None
+        #   No arguments. Builds and solves the equations of the current step (outer iterations
+        #   with linear solves); the new heads are in X afterwards. Convergence is not reported here.
         self.mf6.do_time_step()
+        # MF6 API: finalize_time_step() -> None
+        #   No arguments. Writes budgets, heads and messages of the step. Raises
+        #   xmipy.errors.XMIError ("simulation failed to converge") if the step did not converge.
         self.mf6.finalize_time_step()
         # 5. New heads -> pressure heads for the 1D models.
         return self._pressure_heads()
@@ -389,5 +447,9 @@ class Model3DAPI:
     def close(self) -> None:
         """Finalize MF6 (close its output files, free its memory) at the end of the simulation."""
         assert self.mf6 is not None, "Model3DAPI.initialize() was not called"
+        # MF6 API: finalize() -> None
+        #   No arguments. Writes the final budget summaries, closes the files and frees MF6's
+        #   memory; arrays obtained by get_value_ptr are invalid afterwards.
+        #   Raises xmipy.errors.InputError if MF6 is not initialized.
         self.mf6.finalize()
         self.mf6 = None

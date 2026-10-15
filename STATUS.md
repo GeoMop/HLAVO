@@ -1,5 +1,21 @@
 # Status summary
 
+`2026-10-15`: `94fb0c8` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Checkpoint after pushing the `calibration` fixes to PR #44.
+
+## Changes summary
+- Committed `cda6757` (calibration as datetime in writer and schema, schema test times) and merged `origin/codex/m3-modflowapi` (`3bc98e9`) as `94fb0c8`; pushed, branch in sync with `origin`.
+
+## Verified
+- CI `Tests` run #257 on `94fb0c8` (zarr_fuse `main` from GitHub): 12 passed, 7 skipped, 5 failed, 1 error. Failing only the known tests without data or S3 credentials: `test_qgis_reader` (2), `test_process_one_meteo_raw`, `test_well_data` (2), `test_model_1d::test_step` (error). `tests/composed` and `tests/schemas` pass on CI.
+- CI `HLAVO Dashboard - pull request` run #118 fails in "Containerize HLAVO backend" (exit code 125), as on `3bc98e9` (run #117); unrelated to this branch's code.
+
+## Open items
+- QaR in [PLAN.md](/home/hlavo/workspace/PLAN.md): review comment on `GridMap.site_pressure_heads`, CI data/S3 tests, zarr_fuse pinning, velocity unit, zarr_fuse writes on open, guessed default in `Model3DBackendMock`, writer `mode="w"`.
+- Next milestone: M4 (geometry class around `qgis_reader`, `build_model`).
+
 `2026-10-14`: `7481208` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal
