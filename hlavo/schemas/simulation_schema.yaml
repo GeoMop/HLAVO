@@ -42,7 +42,6 @@ Uhelna:
             calibration:
                 unit: { tick: "m", tz: "UTC" }
                 description: "Date of calibration indexing the simulation parameters."
-                type: str[16]
                 # Composed implies unsorted, no support for sparse data interpolation, right now.
                 # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
                 sorted: true # Unsorted
@@ -116,7 +115,6 @@ Uhelna:
             calibration:
                 unit: { tick: "m", tz: "UTC" }
                 description: "Date of calibration indexing the simulation parameters."
-                type: str[16]
                 # Composed implies unsorted, no support for sparse data interpolation, right now.
                 # Interpolation currently is mainly a mean to eliminate insertion of new coords into range of old coords.
                 sorted: true # Unsorted

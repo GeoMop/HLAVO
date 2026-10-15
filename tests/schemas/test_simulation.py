@@ -64,10 +64,11 @@ def test_simulation_schema_single_calibration_local_store():
     assert ds.coords["date_time"].attrs["df_col"] == node_schema.COORDS["date_time"].df_col
     assert ds.coords["calibration"].attrs["composed"] == ["calibration"]
     assert ds["water_level"].attrs["description"] == node_schema.VARS["water_level"].description
+    # Input 2026-01-01 00:00 and 01:00 in CET (source_unit; UTC+1 in winter), stored in UTC.
     np.testing.assert_array_equal(
         ds.coords["date_time"].values,
         np.array(
-            ["2025-12-31T22:00:00", "2025-12-31T23:00:00"],
+            ["2025-12-31T23:00:00", "2026-01-01T00:00:00"],
             dtype="datetime64[ns]",
         ),
     )

@@ -16,6 +16,7 @@ from hlavo.composed.data_1d_to_3d import Data1DTo3D
 from hlavo.composed.data_3d_to_1d import Data3DTo1D
 import hlavo.deep_model.model_3d_cfg as cfg3d
 from hlavo.deep_model.coupled_runtime import Model3DBackend
+from hlavo.composed.model_3d_api import Model3DAPI
 from hlavo.composed.prediction_writer import prediction_writer_from_config
 from hlavo.misc.class_resolve import resolve_named_class
 
@@ -62,6 +63,10 @@ class Model3DBackendMock:
     def well_prediction(self, wells_dataset):
         _ = wells_dataset
         return {}
+
+    def close(self) -> None:
+        """Release backend resources at the end of Model3D.run_loop; the mocks hold none."""
+        return None
 
 
 class Model3DDelay(Model3DBackendMock):
@@ -128,7 +133,7 @@ class Model3D:
             backend_class_name = str(common_cfg["backend_class_name"])
         backend_class = resolve_named_class(
             backend_class_name,
-            (Model3DBackendMock, Model3DDelay, Model3DBackend),
+            (Model3DBackendMock, Model3DDelay, Model3DAPI, Model3DBackend),
         )
         self.backend = backend_class(composed, model_3d_cfg=common_cfg, locations_1d=locations_1d)
         self.writer = prediction_writer_from_config(composed, locations_1d, common_cfg)
@@ -188,6 +193,9 @@ class Model3D:
             time = target_time
 
         LOG.info(f"[3D] finished time loop at t={time} (t_end={end_t})")
+        # Normal end of the simulation: flush the writer, release the backend (MF6 finalize).
+        # On an exception these are skipped; the exception ends the run and the process.
         if self.writer is not None:
             self.writer.close()
+        self.backend.close()
         return time

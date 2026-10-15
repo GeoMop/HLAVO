@@ -16,14 +16,6 @@ from hlavo.misc.config import load_config
 LOG = logging.getLogger(__name__)
 
 
-def _future_result(site_id, future):
-    try:
-        return future.result()
-    except Exception:
-        LOG.exception("[SETUP] 1D model failed for site_id=%s", site_id)
-        raise
-
-
 
 def setup_models(work_dir, config_path, client):
     work_dir = Path(work_dir).resolve()
@@ -69,18 +61,13 @@ def setup_models(work_dir, config_path, client):
     )
 
     LOG.info("[SETUP] Waiting for all 1D models to finish...")
-    results_1d = [_future_result(site_id, future) for site_id, future in zip(locations_1d, futures_1d)]
+    # A failed 1D worker was already reported (and re-raised) by the 3D loop; see model_3d._receive_from_1d.
+    results_1d = [future.result() for future in futures_1d]
     LOG.info("[SETUP] 1D model results: %s", results_1d)
 
     return final_state_3d
 
 
 def run_simulation(work_dir: Path, config_path: Path) -> None:
-    cluster = LocalCluster(n_workers=4, threads_per_worker=1)
-    client = Client(cluster)
-
-    try:
+    with LocalCluster(n_workers=4, threads_per_worker=1) as cluster, Client(cluster) as client:
         setup_models(work_dir, config_path, client)
-    finally:
-        client.close()
-        cluster.close()
