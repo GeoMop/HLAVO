@@ -48,6 +48,10 @@ def test_zarr_prediction_writer_coord_sizes(tmp_path, dask_client):
     assert well_ds.sizes["date_time"] == 31
     assert well_ds.sizes["well_id"] == 2
     assert well_ds.sizes["calibration"] == 1
+    # calibration is the simulation start, stored as a datetime (schema unit), not a string label.
+    start = np.array(["2025-03-01T00:00"], dtype="datetime64[m]")
+    for ds in (site_ds, well_ds):
+        np.testing.assert_array_equal(ds["calibration"].values.astype("datetime64[m]"), start)
 
 
 def _run_composed(tmp_path: Path, config_path: Path, client):

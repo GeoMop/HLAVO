@@ -138,6 +138,16 @@ class ZarrPredictionWriter(PredictionWriterBase):
         if self.well_datasets:
             self.well_node.write_ds(_concat_time(self.well_datasets), mode="w")
 
+    def _calibration_coord(self) -> np.ndarray:
+        """`calibration` coordinate value: the simulation start as datetime64[m].
+
+        simulation_schema.yaml declares `calibration` with a datetime unit, so zarr_fuse encodes it
+        as integer minutes. `write_ds` passes our dataset to xarray without zarr_fuse's input
+        conversion (unlike `update`), so it must already hold datetimes; a string label fails to
+        encode ("ufunc 'rint' not supported", zarr_fuse since ec6e988).
+        """
+        return np.array([np.datetime64(self.composed.start, "m")], dtype="datetime64[m]")
+
     def _site_dataset(
         self,
         date_time: np.datetime64,
@@ -146,7 +156,7 @@ class ZarrPredictionWriter(PredictionWriterBase):
     ) -> xr.Dataset:
         site_id = np.array([int(msg.site_id) for msg in site_messages], dtype=np.int32)
         date_times = np.array([date_time], dtype="datetime64[m]")
-        calibration = np.array([self.calibration], dtype="U16")
+        calibration = self._calibration_coord()
         shape = (date_times.size, site_id.size, calibration.size)
         velocity = np.array([[float(msg.velocity) for msg in site_messages]], dtype=float)[:, :, None]
         pressure_head = np.array(
@@ -173,7 +183,7 @@ class ZarrPredictionWriter(PredictionWriterBase):
     def _well_dataset(self, date_time: np.datetime64, well_prediction: dict[str, float]) -> xr.Dataset:
         well_id = np.array(list(well_prediction), dtype="U16")
         date_times = np.array([date_time], dtype="datetime64[m]")
-        calibration = np.array([self.calibration], dtype="U16")
+        calibration = self._calibration_coord()
         shape = (date_times.size, well_id.size, calibration.size)
         water_level = np.array([[float(value) for value in well_prediction.values()]], dtype=float)[:, :, None]
         assert water_level.shape == shape

@@ -1,5 +1,25 @@
 # Status summary
 
+`2026-10-14`: `7481208` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Fix the CI failures of the M3 branch caused by the `calibration` coordinate (writer and schema) and the wrong expected times in the schema test, before the review of PR #44 continues.
+
+## Changes summary
+- Remote: PR #43 (M2) merged into `main` (`688d0f8`, 2026-09-30); jbrezmorf merged `main` into `codex/m3-modflowapi` (`3bc98e9`, only adds the api.met.no header in `hlavo/ingress/scrapper/endpoints_config.yaml`); the local branch is 2 commits behind. PR #44 now targets `main`.
+- Staged: [hlavo/composed/prediction_writer.py](/home/hlavo/workspace/hlavo/composed/prediction_writer.py) writes `calibration` as `datetime64[m]`, checked in [tests/composed/test_prediction_writer.py](/home/hlavo/workspace/tests/composed/test_prediction_writer.py) (prepared 2026-09-30).
+- Staged: [hlavo/schemas/simulation_schema.yaml](/home/hlavo/workspace/hlavo/schemas/simulation_schema.yaml) without `type: str[16]` for both `calibration` coordinates; [tests/schemas/test_simulation.py](/home/hlavo/workspace/tests/schemas/test_simulation.py) expected `date_time` in UTC for CET winter input; [PLAN.md](/home/hlavo/workspace/PLAN.md) AGENT log and QaR; this entry.
+
+## Verified
+- `dev/hlavo run pytest tests/schemas tests/composed/test_prediction_writer.py -vv`: 3 passed (2026-10-14).
+- `dev/hlavo run pytest tests/composed -vv -s -o faulthandler_timeout=60`: 6 passed (2026-10-14, zarr_fuse `a2a23c5`); the `ERROR` log lines come from the intended failure in `test_setup_models_fails_fast_when_1d_worker_fails`.
+- Writer fix alone: `dev/hlavo run pytest tests/composed -vv -s -o faulthandler_timeout=60`: 6 passed (2026-09-30, zarr_fuse `a2a23c5`).
+
+## Open items
+- Commit, pull `3bc98e9` (no overlapping files), push; check CI `Tests`. Remaining expected CI failures: missing data files and S3 credentials (QaR). CI installs zarr_fuse `main`, now `7886db2` (changed `dtype_converter`), local venv has `a2a23c5`.
+- PR #44 review comment on `GridMap.site_pressure_heads` (QaR in [PLAN.md](/home/hlavo/workspace/PLAN.md)).
+- Next milestone: M4 (geometry class around `qgis_reader`, `build_model`).
+
 `2026-09-30`: `2012f9b` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal
@@ -18,7 +38,7 @@ Milestone 3 (`Model3DAPI`, MODFLOW 6 through modflowapi) on top of the reviewed 
 - Review changes (no try blocks, `dask_client` fixture, API docs): same command, 6 passed (2026-09-30); only zarr `UnstableSpecificationWarning` and `.partial` warnings (see the zarr_fuse QaR).
 
 ## Open items
-- Review changes committed and pushed as `012db1c`. CI `Tests` failed on it: `modflowapi` missing in the CI venv (collection errors in `tests/composed`). Unstaged fix: `modflowapi` added to [pyproject.toml](/home/hlavo/workspace/pyproject.toml); commit, push and check the next CI run. `main` fails its `Tests` too (separate cause, not investigated).
+- Review changes committed and pushed as `012db1c`. CI `Tests` failed on it: `modflowapi` missing in the CI venv (collection errors in `tests/composed`). Fixed in `7481208`: `modflowapi` added to [pyproject.toml](/home/hlavo/workspace/pyproject.toml). CI run #252 then failed in `test_zarr_prediction_writer_coord_sizes` (zarr_fuse `main` encodes the datetime-unit `calibration` coordinate; the writer wrote a string). Unstaged fix in [hlavo/composed/prediction_writer.py](/home/hlavo/workspace/hlavo/composed/prediction_writer.py) (`calibration` as `datetime64[m]`) and its test; verified locally with zarr_fuse `a2a23c5` (as on CI): `tests/composed` 6 passed; commit, push, check CI. The other CI failures (data files, S3 credentials, timezone) are pre-existing and also on `main`, see QaR.
 - Open QaR items in [PLAN.md](/home/hlavo/workspace/PLAN.md): velocity unit, zarr_fuse writes on open ([doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)), guessed default in `Model3DBackendMock`, writer `mode="w"`.
 - Next milestone: M4 (geometry class around `qgis_reader`, `build_model`).
 
