@@ -1,5 +1,23 @@
 # Status summary
 
+`2026-10-23`: `7468573` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Make `runs/composed_3d_writer` (2 sites) write its predictions: all ZARR access in the main process (decision with jbrezmorf, option D in [doc/question_zarr_fuse_open_store.md](/home/hlavo/workspace/doc/question_zarr_fuse_open_store.md)).
+
+## Changes summary
+- Committed `7468573`: comments at the MODFLOW API calls in [hlavo/composed/model_3d_api.py](/home/hlavo/workspace/hlavo/composed/model_3d_api.py).
+- Staged: `load_inputs` of the 1D model classes ([hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py), `Model1DData.load_sites` / `from_datasets`), inputs loaded in `setup_models` ([hlavo/composed/model_composed.py](/home/hlavo/workspace/hlavo/composed/model_composed.py)) and passed to the workers ([hlavo/composed/worker_1d.py](/home/hlavo/workspace/hlavo/composed/worker_1d.py)); [tests/model_1d/test_model_1d.py](/home/hlavo/workspace/tests/model_1d/test_model_1d.py); run README, question doc, [PLAN.md](/home/hlavo/workspace/PLAN.md); this entry.
+
+## Verified
+- `dev/hlavo run pytest tests/composed -vv -s -o faulthandler_timeout=60`: 6 passed (2026-10-23).
+- `runs/composed_3d_writer/run_simulate.sh`: finished (31 steps, both 1D workers done); `simulation.zarr` contains `site_prediction` (`velocity`, `pressure_head`, 31 x 2 x 1, finite) and `well_prediction` (`water_level`).
+
+## Open items
+- Recharge near zero (`APCP` mm/s vs mm/day, QaR); zarr_fuse read-only open (option A) as a later improvement; large inputs for long runs may need `client.scatter`.
+- Commit, push, check CI; PR #44 review comment on `GridMap.site_pressure_heads` (QaR).
+- Next milestone: M4.
+
 `2026-10-15`: `94fb0c8` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal

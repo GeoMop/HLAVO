@@ -80,10 +80,12 @@ def build_model():
     composed = ComposedData.from_config(workdir, cfg, cfg_path)
 
     site_id = 1
+    inputs = Model1D.load_inputs(composed, [site_id], cfg['model_1d'])
     model = Model1D.from_config(
         composed,
         site_id=site_id,
-        config=cfg['model_1d']
+        config=cfg['model_1d'],
+        inputs=inputs[site_id],
     )
 
     return model

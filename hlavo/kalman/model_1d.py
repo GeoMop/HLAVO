@@ -42,21 +42,39 @@ class Model1DData:
     surface_dataset: xarray.Dataset
 
     @classmethod
-    def from_config(cls, site_id, composed:'ComposedData', config: dict) -> "Model1DData":
+    def load_sites(cls, site_ids: list[int], composed: 'ComposedData', config: dict) -> dict[int, "Model1DData"]:
+        """Load the inputs of all 1D sites: site_id -> Model1DData.
+
+        Opens each input store (config `schema_files`: profiles, surface) once and selects the
+        data of every site. Called in the main process before the 1D workers start; the workers
+        get the selected data and never open a store, because `zarr_fuse.open_store` writes group
+        metadata on every open and concurrent opens collide (doc/question_zarr_fuse_open_store.md).
+        """
         schemas = config["schema_files"]
-        # Load with the local synchronous scheduler: this runs inside a Dask worker task, and a
-        # plain .compute() would submit to the same cluster and wait for a free worker thread,
-        # which deadlocks when all threads are held by long-running 1D tasks.
+        profiles_all = load_measurments_data(scheme_file=composed.relative_resolve(schemas['profiles']))
+        surface_all = load_meteo_data(scheme_file=composed.relative_resolve(schemas['surface']))
+        return {
+            int(site_id): cls.from_datasets(int(site_id), composed, profiles_all, surface_all)
+            for site_id in site_ids
+        }
+
+    @classmethod
+    def from_datasets(cls, site_id: int, composed: 'ComposedData', profiles_all: xarray.Dataset,
+                      surface_all: xarray.Dataset) -> "Model1DData":
+        """Data of one site: the simulated interval of the site, loaded into memory.
+
+        profiles_all, surface_all: datasets of all sites (lazy, as opened from the stores).
+        """
+        # Load with the local synchronous scheduler, not through the Dask cluster of the run
+        # (a .compute() inside a worker task would wait for a free worker thread and deadlock).
         select = lambda ds: ds.sel(site_id=site_id, date_time=slice(composed.start, composed.end)).compute(
             scheduler="synchronous"
         )
-        profiles = select(load_measurments_data(scheme_file=
-                                         composed.relative_resolve(schemas['profiles'])))
+        profiles = select(profiles_all)
         LOG.debug("Loaded 1D profile dataset for site_id=%s: %s", site_id, profiles)
-        start_profiles =  profiles.isel(date_time=0)
+        start_profiles = profiles.isel(date_time=0)
         long_lat = (start_profiles["longitude"].item(), start_profiles["latitude"].item())
-        surface = select(load_meteo_data(scheme_file=
-                                  composed.relative_resolve(schemas['surface'])))
+        surface = select(surface_all)
         LOG.debug("Loaded 1D surface dataset for site_id=%s: %s", site_id, surface)
 
         return cls(
@@ -169,15 +187,26 @@ class Model1DConstantWeather:
     site: ConstantWeatherSite
 
     @classmethod
-    def from_config(cls, composed, site_id: int, config: dict) -> "Model1DConstantWeather":
-        site_cfg = cls._site_mapping(config)[site_id]
-        site = ConstantWeatherSite(
-            site_id=site_id,
-            longitude=float(site_cfg["longitude"]),
-            latitude=float(site_cfg["latitude"]),
-            velocity=float(site_cfg["velocity"]),
-        )
-        return cls(composed=composed, site=site)
+    def load_inputs(cls, composed, site_ids: list[int], config: dict) -> dict[int, ConstantWeatherSite]:
+        """Inputs of the 1D sites: site_id -> ConstantWeatherSite (from the config, no store)."""
+        _ = composed
+        site_mapping = cls._site_mapping(config)
+        return {
+            int(site_id): ConstantWeatherSite(
+                site_id=int(site_id),
+                longitude=float(site_mapping[int(site_id)]["longitude"]),
+                latitude=float(site_mapping[int(site_id)]["latitude"]),
+                velocity=float(site_mapping[int(site_id)]["velocity"]),
+            )
+            for site_id in site_ids
+        }
+
+    @classmethod
+    def from_config(cls, composed, site_id: int, config: dict, inputs: ConstantWeatherSite) -> "Model1DConstantWeather":
+        """Model of one site; `inputs` from `load_inputs`."""
+        _ = config
+        assert inputs.site_id == site_id, f"Inputs of site {inputs.site_id} given to site {site_id}"
+        return cls(composed=composed, site=inputs)
 
     @staticmethod
     def _site_mapping(config: dict) -> dict[int, dict]:
@@ -231,12 +260,21 @@ class Model1D:
     kalman: KalmanFilter | SurfaceMock | SurfaceScalingMock
 
     @classmethod
-    def from_config(cls, composed, site_id: int, config: dict) -> "Model1D":
+    def load_inputs(cls, composed, site_ids: list[int], config: dict) -> dict[int, Model1DData]:
+        """Inputs of the 1D sites: site_id -> Model1DData, read from the ZARR stores.
+
+        Runs in the main process, see `Model1DData.load_sites`.
+        """
+        return Model1DData.load_sites(site_ids, composed, config)
+
+    @classmethod
+    def from_config(cls, composed, site_id: int, config: dict, inputs: Model1DData) -> "Model1D":
+        """Model of one site; `inputs` from `load_inputs` (no store is opened here)."""
         kalman_class = resolve_named_class(
             config['kalman_class_name'],
             (KalmanFilter, SurfaceKalman, SurfaceMock, SurfaceScalingMock, KalmanMock, KalmanScalingMock),
         )
-        data = Model1DData.from_config(site_id, composed, config)
+        data = inputs
         if kalman_class is KalmanFilter:
             meas_config = Model1D.create_kalman_measurements_config(data, config)
             moisture_sigma = meas_config["kalman_config"]["train_measurements"]['moisture']["noise_level"]

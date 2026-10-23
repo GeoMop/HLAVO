@@ -10,6 +10,10 @@ The run needs no network access.
   forcing, wells) plus schema copies whose `STORE_URL` points to them. `run_simulate.sh` calls it
   before every simulation, inside the docker image (the schema copies contain absolute paths).
 - 1D model: `Model1D` with the `SurfaceScalingMock` surface model (no ParFlow, no Kalman filter).
+- All ZARR access happens in the main process (the 3D side): it reads the 1D inputs once
+  (`Model1D.load_inputs`) and sends each 1D worker the data of its site; it alone writes
+  `simulation.zarr`. The 1D workers open no store (zarr_fuse writes on every open, see
+  `doc/question_zarr_fuse_open_store.md`).
 - 3D model: `Model3DDelay` mock (single water-level accumulator with drainage).
   The real MODFLOW backend follows after milestone 4.
 - Real data: point `model_1d.schema_files` and `wells_schema_file` in `config.yaml` to the schemas in

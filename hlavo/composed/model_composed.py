@@ -8,7 +8,7 @@ import yaml
 from dask.distributed import Client, LocalCluster, Queue
 
 from hlavo.composed.common_data import ComposedData
-from hlavo.composed.worker_1d import model1d_worker_entry
+from hlavo.composed.worker_1d import model1d_worker_entry, model_1d_class
 from hlavo.composed.model_3d import Model3D
 from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.config import load_config
@@ -38,6 +38,11 @@ def setup_models(work_dir, config_path, client):
     model_3d = Model3D(composed, config_data['model_3d'], locations_1d)
     #t_end = model_3d.resolve_t_end()
 
+    # All ZARR input is read here, in the main process (the 3D side), and each 1D worker gets
+    # its site's data: zarr_fuse.open_store writes on every open, so stores opened concurrently
+    # by several workers collide (doc/question_zarr_fuse_open_store.md).
+    inputs_1d = model_1d_class(model_1d_cfg).load_inputs(composed, locations_1d, model_1d_cfg)
+
     for site_id in locations_1d:
         q_name_3d_to_1d = f"{queue_prefix}-3d-to-1d-{site_id}"
         Queue(q_name_3d_to_1d, client=client)
@@ -47,7 +52,8 @@ def setup_models(work_dir, config_path, client):
             model1d_worker_entry,
             composed,
             site_id,
-            config_data['model_1d'],
+            model_1d_cfg,
+            inputs_1d[site_id],
             q_name_3d_to_1d,
             queue_name_1d_to_3d,
         )

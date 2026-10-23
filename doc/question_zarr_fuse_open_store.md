@@ -1,6 +1,7 @@
 # Question: `zarr_fuse.open_store()` writes on every open
 
-Status: open, to be decided (2026-09-30). Tracked in the QaR section of `PLAN.md`.
+Status: decided 2026-10-16 (option D below); the read-only open in zarr_fuse (option A) stays
+a possible later improvement.
 
 ## Problem
 
@@ -79,6 +80,19 @@ in `Model1DData.from_config()`.
 - Pros: no code change, the run works today.
 - Cons: does not exercise concurrent 1D workers; the problem stays for real runs.
 
+### D. All ZARR access in the main process (chosen)
+The main process, which runs the 3D model and the prediction writer, reads the inputs of all
+1D sites before the 1D workers start (`Model1D.load_inputs` -> `Model1DData.load_sites`: each
+input store opened once, data selected per site and loaded into memory) and passes each worker
+the data of its site (`model1d_worker_entry(..., inputs, ...)`). The workers open no store.
+- Pros: no concurrent opens, no writes from the workers into the shared S3 input stores, works
+  with the current zarr_fuse; matches the design that only the 3D side writes ZARR.
+- Cons: the main process still writes group metadata once per store when opening it (zarr_fuse);
+  the site data travel to the workers through Dask (fine for weeks to months of data; for long
+  runs consider `client.scatter`).
+
 ## Decision
 
-(to be filled)
+2026-10-16 (Otto Severýn with Jan Březina): option D. Implemented in
+`hlavo/kalman/model_1d.py` (`load_inputs` of the 1D model classes), `hlavo/composed/worker_1d.py`
+and `hlavo/composed/model_composed.py`.
