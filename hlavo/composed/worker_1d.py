@@ -30,18 +30,29 @@ def configure_worker_logging(workdir: Path, site_id: int) -> Path:
     return log_path
 
 
+def model_1d_class(config: dict) -> type[Model1D] | type[Model1DConstantWeather]:
+    """1D model class named by `model_1d_class_name` in the `model_1d` config.
+
+    The class provides `load_inputs(composed, site_ids, config)` (run in the main process,
+    returns site_id -> inputs) and `from_config(composed, site_id, config, inputs)` (run in the
+    1D worker).
+    """
+    return resolve_named_class(
+        config.get("model_1d_class_name", "Model1D"),
+        (Model1D, Model1DConstantWeather),
+    )
+
+
 class Worker1D:
-    def __init__(self, composed: ComposedData, site_id: int, config: dict):
+    def __init__(self, composed: ComposedData, site_id: int, config: dict, inputs):
+        """inputs: the site's input data from `model_1d_class(config).load_inputs` (main process)."""
         self.composed = composed
         self.site_id = site_id
-        model_1d_class = resolve_named_class(
-            config.get("model_1d_class_name", "Model1D"),
-            (Model1D, Model1DConstantWeather),
-        )
-        self.model = model_1d_class.from_config(
+        self.model = model_1d_class(config).from_config(
             composed=composed,
             site_id=site_id,
             config=config,
+            inputs=inputs,
         )
 
     def run_loop(self, queue_name_in: str, queue_name_out: str):
@@ -97,7 +108,12 @@ class Worker1D:
         return payload
 
 
-def model1d_worker_entry(composed: ComposedData, site_idx, config, queue_name_in, queue_name_out):
+def model1d_worker_entry(composed: ComposedData, site_idx, config, inputs, queue_name_in, queue_name_out):
+    """Dask task of one 1D site: build the model from the given inputs and run its loop.
+
+    inputs: the site's input data, loaded in the main process (`model_1d_class(config).load_inputs`);
+    the worker opens no ZARR store.
+    """
     load_dotenv()
     site_id = int(site_idx)
     configure_worker_logging(composed.workdir, site_id)
@@ -105,6 +121,7 @@ def model1d_worker_entry(composed: ComposedData, site_idx, config, queue_name_in
         composed=composed,
         site_id=site_idx,
         config=config,
+        inputs=inputs,
     )
     return worker.run_loop(queue_name_in, queue_name_out)
 
@@ -125,10 +142,13 @@ def call_worker_from_cli():
     queue_name_in = f"q-3d-to-1d-{site_id}"
     queue_name_out = "q-1d-to-3d"
 
+    model_1d_cfg = config_data['model_1d']
+    inputs = model_1d_class(model_1d_cfg).load_inputs(composed, [site_id], model_1d_cfg)
     result = model1d_worker_entry(
         composed=composed,
         site_idx=site_id,
-        config=config_data['model_1d'],
+        config=model_1d_cfg,
+        inputs=inputs[site_id],
         queue_name_in=queue_name_in,
         queue_name_out=queue_name_out,
     )

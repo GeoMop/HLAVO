@@ -35,6 +35,7 @@ dependencies = [
     # Deep model
     "modflow_devtools",
     "flopy",
+    "modflowapi",   # MODFLOW 6 API (libmf6 from the conda modflow6 package), Model3DAPI
     "geopandas",
     "shapely",
     "rasterio",

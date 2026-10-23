@@ -10,6 +10,10 @@ The run needs no network access.
   forcing, wells) plus schema copies whose `STORE_URL` points to them. `run_simulate.sh` calls it
   before every simulation, inside the docker image (the schema copies contain absolute paths).
 - 1D model: `Model1D` with the `SurfaceScalingMock` surface model (no ParFlow, no Kalman filter).
+- All ZARR access happens in the main process (the 3D side): it reads the 1D inputs once
+  (`Model1D.load_inputs`) and sends each 1D worker the data of its site; it alone writes
+  `simulation.zarr`. The 1D workers open no store (zarr_fuse writes on every open, see
+  `doc/question_zarr_fuse_open_store.md`).
 - 3D model: `Model3DDelay` mock (single water-level accumulator with drainage).
   The real MODFLOW backend follows after milestone 4.
 - Real data: point `model_1d.schema_files` and `wells_schema_file` in `config.yaml` to the schemas in
@@ -38,5 +42,6 @@ dev/hlavo run python -c "import xarray as xr; print(xr.open_zarr('runs/composed_
 ```
 
 ## Known limitations
-- `APCP` is declared (and generated) in mm/s, `SurfaceScalingMock` treats precipitation as mm/day,
-  so the recharge is far too small and the water level stays near -60 m. See QaR in `PLAN.md`.
+- `Model3DDelay` is a mock: one water level for all sites, fed by the sum of the 1D recharges and
+  draining towards -60 m (10 % of the excess per day), so the level stays close to -60 m
+  (2026-10-23: recharge up to 4.4e-3 m/day, level up to 1.5 cm above -60 m).

@@ -8,20 +8,12 @@ import yaml
 from dask.distributed import Client, LocalCluster, Queue
 
 from hlavo.composed.common_data import ComposedData
-from hlavo.composed.worker_1d import model1d_worker_entry
+from hlavo.composed.worker_1d import model1d_worker_entry, model_1d_class
 from hlavo.composed.model_3d import Model3D
 from hlavo.misc.aux_zarr_fuse import load_dotenv
 from hlavo.misc.config import load_config
 
 LOG = logging.getLogger(__name__)
-
-
-def _future_result(site_id, future):
-    try:
-        return future.result()
-    except Exception:
-        LOG.exception("[SETUP] 1D model failed for site_id=%s", site_id)
-        raise
 
 
 
@@ -46,6 +38,11 @@ def setup_models(work_dir, config_path, client):
     model_3d = Model3D(composed, config_data['model_3d'], locations_1d)
     #t_end = model_3d.resolve_t_end()
 
+    # All ZARR input is read here, in the main process (the 3D side), and each 1D worker gets
+    # its site's data: zarr_fuse.open_store writes on every open, so stores opened concurrently
+    # by several workers collide (doc/question_zarr_fuse_open_store.md).
+    inputs_1d = model_1d_class(model_1d_cfg).load_inputs(composed, locations_1d, model_1d_cfg)
+
     for site_id in locations_1d:
         q_name_3d_to_1d = f"{queue_prefix}-3d-to-1d-{site_id}"
         Queue(q_name_3d_to_1d, client=client)
@@ -55,7 +52,8 @@ def setup_models(work_dir, config_path, client):
             model1d_worker_entry,
             composed,
             site_id,
-            config_data['model_1d'],
+            model_1d_cfg,
+            inputs_1d[site_id],
             q_name_3d_to_1d,
             queue_name_1d_to_3d,
         )
@@ -69,18 +67,13 @@ def setup_models(work_dir, config_path, client):
     )
 
     LOG.info("[SETUP] Waiting for all 1D models to finish...")
-    results_1d = [_future_result(site_id, future) for site_id, future in zip(locations_1d, futures_1d)]
+    # A failed 1D worker was already reported (and re-raised) by the 3D loop; see model_3d._receive_from_1d.
+    results_1d = [future.result() for future in futures_1d]
     LOG.info("[SETUP] 1D model results: %s", results_1d)
 
     return final_state_3d
 
 
 def run_simulation(work_dir: Path, config_path: Path) -> None:
-    cluster = LocalCluster(n_workers=4, threads_per_worker=1)
-    client = Client(cluster)
-
-    try:
+    with LocalCluster(n_workers=4, threads_per_worker=1) as cluster, Client(cluster) as client:
         setup_models(work_dir, config_path, client)
-    finally:
-        client.close()
-        cluster.close()
