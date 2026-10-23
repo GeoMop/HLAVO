@@ -35,8 +35,8 @@ model_1d:
   # Mock of the surface model: recharge = scaling(mean profile moisture, 0.1..0.8) * mean precipitation
   # over the last 48 h of the step.
   precipitation_var: "APCP"
-  # Precipitation variable of the meteo node Uhelna/parflow/version_01.
-  # ?? APCP is declared (and generated) in mm/s, the mock treats it as mm/day (see QaR in PLAN.md).
+  # Precipitation variable of the meteo node Uhelna/parflow/version_01; converted to m/day from its
+  # declared unit (APCP: mm/s).
   moisture_sigma: 0.05
   # Standard deviation of the moisture measurements; required by Model1D, not used by the mock.
   site_ids: [1, 2]

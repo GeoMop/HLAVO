@@ -7,6 +7,7 @@ from pathlib import Path
 import attrs
 import numpy as np
 import xarray
+from zarr_fuse.units import ureg
 
 
 from hlavo.ingress.moist_profile.load_zarr_data import load_measurments_data, load_meteo_data
@@ -125,6 +126,11 @@ class SurfaceMock:
 
 @attrs.define
 class SurfaceScalingMock:
+    """Mock surface model: recharge [m/day] = scaling(mean profile moisture) * mean precipitation.
+
+    The precipitation (variable `precipitation_var` of the meteo dataset) is averaged over the last
+    48 h of the step and converted to m/day from its declared unit (variable attribute `unit`).
+    """
     longitude: float = 14.889853
     latitude: float = 50.863565
     precipitation_var: str = "precipitation"
@@ -143,11 +149,22 @@ class SurfaceScalingMock:
         _ = site_id
         scaling_factor = self._scaling_factor(measurements)
         precipitation = self._precipitation_window(meteo)
+        return scaling_factor * self._mean_precipitation_m_per_day(precipitation)
+
+    @staticmethod
+    def _mean_precipitation_m_per_day(precipitation) -> float:
+        """Mean precipitation rate of the window [m/day]; 0 for an empty window.
+
+        The rate unit is read from the variable attribute `unit`, which zarr_fuse writes from the
+        schema (e.g. APCP: "millimeter / second", chmi_stations_schema.yaml), and converted by pint.
+        """
         if precipitation.size == 0:
-            mean_precipitation_m_per_day = 0.0
-        else:
-            mean_precipitation_m_per_day = float(precipitation.mean()) * 1.0e-3
-        return scaling_factor * mean_precipitation_m_per_day
+            return 0.0
+        assert "unit" in precipitation.attrs, (
+            f"Precipitation variable {precipitation.name!r} has no 'unit' attribute (declared unit of the schema)"
+        )
+        rate = ureg.Quantity(float(precipitation.mean()), precipitation.attrs["unit"])
+        return float(rate.to("meter / day").magnitude)
 
     @staticmethod
     def _scaling_factor(measurements) -> float:

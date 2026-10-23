@@ -170,7 +170,7 @@ def _surface_dataset() -> xr.Dataset:
     site_id = np.array([0, 1], dtype=np.int32)
     shape = (date_time.size, site_id.size)
     data = {
-        "APCP": np.full(shape, 10.0),
+        "APCP": np.full(shape, 10.0 / 86400.0),  # 10 mm/day in the schema unit mm/s
         "Temp": np.full(shape, 273.15),
         "UGRD": np.zeros(shape),
         "VGRD": np.zeros(shape),

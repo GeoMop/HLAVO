@@ -1,5 +1,22 @@
 # Status summary
 
+`2026-10-23`: `ba3cd22` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Fix the precipitation unit of `SurfaceScalingMock` so `runs/composed_3d_writer` produces a realistic recharge.
+
+## Changes summary
+- Committed `ba3cd22`: 1D inputs read in the main process; `runs/composed_3d_writer` writes `simulation.zarr`.
+- Staged: [hlavo/kalman/model_1d.py](/home/hlavo/workspace/hlavo/kalman/model_1d.py) `SurfaceScalingMock` converts the precipitation to m/day from the variable attribute `unit` (pint registry of zarr_fuse); new [tests/model_1d/test_surface_scaling_mock.py](/home/hlavo/workspace/tests/model_1d/test_surface_scaling_mock.py); APCP of [tests/composed/test_prediction_writer.py](/home/hlavo/workspace/tests/composed/test_prediction_writer.py) 10 mm/day in mm/s; run config comment and README; [PLAN.md](/home/hlavo/workspace/PLAN.md); this entry.
+
+## Verified
+- `dev/hlavo run pytest tests/model_1d/test_surface_scaling_mock.py tests/composed -vv -s -o faulthandler_timeout=60`: 8 passed (2026-10-23).
+- `runs/composed_3d_writer/run_simulate.sh`: `velocity` 0 to 4.4e-3 m/day, level -60 to -59.985 m in `simulation.zarr`.
+
+## Open items
+- Commit, push, check CI; PR #44 review comment on `GridMap.site_pressure_heads` (QaR).
+- Next milestone: M4.
+
 `2026-10-23`: `7468573` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal
