@@ -8,11 +8,13 @@ import logging
 from pathlib import Path
 
 from hlavo.composed.model_composed import run_simulation
-from hlavo.deep_model.build_modflow_grid import build_model
+from hlavo.deep_model.geometry import Geometry
 from hlavo.misc.logging_utils import ensure_debug_file_handler, ensure_stdout_handler, set_hlavo_loggers
 from hlavo.tools import zf
 
 LOG = logging.getLogger(__name__)
+# Subfolder of the workdir with the geometry written by `build_model` (geometry.nc, geometry.vtm).
+GEOMETRY_DIRNAME = "geometry"
 
 
 def _resolve_workdir(config_path: Path, workdir: str | Path | None) -> Path:
@@ -29,7 +31,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     build_parser = subparsers.add_parser(
         "build_model",
-        help="Build the 3D MODFLOW model from GIS resources.",
+        help="Build the 3D model geometry from the GIS project (written to <workdir>/geometry).",
     )
     simulate_parser = subparsers.add_parser(
         "simulate",
@@ -74,8 +76,14 @@ def configure_calculation_logging(workdir: Path, log_name: str = "hlavo_main.log
 
 
 def _run_build_model(*, config_path: Path, workdir: Path) -> int:
-    build_config = build_model(config_source=config_path, workspace=workdir)
-    LOG.info("3D model built in %s", build_config.workspace)
+    """GIS -> geometry: `<workdir>/geometry/geometry.nc` (load with `Geometry.load`) and VTK for ParaView."""
+    log_path = configure_calculation_logging(workdir, log_name="build_model.log", reset=True)
+    LOG.info("Geometry build started at %s; log: %s", datetime.now().isoformat(timespec="seconds"), log_path)
+    geometry = Geometry.from_gis(config_path)
+    folder = workdir / GEOMETRY_DIRNAME
+    geometry.save(folder)
+    geometry.write_vtk(folder)
+    LOG.info("3D model geometry written to %s", folder)
     return 0
 
 

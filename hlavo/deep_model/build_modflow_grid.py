@@ -14,6 +14,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconf
 import flopy
 from . import model_3d_cfg as cfg3d
 from .add_material_parameters import write_material_model_files
+from .geometry import active_mask_from_boundary, raster_to_full_grid
 from .qgis_reader import BoundaryPolygon, GeometryConfig, Grid, ModelInputs, RasterLayer
 
 LOG = logging.getLogger(__name__)
@@ -119,68 +120,6 @@ def active_mask_from_rasters(
             mask = mask & raster_mask
     assert mask is not None, "Active mask could not be derived from rasters"
     return ~mask
-
-
-def active_mask_from_boundary(boundary: BoundaryPolygon, grid: Grid) -> np.ndarray:
-    from shapely.geometry import Polygon, mapping
-    from rasterio.features import geometry_mask
-    from rasterio.transform import from_origin
-
-    ny = int(grid.el_dims[1])
-    nx = int(grid.el_dims[0])
-    step_x = float(grid.step[0])
-    step_y = float(grid.step[1])
-    assert step_x > 0.0 and step_y > 0.0, "Grid steps must be positive"
-
-    x_min = float(grid.origin[0])
-    y_max = float(grid.origin[1]) + step_y * ny
-    transform = from_origin(x_min, y_max, step_x, step_y)
-
-    polygon = Polygon(boundary.coords_local)
-    assert polygon.is_valid, "Boundary polygon is invalid"
-    inside = geometry_mask(
-        [mapping(polygon)],
-        out_shape=(ny, nx),
-        transform=transform,
-        invert=True,
-        all_touched=True,
-    )
-    return inside
-
-
-def raster_to_full_grid(raster: RasterLayer, grid: Grid) -> np.ma.MaskedArray:
-    ny = int(grid.el_dims[1])
-    nx = int(grid.el_dims[0])
-    full = np.ma.masked_all((ny, nx), dtype=float)
-
-    step_x = float(raster.pixel_size[0])
-    step_y = float(raster.pixel_size[1])
-    assert step_x != 0.0 and step_y != 0.0, "Raster pixel size cannot be zero"
-
-    x_min, y_min = raster.extent_local[0]
-    x_max, y_max = raster.extent_local[1]
-    x_start = x_min if step_x > 0 else x_max
-    y_start = y_max if step_y < 0 else y_min
-
-    height, width = raster.z_field.shape
-    x_coords = x_start + (np.arange(width, dtype=float) + 0.5) * step_x
-    y_coords = y_start + (np.arange(height, dtype=float) + 0.5) * step_y
-
-    grid_step_x = float(grid.step[0])
-    grid_step_y = float(grid.step[1])
-    grid_x0 = float(grid.origin[0]) + 0.5 * grid_step_x
-    grid_y0 = float(grid.origin[1]) + grid_step_y * ny - 0.5 * grid_step_y
-
-    ix = np.round((x_coords - grid_x0) / grid_step_x).astype(int)
-    iy = np.round((grid_y0 - y_coords) / grid_step_y).astype(int)
-
-    assert ix.size == width, "Raster width mismatch"
-    assert iy.size == height, "Raster height mismatch"
-    assert ix.min() >= 0 and ix.max() < nx, "Raster X extent outside grid"
-    assert iy.min() >= 0 and iy.max() < ny, "Raster Y extent outside grid"
-
-    full[np.ix_(iy, ix)] = raster.z_field
-    return full
 
 
 def assign_materials(

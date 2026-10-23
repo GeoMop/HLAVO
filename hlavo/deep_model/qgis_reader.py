@@ -233,8 +233,8 @@ class GeometryConfig:
         return cls(
             config_path=config_path,
             qgis_project_path=cfg.get_path(geometry_raw, "qgis_project_path"),
-            boundary_layer_name=str(geometry_raw.get("boundary_layer_name", "JB_extended_domain")),
-            raster_group_name=str(geometry_raw.get("raster_group_name", "HG model layers")),
+            boundary_layer_name=str(geometry_raw["boundary_layer_name"]),
+            raster_group_name=str(geometry_raw["raster_group_name"]),
             meshsteps=(
                 float(meshsteps_raw["x"]),
                 float(meshsteps_raw["y"]),

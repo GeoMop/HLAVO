@@ -1,5 +1,23 @@
 # Status summary
 
+`2026-10-23`: `c8ab2b2` @ `codex/m4-geometry` by `otto-severyn-tul (changes prepared by Claude agent)`
+
+## Goal
+Milestone 4: geometry class around `qgis_reader` (GIS -> geometry files -> geometry without GIS), `build_model` working again.
+
+## Changes summary
+- Branch `codex/m4-geometry` created from `codex/m3-modflowapi` (`c8ab2b2`).
+- Staged: new [hlavo/deep_model/geometry.py](/home/hlavo/workspace/hlavo/deep_model/geometry.py) and [tests/deep_model/test_geometry.py](/home/hlavo/workspace/tests/deep_model/test_geometry.py); [hlavo/main.py](/home/hlavo/workspace/hlavo/main.py) `build_model`; `build_modflow_grid.py` imports the moved helpers; `qgis_reader.py` required config keys; `runs/composed_3D_only` README, executable scripts; `.gitignore`; [MILESTONES.md](/home/hlavo/workspace/MILESTONES.md), [PLAN.md](/home/hlavo/workspace/PLAN.md); this entry.
+
+## Verified
+- `dev/hlavo run pytest tests/deep_model/test_geometry.py -vv`: 5 passed (2026-10-23).
+- `runs/composed_3D_only/run_build_model.sh`: `geometry/geometry.nc` (9 MB), `geometry/geometry.vtm`; geometry identical to the former build (`model_with_mine/grid_materials.npz`).
+
+## Open items
+- Visual check of `geometry.vtm` in ParaView (user).
+- QaR in [PLAN.md](/home/hlavo/workspace/PLAN.md): unit naming / layer depth remarks, removal of the old deep-model code in M5.
+- Next: M5 (materials xarray, simulation build from `Geometry` + materials for `Model3DAPI`).
+
 `2026-10-23`: `ba3cd22` @ `codex/m3-modflowapi` by `otto-severyn-tul (changes prepared by Claude agent)`
 
 ## Goal

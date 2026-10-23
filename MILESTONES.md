@@ -8,7 +8,8 @@
 - Milestone 1: done. Test: `tests/composed/test_composed.py`, `tests/composed/test_composed_kalman_mock.py`.
 - Milestone 2: done (`0b6b2e4`). Test: `tests/composed/test_prediction_writer.py` (file and ZARR writer variants).
 - Milestone 3: done (branch `codex/m3-modflowapi`). `hlavo/composed/model_3d_api.py` (`Model3DAPI`), test: `tests/composed/test_model_3d_api.py` with injected geometry `tests/composed/modflow_cube.py`.
-- Milestone 4-7: open. Earlier attempts on `ot_milestones`.
+- Milestone 4: done (branch `codex/m4-geometry`). `hlavo/deep_model/geometry.py` (`Geometry`), test: `tests/deep_model/test_geometry.py`; run: `runs/composed_3D_only/run_build_model.sh` -> `geometry/geometry.nc`, `geometry/geometry.vtm`.
+- Milestone 5-7: open. Earlier attempts on `ot_milestones`.
 
 ## Rules
 
