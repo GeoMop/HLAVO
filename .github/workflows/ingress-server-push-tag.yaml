@@ -14,7 +14,6 @@ jobs:
       - name: Derive image tag
         id: version
         run: |
-          # ingress_server/1.2.3 -> hlavo-1.2.3; manual runs from a branch get ci-<sha>
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             echo "image_tag=hlavo-${GITHUB_REF_NAME#ingress_server/}" >> "$GITHUB_OUTPUT"
           else
@@ -35,8 +34,6 @@ jobs:
       configuration-dir-path: hlavo/ingress/scrapper
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
-      # Last zarr_fuse main that stores the queue file by file (2026-08-10); newer main runs out of
-      # memory on the ALADIN queue. Switch back to main once the worker is fixed.
       zarr-fuse-ref: dacc2d38e19cbb0e911efa6cbdd84b9c9e80fdf7
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
