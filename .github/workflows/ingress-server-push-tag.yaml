@@ -37,6 +37,7 @@ jobs:
       zarr-fuse-ref: dacc2d38e19cbb0e911efa6cbdd84b9c9e80fdf7
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
+        --set resources.limits.memory=1Gi
     secrets:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       KUBECONFIG: ${{ secrets.KUBECONFIG }}
