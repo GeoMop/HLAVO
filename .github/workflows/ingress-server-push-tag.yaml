@@ -1,24 +1,43 @@
-name: Ingress server - push main
+name: HLAVO Ingress Server - push tag
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "ingress_server/*.*.*"
   workflow_dispatch:
 jobs:
+  get-version:
+    name: Get version from tag
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.version.outputs.image_tag }}
+    steps:
+      - name: Derive image tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "image_tag=hlavo-${GITHUB_REF_NAME#ingress_server/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=generate" >> "$GITHUB_OUTPUT"
+          fi
   build-and-deploy:
+    needs: get-version
+    concurrency:
+      group: ingress-server-deploy
+      cancel-in-progress: false
     uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@main
     with:
       deploy: true
-      tag: generate
+      tag: ${{ needs.get-version.outputs.image-tag }}
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
       s3-store-url: s3://hlavo-release/rancher-meteo.zarr
       configuration-dir-path: hlavo/ingress/scrapper
       docker-repository: jbrezmorf/hlavo-ingress-server
       docker-registry: docker.io
-      zarr-fuse-ref: main
+      zarr-fuse-ref: dacc2d38e19cbb0e911efa6cbdd84b9c9e80fdf7
       extra-helm-args: >-
         --set image.name="jbrezmorf/hlavo-ingress-server"
+        --set resources.limits.memory=1Gi
     secrets:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       KUBECONFIG: ${{ secrets.KUBECONFIG }}
