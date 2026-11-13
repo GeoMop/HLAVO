@@ -1,15 +1,34 @@
-name: Ingress server - push main
+name: HLAVO Ingress Server - push tag
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "ingress_server/*.*.*"
   workflow_dispatch:
 jobs:
+  get-version:
+    name: Get version from tag
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.version.outputs.image_tag }}
+    steps:
+      - name: Derive image tag
+        id: version
+        run: |
+          # ingress_server/1.2.3 -> hlavo-1.2.3; manual runs from a branch get ci-<sha>
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "image_tag=hlavo-${GITHUB_REF_NAME#ingress_server/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=generate" >> "$GITHUB_OUTPUT"
+          fi
   build-and-deploy:
+    needs: get-version
+    concurrency:
+      group: ingress-server-deploy
+      cancel-in-progress: false
     uses: GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml@main
     with:
       deploy: true
-      tag: generate
+      tag: ${{ needs.get-version.outputs.image-tag }}
       namespace: hlavo-ingress-server
       release-name: hlavo-ingress-server
       s3-store-url: s3://hlavo-release/rancher-meteo.zarr

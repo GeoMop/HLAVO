@@ -31,7 +31,8 @@ The chart handles deployment configuration including service, ingress (NGINX wit
 
 ## Deployment Workflow
 
-The application is deployed via GitHub Actions workflow: `.github/workflows/ingress-server-push-main.yaml`
+The application is deployed via GitHub Actions workflow: `.github/workflows/ingress-server-push-tag.yaml`.
+It runs when a tag `ingress_server/X.Y.Z` is pushed and deploys the image `hlavo-X.Y.Z`.
 
 This workflow uses the reusable workflow from zarr_fuse repository:
 - **Reusable Workflow**: `GeoMop/zarr_fuse/.github/workflows/ingress-server-reusable-workflow.yaml`
@@ -67,7 +68,7 @@ The following variables must be configured in the GitHub repository settings (Se
 
 ### Workflow Inputs
 
-The reusable workflow accepts the following inputs (configured in `.github/workflows/ingress-server-push-main.yaml`):
+The reusable workflow accepts the following inputs (configured in `.github/workflows/ingress-server-push-tag.yaml`):
 
 | Input                    | Description                                            | Current Value                              |
 | ------------------------ | ------------------------------------------------------ | ------------------------------------------ |
